@@ -5,7 +5,10 @@ import { calculateExpenseShares } from '@tripmatrix/utils';
 import type { TripExpense, ExpenseSummary } from '@tripmatrix/types';
 
 const router = express.Router();
-const db = getFirestore();
+
+function getDb() {
+  return getFirestore();
+}
 
 // Create expense
 router.post('/', async (req: OptionalAuthRequest, res) => {
@@ -21,6 +24,7 @@ router.post('/', async (req: OptionalAuthRequest, res) => {
     }
 
     // Verify trip exists and user has access
+    const db = getDb();
     const tripDoc = await db.collection('trips').doc(tripId).get();
     if (!tripDoc.exists) {
       return res.status(404).json({
@@ -75,6 +79,7 @@ router.get('/trip/:tripId', async (req: OptionalAuthRequest, res) => {
     const { tripId } = req.params;
     
     // Check if trip is public
+    const db = getDb();
     const tripDoc = await db.collection('trips').doc(tripId).get();
     if (!tripDoc.exists) {
       return res.status(404).json({
@@ -126,6 +131,7 @@ router.get('/trip/:tripId/summary', async (req: OptionalAuthRequest, res) => {
     const { tripId } = req.params;
     
     // Get expenses
+    const db = getDb();
     const expensesSnapshot = await db.collection('tripExpenses')
       .where('tripId', '==', tripId)
       .get();
@@ -146,8 +152,8 @@ router.get('/trip/:tripId/summary', async (req: OptionalAuthRequest, res) => {
     }));
 
     // Calculate summary
-    const { calculateExpenseSummary } = await import('@tripmatrix/utils');
-    const summary = calculateExpenseSummary(expenses, places);
+    const utils = await import('@tripmatrix/utils');
+    const summary = utils.calculateExpenseSummary(expenses, places);
 
     res.json({ success: true, data: summary });
   } catch (error: any) {

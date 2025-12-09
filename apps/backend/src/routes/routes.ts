@@ -5,7 +5,10 @@ import { calculateTotalDistance } from '@tripmatrix/utils';
 import type { TripRoute, RoutePoint } from '@tripmatrix/types';
 
 const router = express.Router();
-const db = getFirestore();
+
+function getDb() {
+  return getFirestore();
+}
 
 // Record route points
 router.post('/:tripId/points', async (req: OptionalAuthRequest, res) => {
@@ -22,6 +25,7 @@ router.post('/:tripId/points', async (req: OptionalAuthRequest, res) => {
     }
 
     // Verify trip exists
+    const db = getDb();
     const tripDoc = await db.collection('trips').doc(tripId).get();
     if (!tripDoc.exists) {
       return res.status(404).json({
@@ -109,6 +113,7 @@ router.get('/:tripId', async (req: OptionalAuthRequest, res) => {
     const { tripId } = req.params;
     
     // Check if trip is public
+    const db = getDb();
     const tripDoc = await db.collection('trips').doc(tripId).get();
     if (!tripDoc.exists) {
       return res.status(404).json({

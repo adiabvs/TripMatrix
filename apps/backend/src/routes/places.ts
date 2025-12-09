@@ -4,7 +4,10 @@ import { OptionalAuthRequest } from '../middleware/optionalAuth.js';
 import type { TripPlace } from '@tripmatrix/types';
 
 const router = express.Router();
-const db = getFirestore();
+
+function getDb() {
+  return getFirestore();
+}
 
 // Add a place visited
 router.post('/', async (req: OptionalAuthRequest, res) => {
@@ -20,6 +23,7 @@ router.post('/', async (req: OptionalAuthRequest, res) => {
     }
 
     // Verify trip exists
+    const db = getDb();
     const tripDoc = await db.collection('trips').doc(tripId).get();
     if (!tripDoc.exists) {
       return res.status(404).json({
@@ -67,6 +71,7 @@ router.get('/trip/:tripId', async (req: OptionalAuthRequest, res) => {
     const { tripId } = req.params;
     
     // Check if trip is public
+    const db = getDb();
     const tripDoc = await db.collection('trips').doc(tripId).get();
     if (!tripDoc.exists) {
       return res.status(404).json({

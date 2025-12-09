@@ -5,7 +5,10 @@ import { OptionalAuthRequest } from '../middleware/optionalAuth.js';
 import type { Trip, TripParticipant } from '@tripmatrix/types';
 
 const router = express.Router();
-const db = getFirestore();
+
+function getDb() {
+  return getFirestore();
+}
 
 // Create a new trip
 router.post('/', async (req: AuthenticatedRequest, res) => {
@@ -33,6 +36,7 @@ router.post('/', async (req: AuthenticatedRequest, res) => {
       updatedAt: new Date(),
     };
 
+    const db = getDb();
     const tripRef = await db.collection('trips').add(tripData);
     
     const trip: Trip = {
@@ -56,6 +60,7 @@ router.post('/', async (req: AuthenticatedRequest, res) => {
 router.get('/:tripId', async (req: OptionalAuthRequest, res) => {
   try {
     const { tripId } = req.params;
+    const db = getDb();
     const tripDoc = await db.collection('trips').doc(tripId).get();
 
     if (!tripDoc.exists) {
@@ -98,6 +103,7 @@ router.get('/', async (req: AuthenticatedRequest, res) => {
   try {
     const uid = req.uid!;
     const { status, isPublic } = req.query;
+    const db = getDb();
 
     let query: FirebaseFirestore.Query = db.collection('trips')
       .where('participants', 'array-contains', uid);
@@ -132,6 +138,7 @@ router.post('/:tripId/participants', async (req: AuthenticatedRequest, res) => {
     const { tripId } = req.params;
     const { participants } = req.body;
     const uid = req.uid!;
+    const db = getDb();
 
     const tripRef = db.collection('trips').doc(tripId);
     const tripDoc = await tripRef.get();
@@ -204,6 +211,7 @@ router.patch('/:tripId', async (req: AuthenticatedRequest, res) => {
     const { tripId } = req.params;
     const updates = req.body;
     const uid = req.uid!;
+    const db = getDb();
 
     const tripRef = db.collection('trips').doc(tripId);
     const tripDoc = await tripRef.get();
@@ -254,6 +262,7 @@ router.patch('/:tripId', async (req: AuthenticatedRequest, res) => {
 router.get('/public/list', async (req, res) => {
   try {
     const { limit = 20 } = req.query;
+    const db = getDb();
     const snapshot = await db.collection('trips')
       .where('isPublic', '==', true)
       .orderBy('createdAt', 'desc')

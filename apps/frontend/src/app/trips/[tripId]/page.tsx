@@ -15,11 +15,13 @@ import {
 import { db } from '@/lib/firebase';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import type { Trip, TripRoute, TripPlace, TripExpense, ExpenseSummary } from '@tripmatrix/types';
-import TripMap from '@/components/TripMap';
 import PlaceForm from '@/components/PlaceForm';
 import ExpenseForm from '@/components/ExpenseForm';
 import { formatDistance, formatDuration } from '@tripmatrix/utils';
 import { format } from 'date-fns';
+import dynamic from 'next/dynamic';
+
+const TripMap = dynamic(() => import('@/components/TripMap'), { ssr: false });
 
 export default function TripDetailPage() {
   const { user, loading: authLoading, getIdToken } = useAuth();
@@ -38,6 +40,7 @@ export default function TripDetailPage() {
   const [trackingLocation, setTrackingLocation] = useState(false);
   const [currentLocation, setCurrentLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [watchId, setWatchId] = useState<number | null>(null);
+  const [token, setToken] = useState<string | null>(null);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -48,6 +51,8 @@ export default function TripDetailPage() {
   useEffect(() => {
     if (tripId && user) {
       loadTripData();
+      // Load token for forms
+      getIdToken().then(setToken).catch(console.error);
     }
   }, [tripId, user]);
 
@@ -377,7 +382,7 @@ export default function TripDetailPage() {
               tripId={tripId}
               onSubmit={handleAddPlace}
               onCancel={() => setShowPlaceForm(false)}
-              token={await getIdToken()}
+              token={token}
             />
           </div>
         )}

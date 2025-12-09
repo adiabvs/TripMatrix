@@ -3,7 +3,10 @@ import { getFirestore } from '../config/firebase.js';
 import { AuthenticatedRequest } from '../middleware/auth.js';
 
 const router = express.Router();
-const db = getFirestore();
+
+function getDb() {
+  return getFirestore();
+}
 
 // Search users by email or name (for @username tagging)
 router.get('/search', async (req: AuthenticatedRequest, res) => {
@@ -19,6 +22,7 @@ router.get('/search', async (req: AuthenticatedRequest, res) => {
 
     // Search by email (exact match or contains)
     const emailQuery = q.toLowerCase();
+    const db = getDb();
     const snapshot = await db.collection('users')
       .where('email', '>=', emailQuery)
       .where('email', '<=', emailQuery + '\uf8ff')
