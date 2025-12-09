@@ -1,0 +1,95 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isTripParticipant(tripId) {
+      return isAuthenticated() && 
+        exists(/databases/$(database)/documents/trips/$(tripId)) &&
+        (get(/databases/$(database)/documents/trips/$(tripId)).data.participants
+          .hasAny([request.auth.uid]) ||
+         get(/databases/$(database)/documents/trips/$(tripId)).data.creatorId == request.auth.uid);
+    }
+    
+    function isPublicTrip(tripId) {
+      return exists(/databases/$(database)/documents/trips/$(tripId)) &&
+        get(/databases/$(database)/documents/trips/$(tripId)).data.isPublic == true;
+    }
+
+    // Users collection
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.auth.uid == userId;
+      allow update: if isOwner(userId);
+      allow delete: if isOwner(userId);
+    }
+
+    // Trips collection
+    match /trips/{tripId} {
+      // Anyone can read public trips, authenticated users can read their own trips
+      allow read: if isPublicTrip(tripId) || 
+                     (isAuthenticated() && 
+                      (resource.data.creatorId == request.auth.uid ||
+                       resource.data.participants.hasAny([request.auth.uid])));
+      
+      // Only authenticated users can create trips
+      allow create: if isAuthenticated() && 
+                       request.resource.data.creatorId == request.auth.uid;
+      
+      // Only creator can update
+      allow update: if isAuthenticated() && 
+                       resource.data.creatorId == request.auth.uid;
+      
+      // Only creator can delete
+      allow delete: if isAuthenticated() && 
+                       resource.data.creatorId == request.auth.uid;
+    }
+
+    // Trip routes collection
+    match /tripRoutes/{routeId} {
+      allow read: if isAuthenticated() && 
+                     (isTripParticipant(resource.data.tripId) || 
+                      isPublicTrip(resource.data.tripId));
+      allow create: if isAuthenticated() && 
+                       isTripParticipant(request.resource.data.tripId);
+      allow update: if isAuthenticated() && 
+                       isTripParticipant(resource.data.tripId);
+      allow delete: if isAuthenticated() && 
+                       isTripParticipant(resource.data.tripId);
+    }
+
+    // Trip places collection
+    match /tripPlaces/{placeId} {
+      allow read: if isAuthenticated() && 
+                     (isTripParticipant(resource.data.tripId) || 
+                      isPublicTrip(resource.data.tripId));
+      allow create: if isAuthenticated() && 
+                       isTripParticipant(request.resource.data.tripId);
+      allow update: if isAuthenticated() && 
+                       isTripParticipant(resource.data.tripId);
+      allow delete: if isAuthenticated() && 
+                       isTripParticipant(resource.data.tripId);
+    }
+
+    // Trip expenses collection
+    match /tripExpenses/{expenseId} {
+      allow read: if isAuthenticated() && 
+                     (isTripParticipant(resource.data.tripId) || 
+                      isPublicTrip(resource.data.tripId));
+      allow create: if isAuthenticated() && 
+                       isTripParticipant(request.resource.data.tripId);
+      allow update: if isAuthenticated() && 
+                       isTripParticipant(resource.data.tripId);
+      allow delete: if isAuthenticated() && 
+                       isTripParticipant(resource.data.tripId);
+    }
+  }
+}
+
