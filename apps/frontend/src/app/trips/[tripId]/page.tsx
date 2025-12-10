@@ -11,15 +11,19 @@ import {
   getTripExpenses,
   getExpenseSummary,
   recordRoutePoints,
+  addPlace,
 } from '@/lib/api';
 import { db } from '@/lib/firebase';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import type { Trip, TripRoute, TripPlace, TripExpense, ExpenseSummary } from '@tripmatrix/types';
 import PlaceForm from '@/components/PlaceForm';
 import ExpenseForm from '@/components/ExpenseForm';
+import StepCard from '@/components/StepCard';
+import UserMenu from '@/components/UserMenu';
 import { formatDistance, formatDuration } from '@tripmatrix/utils';
 import { format } from 'date-fns';
 import dynamic from 'next/dynamic';
+import { toDate } from '@/lib/dateUtils';
 
 const TripMap = dynamic(() => import('@/components/TripMap'), { ssr: false });
 
@@ -188,25 +192,21 @@ export default function TripDetailPage() {
     setTrackingLocation(false);
   };
 
-  const handleAddPlace = async (placeData: Partial<TripPlace>) => {
+  const handleAddPlace = async (placeData: Partial<TripPlace> & { previousPlace?: TripPlace | null }) => {
     try {
       const token = await getIdToken();
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/places`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(placeData),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to add place');
-      }
-
+      // Remove previousPlace from the data sent to API (it's only for frontend calculation)
+      const { previousPlace, ...dataToSend } = placeData;
+      
+      // Use the API function which has better error handling
+      await addPlace(dataToSend, token);
+      
       setShowPlaceForm(false);
-    } catch (error) {
+      await loadTripData(); // Reload to get new place and re-sort
+    } catch (error: any) {
       console.error('Failed to add place:', error);
+      const errorMessage = error.message || 'Failed to add place';
+      alert(errorMessage);
       throw error;
     }
   };
@@ -257,238 +257,223 @@ export default function TripDetailPage() {
   const totalDuration =
     trip.endTime && trip.startTime
       ? Math.floor(
-          (new Date(trip.endTime).getTime() - new Date(trip.startTime).getTime()) / 1000
+          (toDate(trip.endTime).getTime() - toDate(trip.startTime).getTime()) / 1000
         )
       : 0;
 
-  return (
-    <div className="min-h-screen bg-gray-50">
-      <nav className="bg-white shadow-sm">
-        <div className="container mx-auto px-4 py-4 flex justify-between items-center">
-          <Link href="/trips" className="text-blue-600 hover:text-blue-700">
-            ← Back to Trips
-          </Link>
-          {isCreator && trip.status === 'in_progress' && (
-            <button
-              onClick={handleEndTrip}
-              className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700"
-            >
-              End Trip
-            </button>
-          )}
-        </div>
-      </nav>
+  // Sort places chronologically
+  const sortedPlaces = [...places].sort((a, b) => {
+    return toDate(a.visitedAt).getTime() - toDate(b.visitedAt).getTime();
+  });
 
-      <div className="container mx-auto px-4 py-8">
-        {/* Trip Header */}
-        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-          <div className="flex items-start justify-between mb-4">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900 mb-2">{trip.title}</h1>
-              {trip.description && (
-                <p className="text-gray-600 mb-4">{trip.description}</p>
-              )}
-            </div>
-            <div className="flex gap-2">
-              <span
-                className={`px-3 py-1 rounded text-sm font-semibold ${
-                  trip.status === 'completed'
-                    ? 'bg-green-100 text-green-800'
-                    : 'bg-blue-100 text-blue-800'
-                }`}
-              >
-                {trip.status === 'completed' ? 'Completed' : 'In Progress'}
-              </span>
-              {isCreator && (
+  return (
+    <div className="min-h-screen bg-white">
+      {/* Minimal Navigation */}
+      <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-100">
+        <div className="max-w-4xl mx-auto px-6 py-4 flex justify-between items-center">
+          <Link href="/trips" className="text-gray-700 hover:text-gray-900 transition-colors flex items-center gap-2">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            <span className="text-sm font-medium">Back</span>
+          </Link>
+          <div className="flex items-center gap-4">
+            {isCreator && (
+              <>
+                {trip.status === 'in_progress' && (
+                  <button
+                    onClick={handleEndTrip}
+                    className="text-sm text-red-600 hover:text-red-700 font-medium"
+                  >
+                    End Trip
+                  </button>
+                )}
                 <button
                   onClick={handleTogglePublic}
-                  className={`px-3 py-1 rounded text-sm font-semibold ${
+                  className={`text-xs px-3 py-1.5 rounded-full font-medium ${
                     trip.isPublic
-                      ? 'bg-purple-100 text-purple-800'
-                      : 'bg-gray-100 text-gray-800'
+                      ? 'bg-purple-100 text-purple-700'
+                      : 'bg-gray-100 text-gray-700'
                   }`}
                 >
                   {trip.isPublic ? 'Public' : 'Private'}
                 </button>
-              )}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-            <div>
-              <p className="text-gray-500">Started</p>
-              <p className="font-semibold">{format(new Date(trip.startTime), 'MMM d, yyyy')}</p>
-            </div>
-            {trip.endTime && (
-              <div>
-                <p className="text-gray-500">Ended</p>
-                <p className="font-semibold">{format(new Date(trip.endTime), 'MMM d, yyyy')}</p>
-              </div>
+              </>
             )}
-            {totalDistance > 0 && (
-              <div>
-                <p className="text-gray-500">Distance</p>
-                <p className="font-semibold">{formatDistance(totalDistance)}</p>
-              </div>
-            )}
-            {totalDuration > 0 && (
-              <div>
-                <p className="text-gray-500">Duration</p>
-                <p className="font-semibold">{formatDuration(totalDuration)}</p>
-              </div>
-            )}
+            <UserMenu />
           </div>
         </div>
+      </nav>
 
-        {/* Actions */}
-        {isCreator && trip.status === 'in_progress' && (
-          <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-            <div className="flex flex-wrap gap-4">
+      {/* Hero Section */}
+      <div className="relative">
+        {trip.coverImage ? (
+          <div className="w-full h-[60vh] min-h-[400px] relative overflow-hidden">
+            <img
+              src={trip.coverImage}
+              alt={trip.title}
+              className="w-full h-full object-cover"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
+            <div className="absolute bottom-0 left-0 right-0 p-12 max-w-4xl mx-auto">
+              <h1 className="text-5xl font-bold text-white mb-4">{trip.title}</h1>
+              {trip.description && (
+                <p className="text-xl text-white/90 mb-6">{trip.description}</p>
+              )}
+              <div className="flex items-center gap-6 text-white/80 text-sm">
+                <span>{format(toDate(trip.startTime), 'MMM d, yyyy')}</span>
+                {trip.endTime && (
+                  <>
+                    <span>→</span>
+                    <span>{format(toDate(trip.endTime), 'MMM d, yyyy')}</span>
+                  </>
+                )}
+                {totalDistance > 0 && (
+                  <>
+                    <span>•</span>
+                    <span>{formatDistance(totalDistance)}</span>
+                  </>
+                )}
+                {totalDuration > 0 && (
+                  <>
+                    <span>•</span>
+                    <span>{formatDuration(totalDuration)}</span>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="w-full h-[40vh] min-h-[300px] bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+            <div className="text-center max-w-4xl mx-auto px-6">
+              <h1 className="text-5xl font-bold text-gray-900 mb-4">{trip.title}</h1>
+              {trip.description && (
+                <p className="text-xl text-gray-700 mb-6">{trip.description}</p>
+              )}
+              <div className="flex items-center justify-center gap-6 text-gray-600 text-sm">
+                <span>{format(toDate(trip.startTime), 'MMM d, yyyy')}</span>
+                {trip.endTime && (
+                  <>
+                    <span>→</span>
+                    <span>{format(toDate(trip.endTime), 'MMM d, yyyy')}</span>
+                  </>
+                )}
+                {totalDistance > 0 && (
+                  <>
+                    <span>•</span>
+                    <span>{formatDistance(totalDistance)}</span>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Main Content */}
+      <div className="max-w-4xl mx-auto px-6 py-12">
+
+        {/* Timeline - Steps (Places) */}
+        <div className="mb-16">
+          <div className="flex items-center justify-between mb-8">
+            <h2 className="text-3xl font-bold text-gray-900">Steps</h2>
+            {isCreator && trip.status === 'in_progress' && (
               <button
                 onClick={() => setShowPlaceForm(!showPlaceForm)}
-                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+                className="text-sm font-medium text-gray-700 hover:text-gray-900 px-4 py-2 rounded-full border border-gray-300 hover:border-gray-400 transition-colors"
               >
-                {showPlaceForm ? 'Cancel' : 'Add Place'}
+                {showPlaceForm ? 'Cancel' : '+ Add Step'}
               </button>
-              <button
-                onClick={() => setShowExpenseForm(!showExpenseForm)}
-                className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700"
-              >
-                {showExpenseForm ? 'Cancel' : 'Add Expense'}
-              </button>
+            )}
+          </div>
+
+          {sortedPlaces.length === 0 ? (
+            <div className="text-center py-16 bg-gray-50 rounded-2xl">
+              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-200 flex items-center justify-center">
+                <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+              </div>
+              <p className="text-gray-600 mb-2">No steps yet</p>
+              <p className="text-sm text-gray-500">Add your first step to start your journey</p>
+            </div>
+          ) : (
+            <div className="space-y-0">
+              {sortedPlaces.map((place, index) => (
+                <StepCard
+                  key={place.placeId}
+                  place={place}
+                  index={index}
+                  isLast={index === sortedPlaces.length - 1}
+                  expenses={expenses}
+                  showAddButton={isCreator && trip.status === 'in_progress' && index === sortedPlaces.length - 1}
+                  onAddStep={() => {
+                    setShowPlaceForm(true);
+                  }}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Map Section */}
+        {(routes.length > 0 || places.length > 0) && (
+          <div className="mb-16">
+            <h2 className="text-3xl font-bold text-gray-900 mb-6">Route</h2>
+            <div className="rounded-2xl overflow-hidden border border-gray-200 shadow-sm">
+              <TripMap
+                routes={routes}
+                places={places}
+                currentLocation={currentLocation || undefined}
+                height="500px"
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Actions for Creator */}
+        {isCreator && trip.status === 'in_progress' && (
+          <div className="mb-16 p-6 bg-gray-50 rounded-2xl">
+            <div className="flex flex-wrap gap-3">
               {!trackingLocation ? (
                 <button
                   onClick={startLocationTracking}
-                  className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700"
+                  className="text-sm font-medium text-gray-700 hover:text-gray-900 px-4 py-2 rounded-full border border-gray-300 hover:border-gray-400 transition-colors"
                 >
-                  Start Tracking
+                  📍 Start Tracking
                 </button>
               ) : (
                 <button
                   onClick={stopLocationTracking}
-                  className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700"
+                  className="text-sm font-medium text-red-600 hover:text-red-700 px-4 py-2 rounded-full border border-red-300 hover:border-red-400 transition-colors"
                 >
-                  Stop Tracking
+                  ⏹ Stop Tracking
                 </button>
               )}
             </div>
           </div>
         )}
 
-        {/* Forms */}
-        {showPlaceForm && (
-          <div className="mb-6">
-            <PlaceForm
-              tripId={tripId}
-              onSubmit={handleAddPlace}
-              onCancel={() => setShowPlaceForm(false)}
-              token={token}
-            />
-          </div>
-        )}
-
-        {showExpenseForm && (
-          <div className="mb-6">
-            <ExpenseForm
-              tripId={tripId}
-              participants={trip.participants}
-              onSubmit={handleAddExpense}
-              onCancel={() => setShowExpenseForm(false)}
-            />
-          </div>
-        )}
-
-        {/* Map */}
-        {routes.length > 0 || places.length > 0 ? (
-          <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-            <h2 className="text-2xl font-bold mb-4">Route Map</h2>
-            <TripMap
-              routes={routes}
-              places={places}
-              currentLocation={currentLocation || undefined}
-              height="500px"
-            />
-          </div>
-        ) : null}
-
-        {/* Places */}
-        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-          <h2 className="text-2xl font-bold mb-4">Places Visited ({places.length})</h2>
-          {places.length === 0 ? (
-            <p className="text-gray-500">No places visited yet</p>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {places.map((place) => (
-                <div key={place.placeId} className="border border-gray-200 rounded-lg p-4">
-                  <h3 className="font-semibold text-lg mb-2">{place.name}</h3>
-                  {place.rating && (
-                    <div className="mb-2">
-                      {'★'.repeat(place.rating)}{'☆'.repeat(5 - place.rating)}
-                    </div>
-                  )}
-                  {place.rewrittenComment && (
-                    <p className="text-gray-700 mb-2">{place.rewrittenComment}</p>
-                  )}
-                  {place.comment && !place.rewrittenComment && (
-                    <p className="text-gray-700 mb-2">{place.comment}</p>
-                  )}
-                  <p className="text-sm text-gray-500">
-                    {format(new Date(place.visitedAt), 'MMM d, yyyy HH:mm')}
-                  </p>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Expenses */}
-        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-          <h2 className="text-2xl font-bold mb-4">
-            Expenses (${trip.totalExpense?.toFixed(2) || '0.00'})
-          </h2>
-          {expenses.length === 0 ? (
-            <p className="text-gray-500">No expenses logged yet</p>
-          ) : (
-            <div className="space-y-4">
-              {expenses.map((expense) => (
-                <div key={expense.expenseId} className="border border-gray-200 rounded-lg p-4">
-                  <div className="flex justify-between items-start mb-2">
-                    <div>
-                      <p className="font-semibold">${expense.amount.toFixed(2)}</p>
-                      {expense.description && (
-                        <p className="text-sm text-gray-600">{expense.description}</p>
-                      )}
-                    </div>
-                    <p className="text-sm text-gray-500">
-                      Paid by: {expense.paidBy.substring(0, 8)}...
-                    </p>
-                  </div>
-                  <p className="text-xs text-gray-500">
-                    Split between {expense.splitBetween.length} people
-                  </p>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
         {/* Expense Summary (if trip completed) */}
         {trip.status === 'completed' && expenseSummary && (
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <h2 className="text-2xl font-bold mb-4">Expense Summary</h2>
-            <div className="space-y-4">
+          <div className="mb-16 p-6 bg-blue-50 rounded-2xl border border-blue-100">
+            <h3 className="text-lg font-bold text-gray-900 mb-4">Expense Summary</h3>
+            <div className="space-y-3">
               <div>
-                <p className="text-lg font-semibold">
-                  Total Spent: ${expenseSummary.totalSpent.toFixed(2)}
+                <p className="text-sm text-gray-600">Total Spent</p>
+                <p className="text-2xl font-bold text-gray-900">
+                  ${expenseSummary.totalSpent.toFixed(2)}
                 </p>
               </div>
               {expenseSummary.settlements.length > 0 && (
-                <div>
-                  <h3 className="font-semibold mb-2">Settlements:</h3>
-                  <ul className="list-disc list-inside space-y-1">
+                <div className="pt-4 border-t border-blue-200">
+                  <p className="text-sm font-semibold text-gray-900 mb-2">Settlements:</p>
+                  <ul className="space-y-2">
                     {expenseSummary.settlements.map((settlement, idx) => (
-                      <li key={idx} className="text-sm">
-                        {settlement.from.substring(0, 8)}... owes ${settlement.amount.toFixed(2)} to{' '}
+                      <li key={idx} className="text-sm text-gray-700">
+                        {settlement.from.substring(0, 8)}... owes{' '}
+                        <span className="font-semibold">${settlement.amount.toFixed(2)}</span> to{' '}
                         {settlement.to.substring(0, 8)}...
                       </li>
                     ))}
@@ -496,6 +481,19 @@ export default function TripDetailPage() {
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {/* Steps / Forms (moved to bottom) */}
+        {showPlaceForm && (
+          <div className="mt-6">
+            <PlaceForm
+              tripId={tripId}
+              onSubmit={handleAddPlace}
+              onCancel={() => setShowPlaceForm(false)}
+              token={token}
+              previousPlace={sortedPlaces.length > 0 ? sortedPlaces[sortedPlaces.length - 1] : null}
+            />
           </div>
         )}
       </div>

@@ -13,7 +13,7 @@ function getDb() {
 // Create a new trip
 router.post('/', async (req: AuthenticatedRequest, res) => {
   try {
-    const { title, description, startTime, coverImage, isPublic } = req.body;
+    const { title, description, startTime, endTime, coverImage, isPublic, status, participants } = req.body;
     const uid = req.uid!;
 
     if (!title || !startTime) {
@@ -23,18 +23,45 @@ router.post('/', async (req: AuthenticatedRequest, res) => {
       });
     }
 
-    const tripData: Omit<Trip, 'tripId'> = {
+    const initialStatus = status === 'completed' ? 'completed' : 'in_progress';
+    const initialEndTime = status === 'completed'
+      ? endTime
+        ? new Date(endTime)
+        : new Date()
+      : undefined;
+
+    // Ensure creator is in participants
+    const tripParticipants = participants && Array.isArray(participants) && participants.length > 0
+      ? participants
+      : [{ uid, isGuest: false }];
+    
+    // Make sure creator is included
+    if (!tripParticipants.some((p: any) => p.uid === uid && !p.isGuest)) {
+      tripParticipants.unshift({ uid, isGuest: false });
+    }
+
+    // Build trip data, excluding undefined values
+    const tripData: any = {
       creatorId: uid,
       title,
       description: description || '',
-      participants: [{ uid, isGuest: false }],
+      participants: tripParticipants,
       isPublic: isPublic || false,
-      status: 'in_progress',
+      status: initialStatus,
       startTime: new Date(startTime),
-      coverImage: coverImage || '',
       createdAt: new Date(),
       updatedAt: new Date(),
     };
+
+    // Only add endTime if it's defined
+    if (initialEndTime !== undefined) {
+      tripData.endTime = initialEndTime;
+    }
+
+    // Only add coverImage if it's provided
+    if (coverImage) {
+      tripData.coverImage = coverImage;
+    }
 
     const db = getDb();
     const tripRef = await db.collection('trips').add(tripData);
@@ -238,10 +265,19 @@ router.patch('/:tripId', async (req: AuthenticatedRequest, res) => {
       updates.endTime = new Date();
     }
 
-    await tripRef.update({
-      ...updates,
+    // Remove undefined values from updates
+    const cleanUpdates: any = {
       updatedAt: new Date(),
+    };
+    
+    Object.keys(updates).forEach((key) => {
+      const value = updates[key as keyof typeof updates];
+      if (value !== undefined) {
+        cleanUpdates[key] = value;
+      }
     });
+
+    await tripRef.update(cleanUpdates);
 
     const updatedDoc = await tripRef.get();
     const updatedTrip = { tripId: updatedDoc.id, ...updatedDoc.data() } as Trip;
@@ -265,14 +301,22 @@ router.get('/public/list', async (req, res) => {
     const db = getDb();
     const snapshot = await db.collection('trips')
       .where('isPublic', '==', true)
-      .orderBy('createdAt', 'desc')
-      .limit(Number(limit))
       .get();
 
-    const trips = snapshot.docs.map((doc) => ({
+    let trips = snapshot.docs.map((doc) => ({
       tripId: doc.id,
       ...doc.data(),
     })) as Trip[];
+
+    // Sort by createdAt in memory (avoids needing composite index)
+    trips.sort((a, b) => {
+      const aTime = new Date(a.createdAt).getTime();
+      const bTime = new Date(b.createdAt).getTime();
+      return bTime - aTime; // Descending order
+    });
+
+    // Apply limit after sorting
+    trips = trips.slice(0, Number(limit));
 
     res.json({ success: true, data: trips });
   } catch (error: any) {

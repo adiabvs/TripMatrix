@@ -7,6 +7,7 @@ import type {
   RewriteResponse,
   ExpenseSummary,
   ApiResponse,
+  User,
 } from '@tripmatrix/types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
@@ -215,6 +216,49 @@ export async function rewriteText(
   const result: ApiResponse<RewriteResponse> = await response.json();
   if (!result.success || !result.data) {
     throw new Error(result.error || 'Failed to rewrite text');
+  }
+  return result.data;
+}
+
+// User APIs
+export async function searchUsers(query: string, token: string | null): Promise<User[]> {
+  const response = await fetchWithAuth(`/api/users/search?q=${encodeURIComponent(query)}`, {}, token);
+  const result: ApiResponse<User[]> = await response.json();
+  if (!result.success || !result.data) {
+    throw new Error(result.error || 'Failed to search users');
+  }
+  return result.data;
+}
+
+// Upload APIs
+export async function uploadImage(
+  file: File,
+  token: string | null,
+  isPublic: boolean = false
+): Promise<{ url: string; isPublic: boolean }> {
+  const formData = new FormData();
+  formData.append('image', file);
+  formData.append('isPublic', isPublic.toString());
+
+  const headers: HeadersInit = {};
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  const response = await fetch(`${API_URL}/api/upload/image`, {
+    method: 'POST',
+    headers,
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+    throw new Error(error.error || `HTTP ${response.status}`);
+  }
+
+  const result: ApiResponse<{ url: string; isPublic: boolean }> = await response.json();
+  if (!result.success || !result.data) {
+    throw new Error(result.error || 'Failed to upload image');
   }
   return result.data;
 }

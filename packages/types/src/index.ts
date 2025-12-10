@@ -55,7 +55,6 @@ export interface TripRoute {
 export interface TripPlace {
   placeId: string;
   tripId: string;
-  googlePlaceId?: string;
   name: string;
   coordinates: {
     lat: number;
@@ -65,7 +64,14 @@ export interface TripPlace {
   rating?: number; // 1-5
   comment?: string;
   rewrittenComment?: string;
-  expenseId?: string;
+  modeOfTravel?: ModeOfTravel; // How they got here from previous place
+  distanceFromPrevious?: number; // in meters
+  timeFromPrevious?: number; // in seconds
+  images?: string[]; // Array of image URLs (deprecated, use imageMetadata)
+  imageMetadata?: Array<{
+    url: string;
+    isPublic: boolean; // true = public, false = private to trip members
+  }>;
   createdAt: Date | string;
 }
 

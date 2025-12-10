@@ -142,13 +142,19 @@ router.get('/:tripId', async (req: OptionalAuthRequest, res) => {
     
     const snapshot = await db.collection('tripRoutes')
       .where('tripId', '==', tripId)
-      .orderBy('createdAt', 'asc')
       .get();
 
     const routes = snapshot.docs.map((doc) => ({
       routeId: doc.id,
       ...doc.data(),
     })) as TripRoute[];
+
+    // Sort by createdAt in memory (avoids needing composite index)
+    routes.sort((a, b) => {
+      const aTime = new Date(a.createdAt).getTime();
+      const bTime = new Date(b.createdAt).getTime();
+      return aTime - bTime;
+    });
 
     res.json({ success: true, data: routes });
   } catch (error: any) {

@@ -10,6 +10,7 @@ import type { Trip, TripRoute, TripPlace, TripExpense, User } from '@tripmatrix/
 import TripMap from '@/components/TripMap';
 import { formatDistance, formatDuration } from '@tripmatrix/utils';
 import { format } from 'date-fns';
+import { toDate } from '@/lib/dateUtils';
 
 export default function PublicTripViewPage() {
   const params = useParams();
@@ -110,7 +111,7 @@ export default function PublicTripViewPage() {
   const totalDuration =
     trip.endTime && trip.startTime
       ? Math.floor(
-          (new Date(trip.endTime).getTime() - new Date(trip.startTime).getTime()) / 1000
+          (toDate(trip.endTime).getTime() - toDate(trip.startTime).getTime()) / 1000
         )
       : 0;
 
@@ -153,12 +154,12 @@ export default function PublicTripViewPage() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
             <div>
               <p className="text-gray-500">Started</p>
-              <p className="font-semibold">{format(new Date(trip.startTime), 'MMM d, yyyy')}</p>
+              <p className="font-semibold">{format(toDate(trip.startTime), 'MMM d, yyyy')}</p>
             </div>
             {trip.endTime && (
               <div>
                 <p className="text-gray-500">Ended</p>
-                <p className="font-semibold">{format(new Date(trip.endTime), 'MMM d, yyyy')}</p>
+                <p className="font-semibold">{format(toDate(trip.endTime), 'MMM d, yyyy')}</p>
               </div>
             )}
             {totalDistance > 0 && (
@@ -206,7 +207,7 @@ export default function PublicTripViewPage() {
                     <p className="text-gray-700 mb-2">{place.comment}</p>
                   )}
                   <p className="text-sm text-gray-500">
-                    {format(new Date(place.visitedAt), 'MMM d, yyyy HH:mm')}
+                    {format(toDate(place.visitedAt), 'MMM d, yyyy HH:mm')}
                   </p>
                 </div>
               ))}

@@ -7,9 +7,9 @@
 3. **Firebase Project** with:
    - Authentication enabled (Google Sign-In)
    - Firestore Database
-   - Storage (optional, for images)
-4. **Google Cloud APIs**:
-   - Google Maps Places API
+4. **Supabase Project** with:
+   - Storage bucket named 'images' (for image uploads)
+5. **Google Cloud APIs**:
    - Gemini API (for AI rewriting)
 
 ## Step 1: Clone and Install
@@ -41,13 +41,27 @@ PORT=3001
 FIREBASE_PROJECT_ID=your-project-id
 FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
 FIREBASE_CLIENT_EMAIL=firebase-adminsdk-xxxxx@your-project.iam.gserviceaccount.com
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 GEMINI_API_KEY=your-gemini-api-key
 NODE_ENV=development
 ```
 
 **Note**: For `FIREBASE_PRIVATE_KEY`, copy the entire private key from the JSON file, including the `-----BEGIN PRIVATE KEY-----` and `-----END PRIVATE KEY-----` lines, and replace newlines with `\n`.
 
-## Step 4: Frontend Configuration
+## Step 4: Supabase Setup
+
+1. Create a Supabase project at https://supabase.com
+2. Go to Storage in the Supabase dashboard
+3. Create a new bucket named `images`
+4. Make the bucket public (or configure RLS policies as needed):
+   - Go to Storage > Policies
+   - Create a policy that allows public read access
+5. Get your Supabase credentials:
+   - Project URL: Found in Settings > API
+   - Service Role Key: Found in Settings > API (use the `service_role` key, not the `anon` key)
+
+## Step 5: Frontend Configuration
 
 1. Copy `apps/frontend/.env.example` to `apps/frontend/.env.local` and fill in:
 
@@ -62,27 +76,20 @@ NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=your-google-maps-api-key
 NEXT_PUBLIC_API_URL=http://localhost:3001
 ```
 
-## Step 5: Firestore Security Rules
+## Step 6: Firestore Security Rules
 
 1. Go to Firebase Console > Firestore Database > Rules
 2. Copy the contents of `firestore.rules` and paste into the rules editor
 3. Publish the rules
 
-## Step 6: Google APIs Setup
-
-### Google Maps Places API
-1. Go to Google Cloud Console
-2. Enable "Places API"
-3. Create an API key
-4. Restrict the API key to "Places API" only
-5. Add the key to your frontend `.env.local`
+## Step 7: Google APIs Setup
 
 ### Gemini API
 1. Go to Google AI Studio (https://makersuite.google.com/app/apikey)
 2. Create an API key
 3. Add the key to your backend `.env`
 
-## Step 7: Run the Application
+## Step 8: Run the Application
 
 ### Development Mode
 
@@ -101,7 +108,7 @@ pnpm dev
 The frontend will be available at http://localhost:3000
 The backend API will be available at http://localhost:3001
 
-## Step 8: Build for Production
+## Step 9: Build for Production
 
 ```bash
 # Build all packages
@@ -123,10 +130,11 @@ pnpm start
 - Check that `FIREBASE_PRIVATE_KEY` has `\n` for newlines
 - Verify `FIREBASE_PROJECT_ID` matches your Firebase project
 
-### Google Maps Not Loading
-- Check that `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` is set
-- Verify Places API is enabled in Google Cloud Console
-- Check browser console for API errors
+### Supabase Storage Errors
+- Ensure the `images` bucket exists in Supabase
+- Verify `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are correct
+- Check that the bucket is public or has proper RLS policies
+- Verify the service role key has storage permissions
 
 ### Authentication Issues
 - Ensure Google Sign-In is enabled in Firebase Console

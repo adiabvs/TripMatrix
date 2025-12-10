@@ -1,65 +1,139 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Loader } from '@googlemaps/js-api-loader';
-import type { TripPlace, RewriteTone } from '@tripmatrix/types';
-import { rewriteText } from '@/lib/api';
+import type { TripPlace, RewriteTone, ModeOfTravel } from '@tripmatrix/types';
+import { rewriteText, uploadImage } from '@/lib/api';
+import dynamic from 'next/dynamic';
+
+const PlaceMapSelector = dynamic(() => import('./PlaceMapSelector'), { ssr: false });
 
 interface PlaceFormProps {
   tripId: string;
-  onSubmit: (place: Partial<TripPlace>) => Promise<void>;
+  onSubmit: (place: Partial<TripPlace> & { modeOfTravel?: ModeOfTravel; previousPlace?: TripPlace }) => Promise<void>;
   onCancel: () => void;
   token: string | null;
+  previousPlace?: TripPlace | null;
 }
 
-export default function PlaceForm({ tripId, onSubmit, onCancel, token }: PlaceFormProps) {
+// Calculate distance between two coordinates (Haversine formula)
+function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371000; // Earth radius in meters
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = 
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+// Calculate estimated time based on mode of travel (in seconds)
+function calculateTime(distance: number, mode: ModeOfTravel): number {
+  const speeds: Record<ModeOfTravel, number> = {
+    walk: 1.4, // m/s (5 km/h)
+    bike: 4.2, // m/s (15 km/h)
+    car: 13.9, // m/s (50 km/h average)
+    train: 27.8, // m/s (100 km/h average)
+    bus: 8.3, // m/s (30 km/h average)
+    flight: 250, // m/s (900 km/h average)
+  };
+  return Math.round(distance / speeds[mode]);
+}
+
+export default function PlaceForm({ tripId, onSubmit, onCancel, token, previousPlace }: PlaceFormProps) {
   const [placeName, setPlaceName] = useState('');
   const [coordinates, setCoordinates] = useState<{ lat: number; lng: number } | null>(null);
+  const [modeOfTravel, setModeOfTravel] = useState<ModeOfTravel>('car');
   const [rating, setRating] = useState<number>(0);
   const [comment, setComment] = useState('');
   const [rewrittenComment, setRewrittenComment] = useState('');
   const [rewriteTone, setRewriteTone] = useState<RewriteTone>('friendly');
   const [rewriting, setRewriting] = useState(false);
   const [loading, setLoading] = useState(false);
-  const autocompleteRef = useRef<HTMLInputElement>(null);
-  const autocompleteInstanceRef = useRef<google.maps.places.Autocomplete | null>(null);
+  const [calculatedDistance, setCalculatedDistance] = useState<number | null>(null);
+  const [calculatedTime, setCalculatedTime] = useState<number | null>(null);
+  const [images, setImages] = useState<Array<{ url: string; isPublic: boolean }>>([]);
+  const [uploadingImages, setUploadingImages] = useState(false);
+  const [defaultImagePrivacy, setDefaultImagePrivacy] = useState<boolean>(false); // false = private to trip members
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Calculate distance and time when coordinates or mode changes
   useEffect(() => {
-    if (!autocompleteRef.current || !process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY) return;
+    if (coordinates && previousPlace) {
+      const distance = calculateDistance(
+        previousPlace.coordinates.lat,
+        previousPlace.coordinates.lng,
+        coordinates.lat,
+        coordinates.lng
+      );
+      const time = calculateTime(distance, modeOfTravel);
+      setCalculatedDistance(distance);
+      setCalculatedTime(time);
+    } else {
+      setCalculatedDistance(null);
+      setCalculatedTime(null);
+    }
+  }, [coordinates, modeOfTravel, previousPlace]);
 
-    const loader = new Loader({
-      apiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY,
-      version: 'weekly',
-      libraries: ['places'],
-    });
+  const handleLocationSelect = (coords: { lat: number; lng: number }, name?: string) => {
+    setCoordinates(coords);
+    if (name) setPlaceName(name);
+    
+    // Recalculate distance/time
+    if (previousPlace) {
+      const distance = calculateDistance(
+        previousPlace.coordinates.lat,
+        previousPlace.coordinates.lng,
+        coords.lat,
+        coords.lng
+      );
+      const time = calculateTime(distance, modeOfTravel);
+      setCalculatedDistance(distance);
+      setCalculatedTime(time);
+    }
+  };
 
-    loader.load().then(() => {
-      if (autocompleteRef.current) {
-        const autocomplete = new google.maps.places.Autocomplete(autocompleteRef.current, {
-          types: ['establishment', 'geocode'],
-        });
+  const handleModeChange = (mode: ModeOfTravel) => {
+    setModeOfTravel(mode);
+    if (coordinates && previousPlace && calculatedDistance !== null) {
+      const time = calculateTime(calculatedDistance, mode);
+      setCalculatedTime(time);
+    }
+  };
 
-        autocomplete.addListener('place_changed', () => {
-          const place = autocomplete.getPlace();
-          if (place.geometry?.location) {
-            setPlaceName(place.name || '');
-            setCoordinates({
-              lat: place.geometry.location.lat(),
-              lng: place.geometry.location.lng(),
-            });
-          }
-        });
+  const handleImageUpload = async (files: FileList) => {
+    if (!token) {
+      alert('Please sign in to upload images');
+      return;
+    }
 
-        autocompleteInstanceRef.current = autocomplete;
-      }
-    });
+    setUploadingImages(true);
+    try {
+      const uploadPromises = Array.from(files).map((file) => 
+        uploadImage(file, token, defaultImagePrivacy)
+      );
+      const uploadedImages = await Promise.all(uploadPromises);
+      setImages([...images, ...uploadedImages]);
+    } catch (error) {
+      console.error('Failed to upload images:', error);
+      alert('Failed to upload some images');
+    } finally {
+      setUploadingImages(false);
+    }
+  };
 
-    return () => {
-      if (autocompleteInstanceRef.current) {
-        google.maps.event.clearInstanceListeners(autocompleteInstanceRef.current);
-      }
-    };
-  }, []);
+  const removeImage = (index: number) => {
+    const newImages = [...images];
+    newImages.splice(index, 1);
+    setImages(newImages);
+  };
+
+  const toggleImagePrivacy = (index: number) => {
+    const newImages = [...images];
+    newImages[index] = { ...newImages[index], isPublic: !newImages[index].isPublic };
+    setImages(newImages);
+  };
 
   const handleRewrite = async () => {
     if (!comment.trim() || !token) return;
@@ -78,8 +152,9 @@ export default function PlaceForm({ tripId, onSubmit, onCancel, token }: PlaceFo
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
     if (!placeName || !coordinates) {
-      alert('Please select a place');
+      alert('Please provide place name and select location on map');
       return;
     }
 
@@ -93,6 +168,11 @@ export default function PlaceForm({ tripId, onSubmit, onCancel, token }: PlaceFo
         rating: rating > 0 ? rating : undefined,
         comment: rewrittenComment || comment || undefined,
         rewrittenComment: rewrittenComment || undefined,
+        modeOfTravel: previousPlace ? modeOfTravel : undefined,
+        distanceFromPrevious: calculatedDistance || undefined,
+        timeFromPrevious: calculatedTime || undefined,
+        imageMetadata: images.length > 0 ? images : undefined,
+        previousPlace,
       });
       // Reset form
       setPlaceName('');
@@ -100,9 +180,10 @@ export default function PlaceForm({ tripId, onSubmit, onCancel, token }: PlaceFo
       setRating(0);
       setComment('');
       setRewrittenComment('');
-      if (autocompleteRef.current) {
-        autocompleteRef.current.value = '';
-      }
+      setCalculatedDistance(null);
+      setCalculatedTime(null);
+      setImages([]);
+      setDefaultImagePrivacy(false);
     } catch (error) {
       console.error('Failed to add place:', error);
       alert('Failed to add place');
@@ -112,29 +193,152 @@ export default function PlaceForm({ tripId, onSubmit, onCancel, token }: PlaceFo
   };
 
   return (
-    <form onSubmit={handleSubmit} className="bg-white p-6 rounded-lg shadow-md">
-      <h3 className="text-xl font-semibold mb-4">Add Place Visited</h3>
+    <form onSubmit={handleSubmit} className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+      <h3 className="text-2xl font-bold mb-6">Add Step</h3>
 
-      <div className="mb-4">
+      {/* Map Selector - Always shown */}
+      <div className="mb-6">
         <label className="block text-sm font-medium text-gray-700 mb-2">
-          Place Name *
+          Select Location *
         </label>
+        <PlaceMapSelector
+          onLocationSelect={handleLocationSelect}
+          initialCoords={coordinates || undefined}
+          height="300px"
+        />
         <input
-          ref={autocompleteRef}
           type="text"
-          placeholder="Search for a place..."
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+          value={placeName}
+          onChange={(e) => setPlaceName(e.target.value)}
+          placeholder="Enter place name..."
+          className="w-full mt-3 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
           required
         />
       </div>
 
-      {coordinates && (
-        <div className="mb-4 text-sm text-gray-600">
-          Location: {coordinates.lat.toFixed(4)}, {coordinates.lng.toFixed(4)}
+      {/* Mode of Travel (only if there's a previous place) */}
+      {previousPlace && (
+        <div className="mb-6">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            How did you get here? *
+          </label>
+          <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
+            {(['walk', 'bike', 'car', 'train', 'bus', 'flight'] as ModeOfTravel[]).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => handleModeChange(mode)}
+                className={`px-4 py-2 rounded-lg border-2 transition-colors ${
+                  modeOfTravel === mode
+                    ? 'border-blue-600 bg-blue-50 text-blue-700 font-semibold'
+                    : 'border-gray-200 hover:border-gray-300 text-gray-700'
+                }`}
+              >
+                {mode.charAt(0).toUpperCase() + mode.slice(1)}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
-      <div className="mb-4">
+      {/* Distance and Time Info */}
+      {calculatedDistance !== null && calculatedTime !== null && (
+        <div className="mb-6 p-4 bg-blue-50 rounded-xl border border-blue-100">
+          <div className="grid grid-cols-2 gap-4 text-sm">
+            <div>
+              <p className="text-gray-600">Distance</p>
+              <p className="text-lg font-bold text-gray-900">
+                {(calculatedDistance / 1000).toFixed(2)} km
+              </p>
+            </div>
+            <div>
+              <p className="text-gray-600">Estimated Time</p>
+              <p className="text-lg font-bold text-gray-900">
+                {Math.floor(calculatedTime / 3600) > 0 && `${Math.floor(calculatedTime / 3600)}h `}
+                {Math.floor((calculatedTime % 3600) / 60)}m
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Image Upload */}
+      <div className="mb-6">
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          Photos
+        </label>
+        
+        {/* Privacy Toggle for New Images */}
+        <div className="mb-3 flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+          <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={defaultImagePrivacy}
+              onChange={(e) => setDefaultImagePrivacy(e.target.checked)}
+              className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+            />
+            <span>Make new photos public (visible to everyone)</span>
+          </label>
+          {!defaultImagePrivacy && (
+            <span className="text-xs text-gray-500">(Private to trip members)</span>
+          )}
+        </div>
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          onChange={(e) => {
+            if (e.target.files) {
+              handleImageUpload(e.target.files);
+            }
+          }}
+          className="hidden"
+        />
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={uploadingImages}
+          className="w-full px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg text-gray-600 hover:border-gray-400 hover:text-gray-700 transition-colors disabled:opacity-50"
+        >
+          {uploadingImages ? 'Uploading...' : '+ Add Photos'}
+        </button>
+        {images.length > 0 && (
+          <div className="mt-3 grid grid-cols-3 gap-2">
+            {images.map((image, index) => (
+              <div key={index} className="relative group">
+                <img
+                  src={image.url}
+                  alt={`Step photo ${index + 1}`}
+                  className="w-full h-24 object-cover rounded-lg"
+                />
+                <button
+                  type="button"
+                  onClick={() => removeImage(index)}
+                  className="absolute top-1 right-1 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-xs"
+                >
+                  ×
+                </button>
+                <button
+                  type="button"
+                  onClick={() => toggleImagePrivacy(index)}
+                  className={`absolute top-1 left-1 px-2 py-1 rounded text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity ${
+                    image.isPublic
+                      ? 'bg-green-500 text-white'
+                      : 'bg-gray-700 text-white'
+                  }`}
+                  title={image.isPublic ? 'Public - Click to make private' : 'Private to trip members - Click to make public'}
+                >
+                  {image.isPublic ? '🌐 Public' : '🔒 Private'}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="mb-6">
         <label className="block text-sm font-medium text-gray-700 mb-2">
           Rating (1-5)
         </label>
@@ -144,7 +348,7 @@ export default function PlaceForm({ tripId, onSubmit, onCancel, token }: PlaceFo
               key={star}
               type="button"
               onClick={() => setRating(star)}
-              className={`text-2xl ${
+              className={`text-2xl transition-transform hover:scale-110 ${
                 star <= rating ? 'text-yellow-400' : 'text-gray-300'
               }`}
             >
@@ -154,7 +358,7 @@ export default function PlaceForm({ tripId, onSubmit, onCancel, token }: PlaceFo
         </div>
       </div>
 
-      <div className="mb-4">
+      <div className="mb-6">
         <label className="block text-sm font-medium text-gray-700 mb-2">
           Comment
         </label>
@@ -168,12 +372,12 @@ export default function PlaceForm({ tripId, onSubmit, onCancel, token }: PlaceFo
       </div>
 
       {comment && (
-        <div className="mb-4">
+        <div className="mb-6">
           <div className="flex gap-2 mb-2">
             <select
               value={rewriteTone}
               onChange={(e) => setRewriteTone(e.target.value as RewriteTone)}
-              className="px-3 py-1 border border-gray-300 rounded"
+              className="px-3 py-1 border border-gray-300 rounded-lg"
             >
               <option value="friendly">Friendly</option>
               <option value="professional">Professional</option>
@@ -183,13 +387,13 @@ export default function PlaceForm({ tripId, onSubmit, onCancel, token }: PlaceFo
               type="button"
               onClick={handleRewrite}
               disabled={rewriting}
-              className="px-4 py-1 bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50"
+              className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 text-sm"
             >
               {rewriting ? 'Rewriting...' : 'Rewrite with AI'}
             </button>
           </div>
           {rewrittenComment && (
-            <div className="p-3 bg-purple-50 rounded border border-purple-200">
+            <div className="p-3 bg-purple-50 rounded-lg border border-purple-200">
               <p className="text-sm text-gray-700">{rewrittenComment}</p>
             </div>
           )}
@@ -200,14 +404,14 @@ export default function PlaceForm({ tripId, onSubmit, onCancel, token }: PlaceFo
         <button
           type="submit"
           disabled={loading || !placeName || !coordinates}
-          className="flex-1 bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+          className="flex-1 bg-black text-white py-3 px-6 rounded-full hover:bg-gray-800 disabled:opacity-50 font-medium transition-colors"
         >
-          {loading ? 'Adding...' : 'Add Place'}
+          {loading ? 'Adding...' : 'Add Step'}
         </button>
         <button
           type="button"
           onClick={onCancel}
-          className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+          className="px-6 py-3 border border-gray-300 rounded-full hover:bg-gray-50 transition-colors"
         >
           Cancel
         </button>

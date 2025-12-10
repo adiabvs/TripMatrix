@@ -12,7 +12,20 @@ function getDb() {
 // Add a place visited
 router.post('/', async (req: OptionalAuthRequest, res) => {
   try {
-    const { tripId, name, coordinates, visitedAt, rating, comment, rewrittenComment } = req.body;
+    const { 
+      tripId, 
+      name, 
+      coordinates, 
+      visitedAt, 
+      rating, 
+      comment, 
+      rewrittenComment,
+      modeOfTravel,
+      distanceFromPrevious,
+      timeFromPrevious,
+      images, // Legacy support
+      imageMetadata, // New format with privacy
+    } = req.body;
     const uid = req.uid!;
 
     if (!tripId || !name || !coordinates) {
@@ -32,7 +45,8 @@ router.post('/', async (req: OptionalAuthRequest, res) => {
       });
     }
 
-    const placeData: Omit<TripPlace, 'placeId'> = {
+    // Build place data object, filtering out undefined values
+    const placeData: any = {
       tripId,
       name,
       coordinates: {
@@ -40,11 +54,22 @@ router.post('/', async (req: OptionalAuthRequest, res) => {
         lng: coordinates.lng,
       },
       visitedAt: visitedAt ? new Date(visitedAt) : new Date(),
-      rating: rating || undefined,
-      comment: comment || undefined,
-      rewrittenComment: rewrittenComment || undefined,
       createdAt: new Date(),
     };
+
+    // Only add fields that have values (not undefined)
+    if (rating !== undefined && rating !== null) placeData.rating = rating;
+    if (comment) placeData.comment = comment;
+    if (rewrittenComment) placeData.rewrittenComment = rewrittenComment;
+    if (modeOfTravel) placeData.modeOfTravel = modeOfTravel;
+    if (distanceFromPrevious !== undefined && distanceFromPrevious !== null) {
+      placeData.distanceFromPrevious = distanceFromPrevious;
+    }
+    if (timeFromPrevious !== undefined && timeFromPrevious !== null) {
+      placeData.timeFromPrevious = timeFromPrevious;
+    }
+    if (images && images.length > 0) placeData.images = images; // Legacy support
+    if (imageMetadata && imageMetadata.length > 0) placeData.imageMetadata = imageMetadata; // New format with privacy
 
     const placeRef = await db.collection('tripPlaces').add(placeData);
     
@@ -100,13 +125,19 @@ router.get('/trip/:tripId', async (req: OptionalAuthRequest, res) => {
     
     const snapshot = await db.collection('tripPlaces')
       .where('tripId', '==', tripId)
-      .orderBy('visitedAt', 'desc')
       .get();
 
     const places = snapshot.docs.map((doc) => ({
       placeId: doc.id,
       ...doc.data(),
     })) as TripPlace[];
+
+    // Sort by visitedAt in memory (avoids needing composite index)
+    places.sort((a, b) => {
+      const aTime = new Date(a.visitedAt).getTime();
+      const bTime = new Date(b.visitedAt).getTime();
+      return bTime - aTime; // Descending order
+    });
 
     res.json({ success: true, data: places });
   } catch (error: any) {
