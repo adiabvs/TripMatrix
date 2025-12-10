@@ -31,7 +31,7 @@ export default function TripsPage() {
   const loadTrips = async () => {
     try {
       const token = await getIdToken();
-      const userTrips = await getUserTrips(undefined, token);
+      const userTrips = await getUserTrips(token);
       setTrips(userTrips);
     } catch (error) {
       console.error('Failed to load trips:', error);

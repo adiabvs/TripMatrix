@@ -9,7 +9,7 @@ const PlaceMapSelector = dynamic(() => import('./PlaceMapSelector'), { ssr: fals
 
 interface PlaceFormProps {
   tripId: string;
-  onSubmit: (place: Partial<TripPlace> & { modeOfTravel?: ModeOfTravel; previousPlace?: TripPlace }) => Promise<void>;
+  onSubmit: (place: Partial<TripPlace> & { modeOfTravel?: ModeOfTravel; previousPlace?: TripPlace | null }) => Promise<void>;
   onCancel: () => void;
   token: string | null;
   previousPlace?: TripPlace | null;

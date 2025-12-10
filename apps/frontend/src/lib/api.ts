@@ -17,9 +17,9 @@ async function fetchWithAuth(
   options: RequestInit = {},
   token: string | null
 ): Promise<Response> {
-  const headers: HeadersInit = {
+  const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    ...options.headers,
+    ...(options.headers as Record<string, string>),
   };
 
   if (token) {
@@ -65,8 +65,8 @@ export async function getTrip(tripId: string, token: string | null): Promise<Tri
 }
 
 export async function getUserTrips(
-  status?: string,
-  token: string | null
+  token: string | null,
+  status?: string
 ): Promise<Trip[]> {
   const params = status ? `?status=${status}` : '';
   const response = await fetchWithAuth(`/api/trips${params}`, {}, token);

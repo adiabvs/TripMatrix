@@ -14,6 +14,7 @@ export type ModeOfTravel = 'walk' | 'bike' | 'car' | 'train' | 'bus' | 'flight';
 export interface TripParticipant {
   uid?: string; // If linked user
   guestName?: string; // If guest
+  guestEmail?: string; // Optional email for guest
   isGuest: boolean;
 }
 

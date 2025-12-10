@@ -31,7 +31,7 @@ export default function ProfilePage() {
     try {
       const token = await getIdToken();
       if (token) {
-        const userTrips = await getUserTrips(undefined, token);
+        const userTrips = await getUserTrips(token);
         setTrips(userTrips);
       }
     } catch (error) {

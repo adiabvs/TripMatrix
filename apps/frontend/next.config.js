@@ -18,8 +18,6 @@ const nextConfig = {
       },
     ],
   },
-  // Production optimizations
-  output: 'standalone',
 };
 
 module.exports = nextConfig;
