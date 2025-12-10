@@ -300,68 +300,46 @@ export default function TripDetailPage() {
       </nav>
 
       {/* Hero Section */}
-      <div className="relative">
-        {trip.coverImage ? (
-          <div className="w-full h-[60vh] min-h-[400px] relative overflow-hidden">
+      <div className="max-w-4xl mx-auto px-6">
+        {/* Cover Image Banner */}
+        {trip.coverImage && (
+          <div className="w-full h-48 mb-8 rounded-2xl overflow-hidden">
             <img
               src={trip.coverImage}
               alt={trip.title}
               className="w-full h-full object-cover"
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
-            <div className="absolute bottom-0 left-0 right-0 p-12 max-w-4xl mx-auto">
-              <h1 className="text-5xl font-bold text-white mb-4">{trip.title}</h1>
-              {trip.description && (
-                <p className="text-xl text-white/90 mb-6">{trip.description}</p>
-              )}
-              <div className="flex items-center gap-6 text-white/80 text-sm">
-                <span>{format(toDate(trip.startTime), 'MMM d, yyyy')}</span>
-                {trip.endTime && (
-                  <>
-                    <span>→</span>
-                    <span>{format(toDate(trip.endTime), 'MMM d, yyyy')}</span>
-                  </>
-                )}
-                {totalDistance > 0 && (
-                  <>
-                    <span>•</span>
-                    <span>{formatDistance(totalDistance)}</span>
-                  </>
-                )}
-                {totalDuration > 0 && (
-                  <>
-                    <span>•</span>
-                    <span>{formatDuration(totalDuration)}</span>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="w-full h-[40vh] min-h-[300px] bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
-            <div className="text-center max-w-4xl mx-auto px-6">
-              <h1 className="text-5xl font-bold text-gray-900 mb-4">{trip.title}</h1>
-              {trip.description && (
-                <p className="text-xl text-gray-700 mb-6">{trip.description}</p>
-              )}
-              <div className="flex items-center justify-center gap-6 text-gray-600 text-sm">
-                <span>{format(toDate(trip.startTime), 'MMM d, yyyy')}</span>
-                {trip.endTime && (
-                  <>
-                    <span>→</span>
-                    <span>{format(toDate(trip.endTime), 'MMM d, yyyy')}</span>
-                  </>
-                )}
-                {totalDistance > 0 && (
-                  <>
-                    <span>•</span>
-                    <span>{formatDistance(totalDistance)}</span>
-                  </>
-                )}
-              </div>
-            </div>
           </div>
         )}
+
+        {/* Trip Title and Details */}
+        <div className="mb-12">
+          <h1 className="text-5xl font-bold text-gray-900 mb-4">{trip.title}</h1>
+          {trip.description && (
+            <p className="text-xl text-gray-700 mb-6">{trip.description}</p>
+          )}
+          <div className="flex items-center gap-6 text-gray-600 text-sm">
+            <span>{format(toDate(trip.startTime), 'MMM d, yyyy')}</span>
+            {trip.endTime && (
+              <>
+                <span>→</span>
+                <span>{format(toDate(trip.endTime), 'MMM d, yyyy')}</span>
+              </>
+            )}
+            {totalDistance > 0 && (
+              <>
+                <span>•</span>
+                <span>{formatDistance(totalDistance)}</span>
+              </>
+            )}
+            {totalDuration > 0 && (
+              <>
+                <span>•</span>
+                <span>{formatDuration(totalDuration)}</span>
+              </>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Main Content */}
