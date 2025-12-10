@@ -1,7 +1,0 @@
-[build]
-builder = "DOCKERFILE"
-# Alternative: If Railway uses Railpack, it will use railpack.toml
-
-[deploy]
-startCommand = "cd apps/backend && pnpm start"
-
