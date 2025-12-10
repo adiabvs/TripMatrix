@@ -307,6 +307,21 @@ export async function searchUsers(query: string, token: string | null): Promise<
   return result.data;
 }
 
+export async function updateUser(
+  updates: { country?: string; defaultCurrency?: string },
+  token: string | null
+): Promise<User> {
+  const response = await fetchWithAuth('/api/users/me', {
+    method: 'PATCH',
+    body: JSON.stringify(updates),
+  }, token);
+  const result: ApiResponse<User> = await response.json();
+  if (!result.success || !result.data) {
+    throw new Error(result.error || 'Failed to update user');
+  }
+  return result.data;
+}
+
 // Upload APIs
 export async function uploadImage(
   file: File,

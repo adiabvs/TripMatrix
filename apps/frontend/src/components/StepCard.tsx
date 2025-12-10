@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { format } from 'date-fns';
 import { toDate } from '@/lib/dateUtils';
-import type { TripPlace, TripExpense, ModeOfTravel, ImageMetadata } from '@tripmatrix/types';
+import type { TripPlace, TripExpense, ModeOfTravel } from '@tripmatrix/types';
 import PhotoViewer from './PhotoViewer';
 import { formatCurrency } from '@/lib/currencyUtils';
 

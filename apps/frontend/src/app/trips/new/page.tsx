@@ -4,7 +4,7 @@ import { useAuth } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { createTrip } from '@/lib/api';
+import { createTrip, uploadImage } from '@/lib/api';
 import type { Trip, TripParticipant } from '@tripmatrix/types';
 import ParticipantSelector from '@/components/ParticipantSelector';
 
