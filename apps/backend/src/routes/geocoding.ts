@@ -42,5 +42,44 @@ router.get('/search', async (req, res) => {
   }
 });
 
+// Reverse geocoding endpoint to get country from coordinates
+router.get('/reverse', async (req, res) => {
+  try {
+    const { lat, lng } = req.query;
+
+    if (!lat || !lng) {
+      return res.status(400).json({
+        success: false,
+        error: 'Query parameters "lat" and "lng" are required',
+      });
+    }
+
+    const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&addressdetails=1`;
+
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'TripMatrix/1.0 (https://tripmatrix.app)',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Nominatim API returned ${response.status}`);
+    }
+
+    const result = await response.json();
+
+    res.json({
+      success: true,
+      data: result,
+    });
+  } catch (error: any) {
+    console.error('Reverse geocoding error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to reverse geocode location',
+    });
+  }
+});
+
 export default router;
 

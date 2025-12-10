@@ -130,25 +130,57 @@ router.get('/', async (req: AuthenticatedRequest, res) => {
   try {
     const uid = req.uid!;
     const { status, isPublic } = req.query;
-    const db = getDb();
+    const db = getFirestore();
 
-    let query: FirebaseFirestore.Query = db.collection('trips')
-      .where('participants', 'array-contains', uid);
-
-    if (status) {
-      query = query.where('status', '==', status);
-    }
-
-    const snapshot = await query.get();
-    const trips = snapshot.docs.map((doc) => ({
+    // Query trips where user is creator
+    const creatorQuery = db.collection('trips')
+      .where('creatorId', '==', uid);
+    
+    // Get all trips and filter in memory (since participants is an array of objects)
+    const creatorSnapshot = await creatorQuery.get();
+    const creatorTrips = creatorSnapshot.docs.map((doc) => ({
       tripId: doc.id,
       ...doc.data(),
     })) as Trip[];
 
+    // Also get all trips and filter for participant trips (in memory)
+    // This is necessary since participants is an array of objects, not strings
+    const allTripsSnapshot = await db.collection('trips').get();
+    const allTrips = allTripsSnapshot.docs.map((doc) => ({
+      tripId: doc.id,
+      ...doc.data(),
+    })) as Trip[];
+
+    // Filter trips where user is a participant (not creator, already included)
+    const participantTrips = allTrips.filter((trip) => {
+      // Skip if already included as creator
+      if (trip.creatorId === uid) return false;
+      // Check if user is in participants array
+      return trip.participants?.some((p) => p.uid === uid);
+    });
+
+    // Combine and deduplicate
+    const allUserTrips = [...creatorTrips, ...participantTrips];
+    const uniqueTrips = Array.from(
+      new Map(allUserTrips.map((trip) => [trip.tripId, trip])).values()
+    );
+
+    // Filter by status if provided
+    let filteredTrips = status
+      ? uniqueTrips.filter((t) => t.status === status)
+      : uniqueTrips;
+
     // Filter by isPublic if needed
-    const filteredTrips = isPublic !== undefined
-      ? trips.filter((t) => t.isPublic === (isPublic === 'true'))
-      : trips;
+    filteredTrips = isPublic !== undefined
+      ? filteredTrips.filter((t) => t.isPublic === (isPublic === 'true'))
+      : filteredTrips;
+
+    // Sort by createdAt (newest first)
+    filteredTrips.sort((a, b) => {
+      const aTime = new Date(a.createdAt).getTime();
+      const bTime = new Date(b.createdAt).getTime();
+      return bTime - aTime;
+    });
 
     res.json({ success: true, data: filteredTrips });
   } catch (error: any) {

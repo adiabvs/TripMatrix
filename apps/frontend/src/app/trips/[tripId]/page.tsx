@@ -5,20 +5,22 @@ import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import {
-  getTrip,
-  updateTrip,
-  getTripRoutes,
-  getTripExpenses,
-  getExpenseSummary,
-  recordRoutePoints,
-  addPlace,
-} from '@/lib/api';
+      getTrip,
+      updateTrip,
+      getTripRoutes,
+      getTripExpenses,
+      getExpenseSummary,
+      recordRoutePoints,
+      updatePlace,
+      deletePlace,
+      getTripPlaces,
+    } from '@/lib/api';
 import { db } from '@/lib/firebase';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
-import type { Trip, TripRoute, TripPlace, TripExpense, ExpenseSummary } from '@tripmatrix/types';
-import PlaceForm from '@/components/PlaceForm';
+import type { Trip, TripRoute, TripPlace, TripExpense, ExpenseSummary, ModeOfTravel } from '@tripmatrix/types';
 import ExpenseForm from '@/components/ExpenseForm';
 import StepCard from '@/components/StepCard';
+import StepConnector from '@/components/StepConnector';
 import UserMenu from '@/components/UserMenu';
 import { formatDistance, formatDuration } from '@tripmatrix/utils';
 import { format } from 'date-fns';
@@ -39,8 +41,9 @@ export default function TripDetailPage() {
   const [expenses, setExpenses] = useState<TripExpense[]>([]);
   const [expenseSummary, setExpenseSummary] = useState<ExpenseSummary | null>(null);
   const [loading, setLoading] = useState(true);
-  const [showPlaceForm, setShowPlaceForm] = useState(false);
   const [showExpenseForm, setShowExpenseForm] = useState(false);
+  const [expensePlace, setExpensePlace] = useState<TripPlace | null>(null);
+  const [placeCountry, setPlaceCountry] = useState<string | undefined>(undefined);
   const [trackingLocation, setTrackingLocation] = useState(false);
   const [currentLocation, setCurrentLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [watchId, setWatchId] = useState<number | null>(null);
@@ -63,15 +66,17 @@ export default function TripDetailPage() {
   const loadTripData = async () => {
     try {
       const token = await getIdToken();
-      const [tripData, routesData, expensesData] = await Promise.all([
+      const [tripData, routesData, expensesData, placesData] = await Promise.all([
         getTrip(tripId, token),
         getTripRoutes(tripId, token),
         getTripExpenses(tripId, token),
+        getTripPlaces(tripId, token),
       ]);
 
       setTrip(tripData);
       setRoutes(routesData);
       setExpenses(expensesData);
+      setPlaces(placesData.sort((a, b) => toDate(a.visitedAt).getTime() - toDate(b.visitedAt).getTime()));
 
       // Load expense summary if trip is completed
       if (tripData.status === 'completed') {
@@ -127,6 +132,34 @@ export default function TripDetailPage() {
     } catch (error) {
       console.error('Failed to update trip:', error);
       alert('Failed to update trip');
+    }
+  };
+
+  const handleUpdateModeOfTravel = async (placeId: string, mode: ModeOfTravel | null) => {
+    if (!token) {
+      alert('Authentication token is missing. Please log in again.');
+      return;
+    }
+    try {
+      await updatePlace(placeId, { modeOfTravel: mode || undefined }, token);
+      await loadTripData(); // Reload data to reflect changes
+    } catch (error) {
+      console.error('Failed to update mode of travel:', error);
+      alert('Failed to update mode of travel');
+    }
+  };
+
+  const handleDeletePlace = async (place: TripPlace) => {
+    if (!token) {
+      alert('Authentication token is missing. Please log in again.');
+      return;
+    }
+    try {
+      await deletePlace(place.placeId, token);
+      await loadTripData(); // Reload data to reflect changes
+    } catch (error: any) {
+      console.error('Failed to delete place:', error);
+      alert(`Failed to delete place: ${error.message || 'Unknown error'}`);
     }
   };
 
@@ -192,29 +225,11 @@ export default function TripDetailPage() {
     setTrackingLocation(false);
   };
 
-  const handleAddPlace = async (placeData: Partial<TripPlace> & { previousPlace?: TripPlace | null }) => {
-    try {
-      const token = await getIdToken();
-      // Remove previousPlace from the data sent to API (it's only for frontend calculation)
-      const { previousPlace, ...dataToSend } = placeData;
-      
-      // Use the API function which has better error handling
-      await addPlace(dataToSend, token);
-      
-      setShowPlaceForm(false);
-      await loadTripData(); // Reload to get new place and re-sort
-    } catch (error: any) {
-      console.error('Failed to add place:', error);
-      const errorMessage = error.message || 'Failed to add place';
-      alert(errorMessage);
-      throw error;
-    }
-  };
 
   const handleAddExpense = async (expenseData: Partial<TripExpense>) => {
     try {
       const token = await getIdToken();
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/expenses`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/expenses`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -228,6 +243,8 @@ export default function TripDetailPage() {
       }
 
       setShowExpenseForm(false);
+      setExpensePlace(null);
+      setPlaceCountry(undefined);
       await loadTripData();
     } catch (error) {
       console.error('Failed to add expense:', error);
@@ -286,6 +303,24 @@ export default function TripDetailPage() {
                     className="text-sm text-red-600 hover:text-red-700 font-medium"
                   >
                     End Trip
+                  </button>
+                )}
+                {trip.status === 'completed' && (
+                  <button
+                    onClick={async () => {
+                      if (!trip || !confirm('Resume this trip?')) return;
+                      try {
+                        const token = await getIdToken();
+                        await updateTrip(tripId, { status: 'in_progress' }, token);
+                        await loadTripData();
+                      } catch (error) {
+                        console.error('Failed to resume trip:', error);
+                        alert('Failed to resume trip');
+                      }
+                    }}
+                    className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+                  >
+                    Resume Trip
                   </button>
                 )}
                 <button
@@ -377,13 +412,13 @@ export default function TripDetailPage() {
         <div className="mb-16">
           <div className="flex items-center justify-between mb-8">
             <h2 className="text-3xl font-bold text-gray-900">Steps</h2>
-            {isCreator && trip.status === 'in_progress' && (
-              <button
-                onClick={() => setShowPlaceForm(!showPlaceForm)}
+            {isCreator && (
+              <Link
+                href={`/trips/${tripId}/steps/new`}
                 className="text-sm font-medium text-gray-700 hover:text-gray-900 px-4 py-2 rounded-full border border-gray-300 hover:border-gray-400 transition-colors"
               >
-                {showPlaceForm ? 'Cancel' : '+ Add Step'}
-              </button>
+                + Add Step
+              </Link>
             )}
           </div>
 
@@ -401,17 +436,76 @@ export default function TripDetailPage() {
           ) : (
             <div className="space-y-0">
               {sortedPlaces.map((place, index) => (
-                <StepCard
-                  key={place.placeId}
-                  place={place}
-                  index={index}
-                  isLast={index === sortedPlaces.length - 1}
-                  expenses={expenses}
-                  showAddButton={isCreator && trip.status === 'in_progress' && index === sortedPlaces.length - 1}
-                  onAddStep={() => {
-                    setShowPlaceForm(true);
-                  }}
-                />
+                <div key={place.placeId}>
+                  <StepCard
+                    place={place}
+                    index={index}
+                    isLast={index === sortedPlaces.length - 1}
+                    expenses={expenses}
+                    showAddButton={isCreator && index === sortedPlaces.length - 1}
+                    onAddStep={() => {
+                      router.push(`/trips/${tripId}/steps/new`);
+                    }}
+                    onEdit={(place) => {
+                      router.push(`/trips/${tripId}/steps/${place.placeId}/edit`);
+                    }}
+                    onDelete={handleDeletePlace}
+                    onAddExpense={async (place) => {
+                      // Try to get country from place coordinates
+                      try {
+                        const response = await fetch(
+                          `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/geocoding/reverse?lat=${place.coordinates.lat}&lng=${place.coordinates.lng}`
+                        );
+                        if (response.ok) {
+                          const data = await response.json();
+                          if (data.success && data.data?.address?.country_code) {
+                            setPlaceCountry(data.data.address.country_code.toUpperCase());
+                          }
+                        }
+                      } catch (error) {
+                        console.error('Failed to get country:', error);
+                      }
+                      setExpensePlace(place);
+                      setShowExpenseForm(true);
+                    }}
+                    isCreator={isCreator}
+                  />
+                  {/* Connector between steps */}
+                  {index < sortedPlaces.length - 1 && (
+                    <StepConnector
+                      fromPlace={place}
+                      toPlace={sortedPlaces[index + 1]}
+                      isCreator={isCreator}
+                      onUpdateMode={async (placeId, modeOfTravel, distance, time) => {
+                        if (!token) {
+                          alert('Authentication token is missing. Please log in again.');
+                          return;
+                        }
+                        try {
+                          await updatePlace(
+                            placeId,
+                            {
+                              modeOfTravel: modeOfTravel || undefined,
+                              distanceFromPrevious: distance,
+                              timeFromPrevious: time || undefined,
+                            },
+                            token
+                          );
+                          await loadTripData(); // Reload to refresh the display
+                        } catch (error: any) {
+                          console.error('Failed to update mode of travel:', error);
+                          throw error;
+                        }
+                      }}
+                      onAddStep={(previousPlace) => {
+                        // Store the previous place in sessionStorage or state to pass to new step page
+                        sessionStorage.setItem('previousPlaceForNewStep', JSON.stringify(previousPlace));
+                        router.push(`/trips/${tripId}/steps/new?after=${previousPlace.placeId}`);
+                      }}
+                      token={token}
+                    />
+                  )}
+                </div>
               ))}
             </div>
           )}
@@ -433,7 +527,7 @@ export default function TripDetailPage() {
         )}
 
         {/* Actions for Creator */}
-        {isCreator && trip.status === 'in_progress' && (
+        {isCreator && (
           <div className="mb-16 p-6 bg-gray-50 rounded-2xl">
             <div className="flex flex-wrap gap-3">
               {!trackingLocation ? (
@@ -452,6 +546,22 @@ export default function TripDetailPage() {
                 </button>
               )}
             </div>
+            {showExpenseForm && expensePlace && trip && (
+              <div className="mt-6">
+                <ExpenseForm
+                  tripId={tripId}
+                  participants={trip.participants || []}
+                  onSubmit={handleAddExpense}
+                  onCancel={() => {
+                    setShowExpenseForm(false);
+                    setExpensePlace(null);
+                    setPlaceCountry(undefined);
+                  }}
+                  placeId={expensePlace.placeId}
+                  placeCountry={placeCountry}
+                />
+              </div>
+            )}
           </div>
         )}
 
@@ -484,18 +594,6 @@ export default function TripDetailPage() {
           </div>
         )}
 
-        {/* Steps / Forms (moved to bottom) */}
-        {showPlaceForm && (
-          <div className="mt-6">
-            <PlaceForm
-              tripId={tripId}
-              onSubmit={handleAddPlace}
-              onCancel={() => setShowPlaceForm(false)}
-              token={token}
-              previousPlace={sortedPlaces.length > 0 ? sortedPlaces[sortedPlaces.length - 1] : null}
-            />
-          </div>
-        )}
       </div>
     </div>
   );

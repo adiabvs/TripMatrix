@@ -144,6 +144,47 @@ export async function addPlace(
   return result.data;
 }
 
+export async function getTripPlaces(
+  tripId: string,
+  token: string | null
+): Promise<TripPlace[]> {
+  const response = await fetchWithAuth(`/api/places/trip/${tripId}`, {}, token);
+  const result: ApiResponse<TripPlace[]> = await response.json();
+  if (!result.success || !result.data) {
+    throw new Error(result.error || 'Failed to fetch places');
+  }
+  return result.data;
+}
+
+export async function updatePlace(
+  placeId: string,
+  updates: Partial<TripPlace>,
+  token: string | null
+): Promise<TripPlace> {
+  const response = await fetchWithAuth(`/api/places/${placeId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(updates),
+  }, token);
+  const result: ApiResponse<TripPlace> = await response.json();
+  if (!result.success || !result.data) {
+    throw new Error(result.error || 'Failed to update place');
+  }
+  return result.data;
+}
+
+export async function deletePlace(
+  placeId: string,
+  token: string | null
+): Promise<void> {
+  const response = await fetchWithAuth(`/api/places/${placeId}`, {
+    method: 'DELETE',
+  }, token);
+  const result: ApiResponse<{ placeId: string }> = await response.json();
+  if (!result.success) {
+    throw new Error(result.error || 'Failed to delete place');
+  }
+}
+
 // Expense APIs
 export async function createExpense(
   expenseData: Partial<TripExpense>,

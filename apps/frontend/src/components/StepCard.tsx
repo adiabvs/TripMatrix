@@ -1,8 +1,11 @@
 'use client';
 
+import { useState } from 'react';
 import { format } from 'date-fns';
 import { toDate } from '@/lib/dateUtils';
-import type { TripPlace, TripExpense, ModeOfTravel } from '@tripmatrix/types';
+import type { TripPlace, TripExpense, ModeOfTravel, ImageMetadata } from '@tripmatrix/types';
+import PhotoViewer from './PhotoViewer';
+import { formatCurrency } from '@/lib/currencyUtils';
 
 interface StepCardProps {
   place: TripPlace;
@@ -11,6 +14,10 @@ interface StepCardProps {
   expenses?: TripExpense[];
   onAddStep?: () => void;
   showAddButton?: boolean;
+  onEdit?: (place: TripPlace) => void;
+  onDelete?: (place: TripPlace) => void;
+  onAddExpense?: (place: TripPlace) => void;
+  isCreator?: boolean;
 }
 
 const modeLabels: Record<ModeOfTravel, string> = {
@@ -22,10 +29,35 @@ const modeLabels: Record<ModeOfTravel, string> = {
   flight: '✈️ Flight',
 };
 
-export default function StepCard({ place, index, isLast, expenses = [], onAddStep, showAddButton }: StepCardProps) {
+export default function StepCard({ place, index, isLast, expenses = [], onAddStep, showAddButton, onEdit, onDelete, onAddExpense, isCreator }: StepCardProps) {
+  const [viewingPhotos, setViewingPhotos] = useState(false);
+  const [photoIndex, setPhotoIndex] = useState(0);
   const visitedDate = toDate(place.visitedAt);
   const stepExpenses = expenses.filter((e) => e.placeId === place.placeId);
-  const totalStepExpense = stepExpenses.reduce((sum, e) => sum + e.amount, 0);
+  // Group expenses by currency
+  const expensesByCurrency = stepExpenses.reduce((acc, e) => {
+    const curr = e.currency || 'USD';
+    if (!acc[curr]) acc[curr] = [];
+    acc[curr].push(e);
+    return acc;
+  }, {} as Record<string, TripExpense[]>);
+  
+  const totalByCurrency = Object.entries(expensesByCurrency).map(([curr, exps]) => ({
+    currency: curr,
+    total: exps.reduce((sum, e) => sum + e.amount, 0),
+  }));
+
+  // Get image list (support both formats)
+  const imageList = place.imageMetadata 
+    ? place.imageMetadata.map(img => img.url)
+    : (place.images || []);
+
+  const imageMetadata = place.imageMetadata || place.images?.map(url => ({ url, isPublic: false })) || [];
+
+  const handlePhotoClick = (index: number) => {
+    setPhotoIndex(index);
+    setViewingPhotos(true);
+  };
 
   return (
     <div className="relative">
@@ -57,50 +89,50 @@ export default function StepCard({ place, index, isLast, expenses = [], onAddSte
         {/* Content */}
         <div className="flex-1 pt-2">
           <div className="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
-            {/* Place images */}
-            {(() => {
-              // Support both legacy images array and new imageMetadata
-              const imageList = place.imageMetadata 
-                ? place.imageMetadata.map(img => img.url)
-                : (place.images || []);
-              
-              return imageList.length > 0 ? (
-                <div className="w-full h-64 relative">
-                  {imageList.length === 1 ? (
-                    <div className="relative">
+            {/* Place images - Stacked cards style */}
+            {imageList.length > 0 ? (
+              <div 
+                className="w-full h-64 relative cursor-pointer"
+                onClick={() => handlePhotoClick(0)}
+              >
+                {/* Stacked cards effect */}
+                {imageList.slice(0, 3).map((imageUrl, idx) => {
+                  const zIndex = imageList.length - idx;
+                  const offset = idx * 8;
+                  const scale = 1 - (idx * 0.05);
+                  const opacity = idx === 0 ? 1 : 0.7;
+                  
+                  return (
+                    <div
+                      key={idx}
+                      className="absolute inset-0 rounded-t-2xl overflow-hidden"
+                      style={{
+                        zIndex,
+                        transform: `translate(${offset}px, ${offset}px) scale(${scale})`,
+                        opacity,
+                      }}
+                    >
                       <img
-                        src={imageList[0]}
-                        alt={place.name}
+                        src={imageUrl}
+                        alt={`${place.name} ${idx + 1}`}
                         className="w-full h-full object-cover"
                       />
-                      {place.imageMetadata && place.imageMetadata[0] && (
+                      {idx === 0 && imageMetadata[0] && (
                         <div className="absolute top-2 right-2 px-2 py-1 rounded text-xs font-medium bg-black/50 text-white">
-                          {place.imageMetadata[0].isPublic ? '🌐 Public' : '🔒 Private'}
+                          {imageMetadata[0].isPublic ? '🌐 Public' : '🔒 Private'}
+                        </div>
+                      )}
+                      {idx === 0 && imageList.length > 1 && (
+                        <div className="absolute bottom-2 right-2 px-2 py-1 rounded text-xs font-medium bg-black/50 text-white">
+                          {imageList.length} photos
                         </div>
                       )}
                     </div>
-                  ) : (
-                    <div className="grid grid-cols-2 h-full">
-                      {imageList.slice(0, 4).map((imageUrl, idx) => (
-                        <div key={idx} className="relative">
-                          <img
-                            src={imageUrl}
-                            alt={`${place.name} ${idx + 1}`}
-                            className="w-full h-full object-cover"
-                          />
-                          {place.imageMetadata && place.imageMetadata[idx] && (
-                            <div className="absolute top-1 right-1 px-1.5 py-0.5 rounded text-xs font-medium bg-black/50 text-white">
-                              {place.imageMetadata[idx].isPublic ? '🌐' : '🔒'}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ) : null;
-            })()}
-            {(!place.images || place.images.length === 0) && (!place.imageMetadata || place.imageMetadata.length === 0) && (
+                  );
+                })}
+              </div>
+            ) : null}
+            {imageList.length === 0 && (
               <div className="w-full h-64 bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
                 <svg className="w-16 h-16 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
@@ -109,10 +141,51 @@ export default function StepCard({ place, index, isLast, expenses = [], onAddSte
               </div>
             )}
 
+            {/* Photo Viewer */}
+            {viewingPhotos && (
+              <PhotoViewer
+                images={imageMetadata.length > 0 ? imageMetadata : imageList}
+                initialIndex={photoIndex}
+                onClose={() => setViewingPhotos(false)}
+              />
+            )}
+
             <div className="p-6">
               <div className="flex items-start justify-between mb-3">
-                <div>
-                  <h3 className="text-2xl font-bold text-gray-900 mb-1">{place.name}</h3>
+                <div className="flex-1">
+                  <div className="flex items-center gap-3 mb-1">
+                    <h3 className="text-2xl font-bold text-gray-900">{place.name}</h3>
+                    {isCreator && (onEdit || onDelete) && (
+                      <div className="flex items-center gap-2">
+                        {onEdit && (
+                          <button
+                            onClick={() => onEdit(place)}
+                            className="text-gray-400 hover:text-blue-600 transition-colors p-1"
+                            title="Edit step"
+                          >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                          </button>
+                        )}
+                        {onDelete && (
+                          <button
+                            onClick={() => {
+                              if (confirm(`Are you sure you want to delete "${place.name}"?`)) {
+                                onDelete(place);
+                              }
+                            }}
+                            className="text-gray-400 hover:text-red-600 transition-colors p-1"
+                            title="Delete step"
+                          >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
                   <p className="text-sm text-gray-500">
                     {format(visitedDate, 'MMMM d, yyyy • h:mm a')}
                   </p>
@@ -138,25 +211,6 @@ export default function StepCard({ place, index, isLast, expenses = [], onAddSte
                 )}
               </div>
 
-              {/* Travel Info */}
-              {place.modeOfTravel && place.distanceFromPrevious && (
-                <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-100">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="font-medium text-gray-900">
-                      {modeLabels[place.modeOfTravel]}
-                    </span>
-                    <div className="flex items-center gap-4 text-gray-600">
-                      <span>{(place.distanceFromPrevious / 1000).toFixed(2)} km</span>
-                      {place.timeFromPrevious && (
-                        <span>
-                          {Math.floor(place.timeFromPrevious / 3600) > 0 && `${Math.floor(place.timeFromPrevious / 3600)}h `}
-                          {Math.floor((place.timeFromPrevious % 3600) / 60)}m
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
 
               {(place.rewrittenComment || place.comment) && (
                 <div className="mt-4">
@@ -167,16 +221,42 @@ export default function StepCard({ place, index, isLast, expenses = [], onAddSte
               )}
 
               {/* Expenses for this step */}
-              {stepExpenses.length > 0 && (
-                <div className="mt-4 pt-4 border-t border-gray-100">
-                  <p className="text-xs font-semibold text-gray-700 mb-2">
-                    Expenses: ${totalStepExpense.toFixed(2)}
+              <div className="mt-4 pt-4 border-t border-gray-100">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-semibold text-gray-700">
+                    Expenses
+                    {totalByCurrency.length > 0 && (
+                      <span className="ml-2">
+                        {totalByCurrency.map((t, idx) => (
+                          <span key={t.currency}>
+                            {idx > 0 && ', '}
+                            {formatCurrency(t.total, t.currency)}
+                          </span>
+                        ))}
+                      </span>
+                    )}
                   </p>
+                  {isCreator && onAddExpense && (
+                    <button
+                      onClick={() => onAddExpense(place)}
+                      className="text-xs text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1"
+                      title="Add expense"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                      Add Expense
+                    </button>
+                  )}
+                </div>
+                {stepExpenses.length > 0 && (
                   <div className="space-y-2">
                     {stepExpenses.map((expense) => (
                       <div key={expense.expenseId} className="text-xs bg-gray-50 rounded-lg p-2">
                         <div className="flex justify-between">
-                          <span className="font-medium text-gray-900">${expense.amount.toFixed(2)}</span>
+                          <span className="font-medium text-gray-900">
+                            {formatCurrency(expense.amount, expense.currency || 'USD')}
+                          </span>
                           <span className="text-gray-500">{expense.paidBy.substring(0, 8)}...</span>
                         </div>
                         {expense.description && (
@@ -185,8 +265,8 @@ export default function StepCard({ place, index, isLast, expenses = [], onAddSte
                       </div>
                     ))}
                   </div>
-                </div>
-              )}
+                )}
+              </div>
 
               <div className="mt-4 pt-4 border-t border-gray-100">
                 <p className="text-xs text-gray-500">

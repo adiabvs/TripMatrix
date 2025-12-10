@@ -13,7 +13,7 @@ function getDb() {
 // Create expense
 router.post('/', async (req: OptionalAuthRequest, res) => {
   try {
-    const { tripId, amount, paidBy, splitBetween, description, placeId } = req.body;
+    const { tripId, amount, currency, paidBy, splitBetween, description, placeId } = req.body;
     const uid = req.uid!;
 
     if (!tripId || !amount || !paidBy || !splitBetween || splitBetween.length === 0) {
@@ -22,6 +22,9 @@ router.post('/', async (req: OptionalAuthRequest, res) => {
         error: 'tripId, amount, paidBy, and splitBetween are required',
       });
     }
+
+    // Default currency to USD if not provided
+    const expenseCurrency = currency || 'USD';
 
     // Verify trip exists and user has access
     const db = getDb();
@@ -38,6 +41,7 @@ router.post('/', async (req: OptionalAuthRequest, res) => {
     const expenseData: Omit<TripExpense, 'expenseId'> = {
       tripId,
       amount: Number(amount),
+      currency: expenseCurrency,
       paidBy,
       splitBetween,
       calculatedShares,

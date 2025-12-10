@@ -1,7 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { TripExpense, TripParticipant } from '@tripmatrix/types';
+import { getCurrencyFromCountry, commonCurrencies, formatCurrency } from '@/lib/currencyUtils';
+import { useAuth } from '@/lib/auth';
 
 interface ExpenseFormProps {
   tripId: string;
@@ -9,6 +11,7 @@ interface ExpenseFormProps {
   onSubmit: (expense: Partial<TripExpense>) => Promise<void>;
   onCancel: () => void;
   placeId?: string;
+  placeCountry?: string; // Country code for currency detection
 }
 
 export default function ExpenseForm({
@@ -17,16 +20,51 @@ export default function ExpenseForm({
   onSubmit,
   onCancel,
   placeId,
+  placeCountry,
 }: ExpenseFormProps) {
+  const { user } = useAuth();
   const [amount, setAmount] = useState('');
+  const [currency, setCurrency] = useState('USD');
   const [paidBy, setPaidBy] = useState('');
+  const [splitMode, setSplitMode] = useState<SplitMode>('equal');
   const [splitBetween, setSplitBetween] = useState<Set<string>>(new Set());
   const [description, setDescription] = useState('');
   const [loading, setLoading] = useState(false);
 
+  // Determine default currency
+  useEffect(() => {
+    // Priority: user's default currency > place country currency > USD
+    if (user?.defaultCurrency) {
+      setCurrency(user.defaultCurrency);
+    } else if (placeCountry) {
+      setCurrency(getCurrencyFromCountry(placeCountry));
+    } else if (user?.country) {
+      setCurrency(getCurrencyFromCountry(user.country));
+    } else {
+      setCurrency('USD');
+    }
+  }, [user, placeCountry]);
+
+  // Update splitBetween when splitMode changes
+  useEffect(() => {
+    if (splitMode === 'everyone') {
+      // Include all participants (fixed, cannot be modified)
+      const allIds = participants.map(p => p.uid || p.guestName || '').filter(Boolean);
+      setSplitBetween(new Set(allIds));
+    } else if (splitMode === 'equal') {
+      // Start with all selected, but user can modify
+      const allIds = participants.map(p => p.uid || p.guestName || '').filter(Boolean);
+      setSplitBetween(new Set(allIds));
+    }
+    // 'people' mode: user manually selects (starts empty)
+  }, [splitMode, participants]);
+
   const participantOptions = participants.map((p) => ({
     id: p.uid || p.guestName || '',
-    label: p.isGuest ? p.guestName : `User ${p.uid?.substring(0, 8)}`,
+    label: p.isGuest 
+      ? (p.guestName || 'Guest')
+      : (p.uid ? `User ${p.uid.substring(0, 8)}...` : 'Unknown'),
+    isGuest: p.isGuest,
   }));
 
   const toggleParticipant = (id: string) => {
@@ -51,6 +89,7 @@ export default function ExpenseForm({
       await onSubmit({
         tripId,
         amount: parseFloat(amount),
+        currency,
         paidBy,
         splitBetween: Array.from(splitBetween),
         description: description || undefined,
@@ -58,7 +97,9 @@ export default function ExpenseForm({
       });
       // Reset form
       setAmount('');
+      setCurrency('USD');
       setPaidBy('');
+      setSplitMode('equal');
       setSplitBetween(new Set());
       setDescription('');
     } catch (error) {
@@ -75,16 +116,38 @@ export default function ExpenseForm({
 
       <div className="mb-4">
         <label className="block text-sm font-medium text-gray-700 mb-2">
-          Amount ($) *
+          Currency *
         </label>
-        <input
-          type="number"
-          step="0.01"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
+        <select
+          value={currency}
+          onChange={(e) => setCurrency(e.target.value)}
           className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
           required
-        />
+        >
+          {commonCurrencies.map((curr) => (
+            <option key={curr.code} value={curr.code}>
+              {curr.code} - {curr.name} ({curr.symbol})
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="mb-4">
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          Amount *
+        </label>
+        <div className="flex items-center gap-2">
+          <span className="text-gray-600">{formatCurrency(0, currency).replace('0.00', '')}</span>
+          <input
+            type="number"
+            step="0.01"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+            placeholder="0.00"
+            required
+          />
+        </div>
       </div>
 
       <div className="mb-4">
@@ -108,21 +171,70 @@ export default function ExpenseForm({
 
       <div className="mb-4">
         <label className="block text-sm font-medium text-gray-700 mb-2">
-          Split Between *
+          Split Mode *
         </label>
-        <div className="space-y-2">
-          {participantOptions.map((p) => (
-            <label key={p.id} className="flex items-center">
-              <input
-                type="checkbox"
-                checked={splitBetween.has(p.id)}
-                onChange={() => toggleParticipant(p.id)}
-                className="mr-2"
-              />
-              <span>{p.label}</span>
-            </label>
-          ))}
+        <div className="space-y-2 mb-3">
+          <label className="flex items-center">
+            <input
+              type="radio"
+              name="splitMode"
+              value="equal"
+              checked={splitMode === 'equal'}
+              onChange={() => setSplitMode('equal')}
+              className="mr-2"
+            />
+            <span>Equal - Select people to split with</span>
+          </label>
+          <label className="flex items-center">
+            <input
+              type="radio"
+              name="splitMode"
+              value="everyone"
+              checked={splitMode === 'everyone'}
+              onChange={() => setSplitMode('everyone')}
+              className="mr-2"
+            />
+            <span>Everyone - All trip participants (fixed)</span>
+          </label>
+          <label className="flex items-center">
+            <input
+              type="radio"
+              name="splitMode"
+              value="people"
+              checked={splitMode === 'people'}
+              onChange={() => setSplitMode('people')}
+              className="mr-2"
+            />
+            <span>Select People - Choose specific people</span>
+          </label>
         </div>
+        
+        {(splitMode === 'equal' || splitMode === 'people') && (
+          <div className="space-y-2 border-t pt-3 mt-3">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              {splitMode === 'equal' ? 'Select People to Split With (Equal Split)' : 'Select People to Split With *'}
+            </label>
+            {participantOptions.map((p) => (
+              <label key={p.id} className="flex items-center">
+                <input
+                  type="checkbox"
+                  checked={splitBetween.has(p.id)}
+                  onChange={() => toggleParticipant(p.id)}
+                  className="mr-2"
+                />
+                <span>{p.label}</span>
+              </label>
+            ))}
+          </div>
+        )}
+        
+        {splitMode === 'everyone' && (
+          <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
+            <p className="text-sm text-blue-800">
+              This expense will be split equally among all {participants.length} trip participants.
+            </p>
+          </div>
+        )}
       </div>
 
       <div className="mb-4">
