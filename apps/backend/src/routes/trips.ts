@@ -2,7 +2,7 @@ import express from 'express';
 import { getFirestore } from '../config/firebase.js';
 import { AuthenticatedRequest } from '../middleware/auth.js';
 import { OptionalAuthRequest } from '../middleware/optionalAuth.js';
-import type { Trip, TripParticipant } from '@tripmatrix/types';
+import type { Trip, TripParticipant, TripPlace } from '@tripmatrix/types';
 
 const router = express.Router();
 
@@ -11,10 +11,16 @@ function getDb() {
 }
 
 // Create a new trip
-router.post('/', async (req: AuthenticatedRequest, res) => {
+router.post('/', async (req: OptionalAuthRequest, res) => {
   try {
+    if (!req.uid) {
+      return res.status(401).json({
+        success: false,
+        error: 'Authentication required',
+      });
+    }
     const { title, description, startTime, endTime, coverImage, isPublic, status, participants } = req.body;
-    const uid = req.uid!;
+    const uid = req.uid;
 
     if (!title || !startTime) {
       return res.status(400).json({
@@ -126,9 +132,15 @@ router.get('/:tripId', async (req: OptionalAuthRequest, res) => {
 });
 
 // Get user's trips
-router.get('/', async (req: AuthenticatedRequest, res) => {
+router.get('/', async (req: OptionalAuthRequest, res) => {
   try {
-    const uid = req.uid!;
+    if (!req.uid) {
+      return res.status(401).json({
+        success: false,
+        error: 'Authentication required',
+      });
+    }
+    const uid = req.uid;
     const { status, isPublic } = req.query;
     const db = getFirestore();
 
@@ -192,11 +204,17 @@ router.get('/', async (req: AuthenticatedRequest, res) => {
 });
 
 // Add participants to trip
-router.post('/:tripId/participants', async (req: AuthenticatedRequest, res) => {
+router.post('/:tripId/participants', async (req: OptionalAuthRequest, res) => {
   try {
+    if (!req.uid) {
+      return res.status(401).json({
+        success: false,
+        error: 'Authentication required',
+      });
+    }
     const { tripId } = req.params;
     const { participants } = req.body;
-    const uid = req.uid!;
+    const uid = req.uid;
     const db = getDb();
 
     const tripRef = db.collection('trips').doc(tripId);
@@ -265,11 +283,17 @@ router.post('/:tripId/participants', async (req: AuthenticatedRequest, res) => {
 });
 
 // Update trip (e.g., make public/private, end trip)
-router.patch('/:tripId', async (req: AuthenticatedRequest, res) => {
+router.patch('/:tripId', async (req: OptionalAuthRequest, res) => {
   try {
+    if (!req.uid) {
+      return res.status(401).json({
+        success: false,
+        error: 'Authentication required',
+      });
+    }
     const { tripId } = req.params;
     const updates = req.body;
-    const uid = req.uid!;
+    const uid = req.uid;
     const db = getDb();
 
     const tripRef = db.collection('trips').doc(tripId);
@@ -284,11 +308,14 @@ router.patch('/:tripId', async (req: AuthenticatedRequest, res) => {
 
     const trip = tripDoc.data() as Trip;
     
-    // Check authorization
-    if (trip.creatorId !== uid) {
+    // Check authorization - allow creator or participants to edit
+    const isCreator = trip.creatorId === uid;
+    const isParticipant = trip.participants?.some((p) => p.uid === uid);
+    
+    if (!isCreator && !isParticipant) {
       return res.status(403).json({
         success: false,
-        error: 'Not authorized to update this trip',
+        error: 'Not authorized to update this trip. Only the creator or participants can edit.',
       });
     }
 
@@ -326,10 +353,138 @@ router.patch('/:tripId', async (req: AuthenticatedRequest, res) => {
   }
 });
 
+// Delete trip
+router.delete('/:tripId', async (req: OptionalAuthRequest, res) => {
+  try {
+    if (!req.uid) {
+      return res.status(401).json({
+        success: false,
+        error: 'Authentication required',
+      });
+    }
+    const { tripId } = req.params;
+    const uid = req.uid;
+    const db = getDb();
+
+    const tripRef = db.collection('trips').doc(tripId);
+    const tripDoc = await tripRef.get();
+
+    if (!tripDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        error: 'Trip not found',
+      });
+    }
+
+    const trip = tripDoc.data() as Trip;
+
+    // Check authorization - only creator can delete
+    if (trip.creatorId !== uid) {
+      return res.status(403).json({
+        success: false,
+        error: 'Not authorized to delete this trip',
+      });
+    }
+
+    // Get all places for this trip to collect image URLs
+    const placesSnapshot = await db.collection('tripPlaces')
+      .where('tripId', '==', tripId)
+      .get();
+
+    const places = placesSnapshot.docs.map(doc => doc.data() as TripPlace);
+    
+    // Collect all image URLs from places
+    const imageUrls: string[] = [];
+    places.forEach(place => {
+      if (place.imageMetadata) {
+        place.imageMetadata.forEach(img => imageUrls.push(img.url));
+      }
+      if (place.images) {
+        place.images.forEach(url => imageUrls.push(url));
+      }
+    });
+
+    // Delete images from Supabase
+    if (imageUrls.length > 0) {
+      try {
+        const { getSupabase } = await import('../config/supabase.js');
+        const supabase = getSupabase();
+        
+        // Extract file paths from URLs
+        const filePaths = imageUrls
+          .map(url => {
+            try {
+              const urlObj = new URL(url);
+              // Extract path from Supabase URL (e.g., /storage/v1/object/public/images/trips/uid/file.jpg)
+              const pathMatch = urlObj.pathname.match(/\/images\/(.+)$/);
+              if (pathMatch) {
+                return pathMatch[1];
+              }
+              return null;
+            } catch {
+              return null;
+            }
+          })
+          .filter((path): path is string => path !== null);
+
+        // Delete files from Supabase storage
+        if (filePaths.length > 0) {
+          const { error: deleteError } = await supabase.storage
+            .from('images')
+            .remove(filePaths);
+
+          if (deleteError) {
+            console.error('Error deleting images from Supabase:', deleteError);
+            // Continue with trip deletion even if image deletion fails
+          } else {
+            console.log(`Deleted ${filePaths.length} images from Supabase`);
+          }
+        }
+      } catch (error: any) {
+        console.error('Error deleting images:', error);
+        // Continue with trip deletion even if image deletion fails
+      }
+    }
+
+    // Delete all related data
+    const batch = db.batch();
+
+    // Delete places
+    placesSnapshot.docs.forEach(doc => batch.delete(doc.ref));
+
+    // Delete expenses
+    const expensesSnapshot = await db.collection('tripExpenses')
+      .where('tripId', '==', tripId)
+      .get();
+    expensesSnapshot.docs.forEach(doc => batch.delete(doc.ref));
+
+    // Delete routes
+    const routesSnapshot = await db.collection('tripRoutes')
+      .where('tripId', '==', tripId)
+      .get();
+    routesSnapshot.docs.forEach(doc => batch.delete(doc.ref));
+
+    // Delete trip
+    batch.delete(tripRef);
+
+    await batch.commit();
+
+    res.json({
+      success: true,
+      data: null,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
 // Get public trips (no auth required)
 router.get('/public/list', async (req, res) => {
   try {
-    const { limit = 20 } = req.query;
+    const { limit, search } = req.query;
     const db = getDb();
     const snapshot = await db.collection('trips')
       .where('isPublic', '==', true)
@@ -340,6 +495,20 @@ router.get('/public/list', async (req, res) => {
       ...doc.data(),
     })) as Trip[];
 
+    // Filter by search query if provided
+    if (search && typeof search === 'string') {
+      const searchLower = search.toLowerCase();
+      trips = trips.filter((trip) => {
+        // Search in title
+        if (trip.title.toLowerCase().includes(searchLower)) return true;
+        // Search in description
+        if (trip.description?.toLowerCase().includes(searchLower)) return true;
+        // Search in places (location names) - would need to fetch places
+        // For now, just search title and description
+        return false;
+      });
+    }
+
     // Sort by createdAt in memory (avoids needing composite index)
     trips.sort((a, b) => {
       const aTime = new Date(a.createdAt).getTime();
@@ -347,8 +516,10 @@ router.get('/public/list', async (req, res) => {
       return bTime - aTime; // Descending order
     });
 
-    // Apply limit after sorting
-    trips = trips.slice(0, Number(limit));
+    // Apply limit only if provided (otherwise return all)
+    if (limit) {
+      trips = trips.slice(0, Number(limit));
+    }
 
     res.json({ success: true, data: trips });
   } catch (error: any) {

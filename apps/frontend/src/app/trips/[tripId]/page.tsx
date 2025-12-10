@@ -18,7 +18,6 @@ import {
 import { db } from '@/lib/firebase';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import type { Trip, TripRoute, TripPlace, TripExpense, ExpenseSummary, ModeOfTravel } from '@tripmatrix/types';
-import ExpenseForm from '@/components/ExpenseForm';
 import StepCard from '@/components/StepCard';
 import StepConnector from '@/components/StepConnector';
 import UserMenu from '@/components/UserMenu';
@@ -41,36 +40,47 @@ export default function TripDetailPage() {
   const [expenses, setExpenses] = useState<TripExpense[]>([]);
   const [expenseSummary, setExpenseSummary] = useState<ExpenseSummary | null>(null);
   const [loading, setLoading] = useState(true);
-  const [showExpenseForm, setShowExpenseForm] = useState(false);
-  const [expensePlace, setExpensePlace] = useState<TripPlace | null>(null);
-  const [placeCountry, setPlaceCountry] = useState<string | undefined>(undefined);
   const [trackingLocation, setTrackingLocation] = useState(false);
   const [currentLocation, setCurrentLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [watchId, setWatchId] = useState<number | null>(null);
   const [token, setToken] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!authLoading && !user) {
-      router.push('/auth');
-    }
-  }, [user, authLoading, router]);
-
-  useEffect(() => {
-    if (tripId && user) {
+    if (tripId) {
       loadTripData();
-      // Load token for forms
-      getIdToken().then(setToken).catch(console.error);
+      // Load token for forms if user is logged in
+      if (user) {
+        getIdToken().then(setToken).catch(console.error);
+      }
     }
   }, [tripId, user]);
 
   const loadTripData = async () => {
     try {
-      const token = await getIdToken();
+      // Get token if user is logged in, otherwise null (for public trips)
+      let token: string | null = null;
+      try {
+        if (user) {
+          token = await getIdToken();
+        }
+      } catch (error) {
+        // If getting token fails, continue without token (for public trips)
+        console.log('No token available, attempting to load as public trip');
+      }
+      
+      // Try to load trip data (works for public trips without auth)
       const [tripData, routesData, expensesData, placesData] = await Promise.all([
-        getTrip(tripId, token),
-        getTripRoutes(tripId, token),
-        getTripExpenses(tripId, token),
-        getTripPlaces(tripId, token),
+        getTrip(tripId, token).catch((err) => {
+          // If it's a private trip and user is not logged in, redirect to auth
+          if (!user && (err.message.includes('Authentication required') || err.message.includes('401'))) {
+            router.push('/auth');
+            throw err;
+          }
+          throw err;
+        }),
+        getTripRoutes(tripId, token).catch(() => []), // Routes may fail for public trips
+        getTripExpenses(tripId, token).catch(() => []), // Expenses may fail for public trips
+        getTripPlaces(tripId, token).catch(() => []), // Places may fail for public trips
       ]);
 
       setTrip(tripData);
@@ -226,31 +236,6 @@ export default function TripDetailPage() {
   };
 
 
-  const handleAddExpense = async (expenseData: Partial<TripExpense>) => {
-    try {
-      const token = await getIdToken();
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/expenses`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(expenseData),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to add expense');
-      }
-
-      setShowExpenseForm(false);
-      setExpensePlace(null);
-      setPlaceCountry(undefined);
-      await loadTripData();
-    } catch (error) {
-      console.error('Failed to add expense:', error);
-      throw error;
-    }
-  };
 
   if (authLoading || loading) {
     return (
@@ -269,6 +254,8 @@ export default function TripDetailPage() {
   }
 
   const isCreator = user?.uid === trip.creatorId;
+  const isParticipant = trip.participants?.some(p => p.uid === user?.uid) || false;
+  const canEdit = isCreator || isParticipant; // Can edit if creator or participant
   const allRoutePoints = routes.flatMap((r) => r.points);
   const totalDistance = trip.totalDistance || 0;
   const totalDuration =
@@ -295,45 +282,17 @@ export default function TripDetailPage() {
             <span className="text-sm font-medium">Back</span>
           </Link>
           <div className="flex items-center gap-4">
-            {isCreator && (
-              <>
-                {trip.status === 'in_progress' && (
-                  <button
-                    onClick={handleEndTrip}
-                    className="text-sm text-red-600 hover:text-red-700 font-medium"
-                  >
-                    End Trip
-                  </button>
-                )}
-                {trip.status === 'completed' && (
-                  <button
-                    onClick={async () => {
-                      if (!trip || !confirm('Resume this trip?')) return;
-                      try {
-                        const token = await getIdToken();
-                        await updateTrip(tripId, { status: 'in_progress' }, token);
-                        await loadTripData();
-                      } catch (error) {
-                        console.error('Failed to resume trip:', error);
-                        alert('Failed to resume trip');
-                      }
-                    }}
-                    className="text-sm text-blue-600 hover:text-blue-700 font-medium"
-                  >
-                    Resume Trip
-                  </button>
-                )}
-                <button
-                  onClick={handleTogglePublic}
-                  className={`text-xs px-3 py-1.5 rounded-full font-medium ${
-                    trip.isPublic
-                      ? 'bg-purple-100 text-purple-700'
-                      : 'bg-gray-100 text-gray-700'
-                  }`}
-                >
-                  {trip.isPublic ? 'Public' : 'Private'}
-                </button>
-              </>
+            {canEdit && (
+              <Link
+                href={`/trips/${tripId}/settings`}
+                className="text-gray-600 hover:text-gray-900 transition-colors"
+                title="Trip Settings"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+              </Link>
             )}
             <UserMenu />
           </div>
@@ -412,7 +371,7 @@ export default function TripDetailPage() {
         <div className="mb-16">
           <div className="flex items-center justify-between mb-8">
             <h2 className="text-3xl font-bold text-gray-900">Steps</h2>
-            {isCreator && (
+            {canEdit && (
               <Link
                 href={`/trips/${tripId}/steps/new`}
                 className="text-sm font-medium text-gray-700 hover:text-gray-900 px-4 py-2 rounded-full border border-gray-300 hover:border-gray-400 transition-colors"
@@ -442,7 +401,7 @@ export default function TripDetailPage() {
                     index={index}
                     isLast={index === sortedPlaces.length - 1}
                     expenses={expenses}
-                    showAddButton={isCreator && index === sortedPlaces.length - 1}
+                    showAddButton={canEdit && index === sortedPlaces.length - 1}
                     onAddStep={() => {
                       router.push(`/trips/${tripId}/steps/new`);
                     }}
@@ -451,31 +410,20 @@ export default function TripDetailPage() {
                     }}
                     onDelete={handleDeletePlace}
                     onAddExpense={async (place) => {
-                      // Try to get country from place coordinates
-                      try {
-                        const response = await fetch(
-                          `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/geocoding/reverse?lat=${place.coordinates.lat}&lng=${place.coordinates.lng}`
-                        );
-                        if (response.ok) {
-                          const data = await response.json();
-                          if (data.success && data.data?.address?.country_code) {
-                            setPlaceCountry(data.data.address.country_code.toUpperCase());
-                          }
-                        }
-                      } catch (error) {
-                        console.error('Failed to get country:', error);
-                      }
-                      setExpensePlace(place);
-                      setShowExpenseForm(true);
+                      // Navigate to new expense page with placeId
+                      router.push(`/trips/${tripId}/expenses/new?placeId=${place.placeId}`);
                     }}
-                    isCreator={isCreator}
+                    isCreator={canEdit}
+                    expenseVisibility={trip.expenseVisibility || 'members'}
+                    currentUserId={user?.uid}
+                    isTripMember={isCreator || trip.participants?.some(p => p.uid === user?.uid) || false}
                   />
                   {/* Connector between steps */}
                   {index < sortedPlaces.length - 1 && (
                     <StepConnector
                       fromPlace={place}
                       toPlace={sortedPlaces[index + 1]}
-                      isCreator={isCreator}
+                      isCreator={canEdit}
                       onUpdateMode={async (placeId, modeOfTravel, distance, time) => {
                         if (!token) {
                           alert('Authentication token is missing. Please log in again.');
@@ -527,7 +475,7 @@ export default function TripDetailPage() {
         )}
 
         {/* Actions for Creator */}
-        {isCreator && (
+        {canEdit && (
           <div className="mb-16 p-6 bg-gray-50 rounded-2xl">
             <div className="flex flex-wrap gap-3">
               {!trackingLocation ? (
@@ -546,22 +494,6 @@ export default function TripDetailPage() {
                 </button>
               )}
             </div>
-            {showExpenseForm && expensePlace && trip && (
-              <div className="mt-6">
-                <ExpenseForm
-                  tripId={tripId}
-                  participants={trip.participants || []}
-                  onSubmit={handleAddExpense}
-                  onCancel={() => {
-                    setShowExpenseForm(false);
-                    setExpensePlace(null);
-                    setPlaceCountry(undefined);
-                  }}
-                  placeId={expensePlace.placeId}
-                  placeCountry={placeCountry}
-                />
-              </div>
-            )}
           </div>
         )}
 

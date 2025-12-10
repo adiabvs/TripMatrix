@@ -20,6 +20,9 @@ export interface TripParticipant {
   isGuest: boolean;
 }
 
+export type PhotoSharingPrivacy = 'everyone' | 'members' | 'creator';
+export type ExpenseVisibility = 'everyone' | 'members' | 'creator';
+
 export interface Trip {
   tripId: string;
   creatorId: string;
@@ -33,6 +36,8 @@ export interface Trip {
   coverImage?: string;
   totalExpense?: number;
   totalDistance?: number;
+  defaultPhotoSharing?: PhotoSharingPrivacy; // Default privacy for photos
+  expenseVisibility?: ExpenseVisibility; // Who can view expenses
   createdAt: Date | string;
   updatedAt: Date | string;
 }

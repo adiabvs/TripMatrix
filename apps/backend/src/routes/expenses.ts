@@ -36,6 +36,26 @@ router.post('/', async (req: OptionalAuthRequest, res) => {
       });
     }
 
+    const trip = tripDoc.data()!;
+    
+    // Check authorization - allow creator or participants to add expenses
+    if (!uid) {
+      return res.status(401).json({
+        success: false,
+        error: 'Authentication required',
+      });
+    }
+    
+    const isCreator = trip.creatorId === uid;
+    const isParticipant = trip.participants?.some((p: any) => p.uid === uid);
+    
+    if (!isCreator && !isParticipant) {
+      return res.status(403).json({
+        success: false,
+        error: 'Not authorized to add expenses. Only the creator or participants can add expenses.',
+      });
+    }
+
     const calculatedShares = calculateExpenseShares(amount, splitBetween);
 
     const expenseData: Omit<TripExpense, 'expenseId'> = {
@@ -53,7 +73,6 @@ router.post('/', async (req: OptionalAuthRequest, res) => {
     const expenseRef = await db.collection('tripExpenses').add(expenseData);
     
     // Update trip total expense
-    const trip = tripDoc.data()!;
     const currentTotal = trip.totalExpense || 0;
     await db.collection('trips').doc(tripId).update({
       totalExpense: currentTotal + Number(amount),

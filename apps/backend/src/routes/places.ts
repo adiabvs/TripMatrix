@@ -50,13 +50,33 @@ router.post('/', async (req: OptionalAuthRequest, res) => {
       });
     }
 
-    // Verify trip exists
+    // Verify trip exists and user has permission
     const db = getDb();
     const tripDoc = await db.collection('trips').doc(tripId).get();
     if (!tripDoc.exists) {
       return res.status(404).json({
         success: false,
         error: 'Trip not found',
+      });
+    }
+
+    const trip = tripDoc.data()!;
+    
+    // Check authorization - allow creator or participants to add places
+    if (!uid) {
+      return res.status(401).json({
+        success: false,
+        error: 'Authentication required',
+      });
+    }
+    
+    const isCreator = trip.creatorId === uid;
+    const isParticipant = trip.participants?.some((p: any) => p.uid === uid);
+    
+    if (!isCreator && !isParticipant) {
+      return res.status(403).json({
+        success: false,
+        error: 'Not authorized to add places. Only the creator or participants can add places.',
       });
     }
 

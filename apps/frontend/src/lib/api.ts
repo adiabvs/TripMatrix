@@ -32,6 +32,7 @@ async function fetchWithAuth(
     ...(options.headers as Record<string, string>),
   };
 
+  // Add authorization header only if token is provided (for public trips, token can be null)
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
@@ -103,6 +104,16 @@ export async function updateTrip(
   return result.data;
 }
 
+export async function deleteTrip(tripId: string, token: string | null): Promise<void> {
+  const response = await fetchWithAuth(`/api/trips/${tripId}`, {
+    method: 'DELETE',
+  }, token);
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+    throw new Error(error.error || `HTTP ${response.status}`);
+  }
+}
+
 export async function addParticipants(
   tripId: string,
   participants: string[],
@@ -119,8 +130,23 @@ export async function addParticipants(
   return result.data;
 }
 
-export async function getPublicTrips(): Promise<Trip[]> {
-  const response = await fetch(`${API_URL}/api/trips/public/list`);
+export async function getPublicTrips(search?: string): Promise<Trip[]> {
+  const url = new URL(`${API_URL}/api/trips/public/list`);
+  if (search) {
+    url.searchParams.append('search', search);
+  }
+  const response = await fetch(url.toString(), {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
+  
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+    throw new Error(error.error || 'Failed to fetch public trips');
+  }
+  
   const result: ApiResponse<Trip[]> = await response.json();
   if (!result.success || !result.data) {
     throw new Error(result.error || 'Failed to fetch public trips');

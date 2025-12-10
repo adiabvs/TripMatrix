@@ -17,7 +17,10 @@ interface StepCardProps {
   onEdit?: (place: TripPlace) => void;
   onDelete?: (place: TripPlace) => void;
   onAddExpense?: (place: TripPlace) => void;
-  isCreator?: boolean;
+  isCreator?: boolean; // Can edit (creator or participant)
+  expenseVisibility?: 'everyone' | 'members' | 'creator'; // Trip expense visibility setting
+  currentUserId?: string; // Current user ID to check visibility
+  isTripMember?: boolean; // Whether current user is a trip member
 }
 
 const modeLabels: Record<ModeOfTravel, string> = {
@@ -29,13 +32,25 @@ const modeLabels: Record<ModeOfTravel, string> = {
   flight: '✈️ Flight',
 };
 
-export default function StepCard({ place, index, isLast, expenses = [], onAddStep, showAddButton, onEdit, onDelete, onAddExpense, isCreator }: StepCardProps) {
+export default function StepCard({ place, index, isLast, expenses = [], onAddStep, showAddButton, onEdit, onDelete, onAddExpense, isCreator, expenseVisibility = 'members', currentUserId, isTripMember = false }: StepCardProps) {
   const [viewingPhotos, setViewingPhotos] = useState(false);
   const [photoIndex, setPhotoIndex] = useState(0);
   const visitedDate = toDate(place.visitedAt);
-  const stepExpenses = expenses.filter((e) => e.placeId === place.placeId);
+  
+  // Filter expenses based on visibility settings
+  let visibleExpenses = expenses.filter((e) => e.placeId === place.placeId);
+  
+  if (expenseVisibility === 'creator') {
+    // Only creator can see expenses
+    visibleExpenses = isCreator ? visibleExpenses : [];
+  } else if (expenseVisibility === 'members') {
+    // Only trip members can see expenses
+    visibleExpenses = isTripMember || isCreator ? visibleExpenses : [];
+  }
+  // If 'everyone', show all expenses (no filtering needed)
+  
   // Group expenses by currency
-  const expensesByCurrency = stepExpenses.reduce((acc, e) => {
+  const expensesByCurrency = visibleExpenses.reduce((acc, e) => {
     const curr = e.currency || 'USD';
     if (!acc[curr]) acc[curr] = [];
     acc[curr].push(e);
@@ -249,9 +264,9 @@ export default function StepCard({ place, index, isLast, expenses = [], onAddSte
                     </button>
                   )}
                 </div>
-                {stepExpenses.length > 0 && (
+                {visibleExpenses.length > 0 && (
                   <div className="space-y-2">
-                    {stepExpenses.map((expense) => (
+                    {visibleExpenses.map((expense) => (
                       <div key={expense.expenseId} className="text-xs bg-gray-50 rounded-lg p-2">
                         <div className="flex justify-between">
                           <span className="font-medium text-gray-900">

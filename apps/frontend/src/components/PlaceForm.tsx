@@ -84,6 +84,7 @@ export default function PlaceForm({ tripId, onSubmit, onCancel, token, previousP
   const [defaultImagePrivacy, setDefaultImagePrivacy] = useState<boolean>(false); // false = private to trip members
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showExpenseSection, setShowExpenseSection] = useState(false);
+  const [pendingExpense, setPendingExpense] = useState<Partial<TripExpense> | null>(null);
 
   // Calculate distance and time when coordinates or mode changes
   useEffect(() => {
@@ -498,13 +499,49 @@ export default function PlaceForm({ tripId, onSubmit, onCancel, token, previousP
         </div>
       )}
 
+      {/* Optional Expense Section */}
+      {participants && participants.length > 0 && (
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-3">
+            <label className="flex items-center gap-2 text-sm font-medium text-gray-700 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={showExpenseSection}
+                onChange={(e) => setShowExpenseSection(e.target.checked)}
+                className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+              />
+              <span>Add Expense (Optional)</span>
+            </label>
+          </div>
+          {showExpenseSection && (
+            <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+              <ExpenseForm
+                tripId={tripId}
+                participants={participants}
+                onSubmit={async (expenseData) => {
+                  // Store expense data to be created after place is saved
+                  setPendingExpense(expenseData);
+                  setShowExpenseSection(false);
+                  alert('Expense will be added after you save this step. Please click "Add Step" to continue.');
+                }}
+                onCancel={() => {
+                  setShowExpenseSection(false);
+                  setPendingExpense(null);
+                }}
+                placeCountry={placeCountry}
+              />
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="flex gap-4">
         <button
           type="submit"
           disabled={loading || !placeName || !coordinates}
           className="flex-1 bg-black text-white py-3 px-6 rounded-full hover:bg-gray-800 disabled:opacity-50 font-medium transition-colors"
         >
-          {loading ? 'Adding...' : 'Add Step'}
+          {loading ? (initialData ? 'Saving...' : 'Adding...') : (initialData ? 'Save Changes' : 'Add Step')}
         </button>
         <button
           type="button"
