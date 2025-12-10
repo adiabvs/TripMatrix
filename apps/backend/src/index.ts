@@ -37,8 +37,14 @@ if (isSupabaseInitialized()) {
 // CORS configuration
 const corsOptions = {
   origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+    // Log the origin for debugging
+    console.log('CORS request from origin:', origin);
+    
     // Allow requests with no origin (like mobile apps, Postman, or curl)
-    if (!origin) return callback(null, true);
+    if (!origin) {
+      console.log('No origin header, allowing request');
+      return callback(null, true);
+    }
     
     // List of allowed origins
     const allowedOrigins = [
@@ -48,21 +54,33 @@ const corsOptions = {
       'https://tripmatrixfrontend-production.up.railway.app',
     ].filter(Boolean); // Remove undefined values
     
+    console.log('Allowed origins:', allowedOrigins);
+    
     // Check if origin is allowed
     if (allowedOrigins.includes(origin)) {
+      console.log('Origin allowed:', origin);
       callback(null, true);
     } else {
-      // In development, allow all origins for easier testing
-      if (process.env.NODE_ENV !== 'production') {
+      // In production on Railway, be more permissive (Railway may modify headers)
+      // Allow any Railway subdomain
+      if (origin.includes('.railway.app') || origin.includes('.up.railway.app')) {
+        console.log('Railway origin detected, allowing:', origin);
+        callback(null, true);
+      } else if (process.env.NODE_ENV !== 'production') {
+        // In development, allow all origins for easier testing
+        console.log('Development mode, allowing origin:', origin);
         callback(null, true);
       } else {
-        callback(new Error('Not allowed by CORS'));
+        console.log('Origin not allowed:', origin);
+        callback(new Error(`Not allowed by CORS: ${origin}`));
       }
     }
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  preflightContinue: false,
+  optionsSuccessStatus: 204,
 };
 
 // Middleware
