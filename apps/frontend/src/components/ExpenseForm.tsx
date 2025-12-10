@@ -113,56 +113,33 @@ export default function ExpenseForm({
         <label className="block text-sm font-medium text-gray-700 mb-2">
           Currency *
         </label>
-        <div className="space-y-2">
-          {/* Option 1: Default Currency (always first) */}
-          <button
-            type="button"
-            onClick={() => setCurrency(defaultCurrency)}
-            className={`w-full px-4 py-3 rounded-lg border-2 text-left transition-colors ${
-              currency === defaultCurrency
-                ? 'border-black bg-gray-50'
-                : 'border-gray-200 hover:border-gray-300'
-            }`}
-          >
-            <div className="font-medium text-gray-900">Default: {defaultCurrency}</div>
-            <div className="text-xs text-gray-500">Your default currency</div>
-          </button>
-
-          {/* Option 2: Place Country Currency (only if different from default, shown second) */}
+        <select
+          value={currency}
+          onChange={(e) => setCurrency(e.target.value)}
+          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent"
+          required
+        >
+          {/* Option 1: Default Currency (always first, selected by default) */}
+          <option value={defaultCurrency}>
+            Default: {defaultCurrency} - {commonCurrencies.find(c => c.code === defaultCurrency)?.name || defaultCurrency}
+          </option>
+          
+          {/* Option 2: Step Location Currency (only if different from default, shown second) */}
           {placeCurrency && placeCurrency !== defaultCurrency && (
-            <button
-              type="button"
-              onClick={() => setCurrency(placeCurrency)}
-              className={`w-full px-4 py-3 rounded-lg border-2 text-left transition-colors ${
-                currency === placeCurrency
-                  ? 'border-black bg-gray-50'
-                  : 'border-gray-200 hover:border-gray-300'
-              }`}
-            >
-              <div className="font-medium text-gray-900">Step Location: {placeCurrency}</div>
-              <div className="text-xs text-gray-500">Currency for this step's location</div>
-            </button>
+            <option value={placeCurrency}>
+              Step Location: {placeCurrency} - {commonCurrencies.find(c => c.code === placeCurrency)?.name || placeCurrency}
+            </option>
           )}
-
-          {/* Option 3: Choose from List (always last) */}
-          <div className="border-2 border-gray-200 rounded-lg">
-            <select
-              value={currency}
-              onChange={(e) => setCurrency(e.target.value)}
-              className="w-full px-4 py-3 border-0 rounded-lg focus:ring-2 focus:ring-black bg-transparent"
-              required
-            >
-              <option value="" disabled>Other currencies...</option>
-              {commonCurrencies
-                .filter((curr) => curr.code !== defaultCurrency && curr.code !== placeCurrency)
-                .map((curr) => (
-                  <option key={curr.code} value={curr.code}>
-                    {curr.code} - {curr.name} ({curr.symbol})
-                  </option>
-                ))}
-            </select>
-          </div>
-        </div>
+          
+          {/* Option 3: All other currencies */}
+          {commonCurrencies
+            .filter((curr) => curr.code !== defaultCurrency && curr.code !== placeCurrency)
+            .map((curr) => (
+              <option key={curr.code} value={curr.code}>
+                {curr.code} - {curr.name} ({curr.symbol})
+              </option>
+            ))}
+        </select>
       </div>
 
       <div className="mb-4">
