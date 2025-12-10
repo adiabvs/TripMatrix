@@ -94,7 +94,9 @@ export default function PlaceMapSelector({
     
     setIsSearching(true);
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+      // Normalize API URL - remove port from HTTPS URLs (Railway uses default HTTPS port)
+      const rawUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+      const apiUrl = rawUrl.startsWith('https://') ? rawUrl.replace(/:\d+$/, '') : rawUrl;
       const response = await fetch(
         `${apiUrl}/api/geocoding/search?q=${encodeURIComponent(searchQuery)}&limit=5`
       );

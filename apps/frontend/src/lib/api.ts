@@ -10,7 +10,17 @@ import type {
   User,
 } from '@tripmatrix/types';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+// Normalize API URL - remove port from HTTPS URLs (Railway uses default HTTPS port)
+function normalizeApiUrl(url: string): string {
+  if (!url) return 'http://localhost:3001';
+  // Remove port from HTTPS URLs (Railway/production)
+  if (url.startsWith('https://')) {
+    return url.replace(/:\d+$/, ''); // Remove trailing :PORT
+  }
+  return url;
+}
+
+const API_URL = normalizeApiUrl(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001');
 
 async function fetchWithAuth(
   endpoint: string,
