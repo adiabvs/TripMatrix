@@ -8,6 +8,7 @@ import type {
   ExpenseSummary,
   ApiResponse,
   User,
+  TravelDiary,
 } from '@tripmatrix/types';
 
 // Normalize API URL - remove port from HTTPS URLs (Railway uses default HTTPS port)
@@ -347,6 +348,52 @@ export async function updateUser(
   const result: ApiResponse<User> = await response.json();
   if (!result.success || !result.data) {
     throw new Error(result.error || 'Failed to update user');
+  }
+  return result.data;
+}
+
+// Diary APIs
+export async function generateDiary(
+  tripId: string,
+  token: string | null
+): Promise<TravelDiary> {
+  const response = await fetchWithAuth(`/api/diary/generate/${tripId}`, {
+    method: 'POST',
+  }, token);
+  const result: ApiResponse<TravelDiary> = await response.json();
+  if (!result.success || !result.data) {
+    throw new Error(result.error || 'Failed to generate diary');
+  }
+  return result.data;
+}
+
+export async function getDiary(
+  tripId: string,
+  token: string | null
+): Promise<TravelDiary | null> {
+  const response = await fetchWithAuth(`/api/diary/trip/${tripId}`, {}, token);
+  const result: ApiResponse<TravelDiary> = await response.json();
+  if (!result.success) {
+    if (response.status === 404) {
+      return null;
+    }
+    throw new Error(result.error || 'Failed to fetch diary');
+  }
+  return result.data || null;
+}
+
+export async function updateDiary(
+  diaryId: string,
+  updates: Partial<TravelDiary>,
+  token: string | null
+): Promise<TravelDiary> {
+  const response = await fetchWithAuth(`/api/diary/${diaryId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(updates),
+  }, token);
+  const result: ApiResponse<TravelDiary> = await response.json();
+  if (!result.success || !result.data) {
+    throw new Error(result.error || 'Failed to update diary');
   }
   return result.data;
 }

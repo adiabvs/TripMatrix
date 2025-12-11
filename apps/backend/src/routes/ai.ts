@@ -16,7 +16,7 @@ const genAI = process.env.GEMINI_API_KEY
 // Rewrite text using Gemini AI
 router.post('/rewrite', async (req: AuthenticatedRequest, res) => {
   try {
-    const { text, tone }: RewriteRequest = req.body;
+    const { text, style }: RewriteRequest = req.body;
 
     if (!text) {
       return res.status(400).json({
@@ -34,20 +34,22 @@ router.post('/rewrite', async (req: AuthenticatedRequest, res) => {
 
     const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
 
-    const toneInstructions: Record<string, string> = {
-      friendly: 'Rewrite this text in a friendly, casual, and warm tone. Make it sound like you\'re talking to a friend.',
-      professional: 'Rewrite this text in a professional, clear, and concise tone. Use formal language and proper structure.',
-      'travel-blog': 'Rewrite this text in an engaging travel blog style. Make it descriptive, inspiring, and capture the essence of the travel experience.',
+    const styleInstructions: Record<string, string> = {
+      casual: 'Rewrite this text in a friendly, casual, and warm tone. Make it sound like you\'re talking to a friend.',
+      formal: 'Rewrite this text in a professional, clear, and concise tone. Use formal language and proper structure.',
+      poetic: 'Rewrite this text in a poetic and lyrical style. Make it beautiful and evocative.',
+      humorous: 'Rewrite this text in a humorous and lighthearted style. Add wit and charm.',
     };
 
-    const prompt = `${toneInstructions[tone] || toneInstructions.friendly}\n\nOriginal text:\n${text}\n\nRewritten text:`;
+    const prompt = `${styleInstructions[style || 'casual']}\n\nOriginal text:\n${text}\n\nRewritten text:`;
 
     const result = await model.generateContent(prompt);
     const response = await result.response;
     const rewrittenText = response.text();
 
     const rewriteResponse: RewriteResponse = {
-      rewrittenText: rewrittenText.trim(),
+      original: text,
+      rewritten: rewrittenText.trim(),
     };
 
     res.json({

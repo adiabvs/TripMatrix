@@ -502,6 +502,48 @@ export default function TripDetailPage() {
           </div>
         )}
 
+        {/* Travel Diary */}
+        {canEdit && (
+          <div className="mb-16 p-6 bg-gradient-to-br from-purple-50 to-indigo-50 rounded-2xl border border-purple-100">
+            <div className="flex items-start justify-between">
+              <div className="flex-1">
+                <h3 className="text-lg font-bold text-gray-900 mb-2">Travel Diary</h3>
+                {trip.status === 'completed' ? (
+                  <>
+                    <p className="text-sm text-gray-600 mb-4">
+                      Create a beautiful travel diary with Adobe Express
+                    </p>
+                    <Link
+                      href={`/trips/${tripId}/diary`}
+                      className="inline-flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm font-medium"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                      </svg>
+                      Create Travel Diary
+                    </Link>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-sm text-gray-600 mb-4">
+                      Complete your trip to create a beautiful travel diary with Adobe Express
+                    </p>
+                    <button
+                      onClick={handleEndTrip}
+                      className="inline-flex items-center gap-2 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm font-medium"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      Mark Trip as Completed
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Expense Summary (if trip completed) */}
         {trip.status === 'completed' && expenseSummary && (
           <div className="mb-16 p-6 bg-blue-50 rounded-2xl border border-blue-100">
