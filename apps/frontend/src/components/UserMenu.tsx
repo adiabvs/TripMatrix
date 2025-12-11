@@ -29,10 +29,13 @@ export default function UserMenu() {
 
   const handleSignOut = async () => {
     try {
+      // Redirect to home page first, then sign out
+      router.replace('/');
       await signOut();
-      router.push('/');
     } catch (error) {
       console.error('Failed to sign out:', error);
+      // Still redirect to home even if sign out fails
+      router.replace('/');
     }
   };
 
