@@ -14,6 +14,7 @@ interface ExpenseFormProps {
   onCancel: () => void;
   placeId?: string;
   placeCountry?: string; // Country code for currency detection
+  initialData?: TripExpense; // For editing existing expense
 }
 
 export default function ExpenseForm({
@@ -23,6 +24,7 @@ export default function ExpenseForm({
   onCancel,
   placeId,
   placeCountry,
+  initialData,
 }: ExpenseFormProps) {
   const { user } = useAuth();
   const [amount, setAmount] = useState('');
@@ -37,10 +39,28 @@ export default function ExpenseForm({
   const defaultCurrency = user?.defaultCurrency || (user?.country ? getCurrencyFromCountry(user.country) : 'USD');
   const placeCurrency = placeCountry ? getCurrencyFromCountry(placeCountry) : null;
   
+  // Initialize form with initialData if editing
   useEffect(() => {
-    // Set initial currency to user's default
-    setCurrency(defaultCurrency);
-  }, [defaultCurrency]);
+    if (initialData) {
+      setAmount(initialData.amount.toString());
+      setCurrency(initialData.currency || defaultCurrency);
+      setPaidBy(initialData.paidBy);
+      setDescription(initialData.description || '');
+      setSplitBetween(new Set(initialData.splitBetween || []));
+      // Determine split mode based on splitBetween
+      const allIds = participants.map(p => p.uid || p.guestName || '').filter(Boolean);
+      if (initialData.splitBetween.length === allIds.length) {
+        setSplitMode('equal');
+      } else if (initialData.splitBetween.length === participants.length) {
+        setSplitMode('everyone');
+      } else {
+        setSplitMode('people');
+      }
+    } else {
+      // Set initial currency to user's default for new expense
+      setCurrency(defaultCurrency);
+    }
+  }, [initialData, defaultCurrency, participants]);
 
   // Update splitBetween when splitMode changes
   useEffect(() => {
@@ -131,16 +151,18 @@ export default function ExpenseForm({
         description: description || undefined,
         placeId: placeId || undefined,
       });
-      // Reset form
-      setAmount('');
-      setCurrency(defaultCurrency);
-      setPaidBy('');
-      setSplitMode('equal');
-      setSplitBetween(new Set());
-      setDescription('');
+      // Reset form only if creating new expense
+      if (!initialData) {
+        setAmount('');
+        setCurrency(defaultCurrency);
+        setPaidBy('');
+        setSplitMode('equal');
+        setSplitBetween(new Set());
+        setDescription('');
+      }
     } catch (error) {
-      console.error('Failed to create expense:', error);
-      alert('Failed to create expense');
+      console.error(`Failed to ${initialData ? 'update' : 'create'} expense:`, error);
+      alert(`Failed to ${initialData ? 'update' : 'create'} expense`);
     } finally {
       setLoading(false);
     }
@@ -148,7 +170,7 @@ export default function ExpenseForm({
 
   return (
     <form onSubmit={handleSubmit} className="bg-white p-6 rounded-lg shadow-md">
-      <h3 className="text-xl font-semibold mb-4">Add Expense</h3>
+      <h3 className="text-xl font-semibold mb-4">{initialData ? 'Edit Expense' : 'Add Expense'}</h3>
 
       <div className="mb-4">
         <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -307,7 +329,7 @@ export default function ExpenseForm({
           disabled={loading}
           className="flex-1 bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 disabled:opacity-50"
         >
-          {loading ? 'Adding...' : 'Add Expense'}
+          {loading ? (initialData ? 'Updating...' : 'Adding...') : (initialData ? 'Update Expense' : 'Add Expense')}
         </button>
         <button
           type="button"

@@ -251,6 +251,35 @@ export async function getExpenseSummary(
   return result.data;
 }
 
+export async function updateExpense(
+  expenseId: string,
+  expenseData: Partial<TripExpense>,
+  token: string | null
+): Promise<TripExpense> {
+  const response = await fetchWithAuth(`/api/expenses/${expenseId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(expenseData),
+  }, token);
+  const result: ApiResponse<TripExpense> = await response.json();
+  if (!result.success || !result.data) {
+    throw new Error(result.error || 'Failed to update expense');
+  }
+  return result.data;
+}
+
+export async function deleteExpense(
+  expenseId: string,
+  token: string | null
+): Promise<void> {
+  const response = await fetchWithAuth(`/api/expenses/${expenseId}`, {
+    method: 'DELETE',
+  }, token);
+  const result: ApiResponse<{ expenseId: string }> = await response.json();
+  if (!result.success) {
+    throw new Error(result.error || 'Failed to delete expense');
+  }
+}
+
 // Route APIs
 export async function recordRoutePoints(
   tripId: string,

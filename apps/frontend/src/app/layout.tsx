@@ -1,13 +1,33 @@
-import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
+import type { Metadata, Viewport } from 'next';
+import { Roboto } from 'next/font/google';
 import './globals.css';
 import { AuthProvider } from '@/lib/auth';
+import ThemeProvider from '@/components/ThemeProvider';
 
-const inter = Inter({ subsets: ['latin'] });
+const roboto = Roboto({ 
+  weight: ['300', '400', '500', '700'],
+  subsets: ['latin'],
+  display: 'swap',
+});
 
 export const metadata: Metadata = {
   title: 'TripMatrix - Trip Logging & Social Travel Tracking',
   description: 'Create trips, track navigation, log places, split expenses, and share your travel experiences',
+  themeColor: '#6750A4',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'TripMatrix',
+  },
+  manifest: '/manifest.json',
+};
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: 'cover',
 };
 
 export default function RootLayout({
@@ -17,8 +37,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={inter.className}>
-        <AuthProvider>{children}</AuthProvider>
+      <body className={roboto.className}>
+        <ThemeProvider>
+          <AuthProvider>{children}</AuthProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

@@ -154,6 +154,169 @@ router.get('/trip/:tripId', async (req: OptionalAuthRequest, res) => {
   }
 });
 
+// Update expense
+router.patch('/:expenseId', async (req: OptionalAuthRequest, res) => {
+  try {
+    const { expenseId } = req.params;
+    const { amount, currency, paidBy, splitBetween, description } = req.body;
+    const uid = req.uid!;
+
+    if (!uid) {
+      return res.status(401).json({
+        success: false,
+        error: 'Authentication required',
+      });
+    }
+
+    const db = getDb();
+    const expenseDoc = await db.collection('tripExpenses').doc(expenseId).get();
+    
+    if (!expenseDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        error: 'Expense not found',
+      });
+    }
+
+    const expense = expenseDoc.data() as TripExpense;
+    
+    // Verify trip exists and user has access
+    const tripDoc = await db.collection('trips').doc(expense.tripId).get();
+    if (!tripDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        error: 'Trip not found',
+      });
+    }
+
+    const trip = tripDoc.data()!;
+    const isCreator = trip.creatorId === uid;
+    const isParticipant = trip.participants?.some((p: any) => p.uid === uid);
+    
+    if (!isCreator && !isParticipant) {
+      return res.status(403).json({
+        success: false,
+        error: 'Not authorized to edit expenses',
+      });
+    }
+
+    const updateData: any = { updatedAt: new Date() };
+    
+    if (amount !== undefined) {
+      updateData.amount = Number(amount);
+      // Recalculate shares if amount or splitBetween changed
+      const newSplitBetween = splitBetween || expense.splitBetween;
+      updateData.calculatedShares = calculateExpenseShares(Number(amount), newSplitBetween);
+    }
+    
+    if (currency !== undefined) updateData.currency = currency;
+    if (paidBy !== undefined) updateData.paidBy = paidBy;
+    if (splitBetween !== undefined) {
+      updateData.splitBetween = splitBetween;
+      // Recalculate shares if splitBetween changed
+      const newAmount = amount !== undefined ? Number(amount) : expense.amount;
+      updateData.calculatedShares = calculateExpenseShares(newAmount, splitBetween);
+    }
+    if (description !== undefined) updateData.description = description;
+
+    await db.collection('tripExpenses').doc(expenseId).update(updateData);
+
+    // Update trip total expense if amount changed
+    if (amount !== undefined) {
+      const oldAmount = expense.amount;
+      const newAmount = Number(amount);
+      const difference = newAmount - oldAmount;
+      const currentTotal = trip.totalExpense || 0;
+      await db.collection('trips').doc(expense.tripId).update({
+        totalExpense: currentTotal + difference,
+        updatedAt: new Date(),
+      });
+    }
+
+    const updatedExpense: TripExpense = {
+      ...expense,
+      ...updateData,
+    };
+
+    res.json({
+      success: true,
+      data: updatedExpense,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+// Delete expense
+router.delete('/:expenseId', async (req: OptionalAuthRequest, res) => {
+  try {
+    const { expenseId } = req.params;
+    const uid = req.uid!;
+
+    if (!uid) {
+      return res.status(401).json({
+        success: false,
+        error: 'Authentication required',
+      });
+    }
+
+    const db = getDb();
+    const expenseDoc = await db.collection('tripExpenses').doc(expenseId).get();
+    
+    if (!expenseDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        error: 'Expense not found',
+      });
+    }
+
+    const expense = expenseDoc.data() as TripExpense;
+    
+    // Verify trip exists and user has access
+    const tripDoc = await db.collection('trips').doc(expense.tripId).get();
+    if (!tripDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        error: 'Trip not found',
+      });
+    }
+
+    const trip = tripDoc.data()!;
+    const isCreator = trip.creatorId === uid;
+    const isParticipant = trip.participants?.some((p: any) => p.uid === uid);
+    
+    if (!isCreator && !isParticipant) {
+      return res.status(403).json({
+        success: false,
+        error: 'Not authorized to delete expenses',
+      });
+    }
+
+    // Delete expense
+    await db.collection('tripExpenses').doc(expenseId).delete();
+
+    // Update trip total expense
+    const currentTotal = trip.totalExpense || 0;
+    await db.collection('trips').doc(expense.tripId).update({
+      totalExpense: Math.max(0, currentTotal - expense.amount),
+      updatedAt: new Date(),
+    });
+
+    res.json({
+      success: true,
+      data: { expenseId },
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
 // Get expense summary
 router.get('/trip/:tripId/summary', async (req: OptionalAuthRequest, res) => {
   try {

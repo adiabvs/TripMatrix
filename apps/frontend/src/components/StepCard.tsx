@@ -17,6 +17,8 @@ interface StepCardProps {
   onEdit?: (place: TripPlace) => void;
   onDelete?: (place: TripPlace) => void;
   onAddExpense?: (place: TripPlace) => void;
+  onEditExpense?: (expense: TripExpense) => void;
+  onDeleteExpense?: (expense: TripExpense) => void;
   isCreator?: boolean; // Can edit (creator or participant)
   expenseVisibility?: 'everyone' | 'members' | 'creator'; // Trip expense visibility setting
   currentUserId?: string; // Current user ID to check visibility
@@ -32,7 +34,7 @@ const modeLabels: Record<ModeOfTravel, string> = {
   flight: '✈️ Flight',
 };
 
-export default function StepCard({ place, index, isLast, expenses = [], onAddStep, showAddButton, onEdit, onDelete, onAddExpense, isCreator, expenseVisibility = 'members', currentUserId, isTripMember = false }: StepCardProps) {
+export default function StepCard({ place, index, isLast, expenses = [], onAddStep, showAddButton, onEdit, onDelete, onAddExpense, onEditExpense, onDeleteExpense, isCreator, expenseVisibility = 'members', currentUserId, isTripMember = false }: StepCardProps) {
   const [viewingPhotos, setViewingPhotos] = useState(false);
   const [photoIndex, setPhotoIndex] = useState(0);
   const visitedDate = toDate(place.visitedAt);
@@ -268,11 +270,49 @@ export default function StepCard({ place, index, isLast, expenses = [], onAddSte
                   <div className="space-y-2">
                     {visibleExpenses.map((expense) => (
                       <div key={expense.expenseId} className="text-xs bg-gray-50 rounded-lg p-2">
-                        <div className="flex justify-between">
-                          <span className="font-medium text-gray-900">
-                            {formatCurrency(expense.amount, expense.currency || 'USD')}
-                          </span>
-                          <span className="text-gray-500 text-xs">{expense.paidBy}</span>
+                        <div className="flex justify-between items-start">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-gray-900">
+                                {formatCurrency(expense.amount, expense.currency || 'USD')}
+                              </span>
+                              {isCreator && (onEditExpense || onDeleteExpense) && (
+                                <div className="flex items-center gap-1">
+                                  {onEditExpense && (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        onEditExpense(expense);
+                                      }}
+                                      className="text-gray-400 hover:text-blue-600 transition-colors p-0.5"
+                                      title="Edit expense"
+                                    >
+                                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                      </svg>
+                                    </button>
+                                  )}
+                                  {onDeleteExpense && (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (confirm(`Are you sure you want to delete this expense of ${formatCurrency(expense.amount, expense.currency || 'USD')}?`)) {
+                                          onDeleteExpense(expense);
+                                        }
+                                      }}
+                                      className="text-gray-400 hover:text-red-600 transition-colors p-0.5"
+                                      title="Delete expense"
+                                    >
+                                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                      </svg>
+                                    </button>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                            <span className="text-gray-500 text-xs block mt-0.5">{expense.paidBy}</span>
+                          </div>
                         </div>
                         {expense.description && (
                           <p className="text-gray-600 mt-1">{expense.description}</p>

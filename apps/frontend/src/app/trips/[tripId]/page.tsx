@@ -14,6 +14,8 @@ import {
       updatePlace,
       deletePlace,
       getTripPlaces,
+      updateExpense,
+      deleteExpense,
     } from '@/lib/api';
 import { db } from '@/lib/firebase';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
@@ -25,6 +27,7 @@ import { formatDistance, formatDuration } from '@tripmatrix/utils';
 import { format } from 'date-fns';
 import dynamic from 'next/dynamic';
 import { toDate } from '@/lib/dateUtils';
+import { formatCurrency, getCurrencyFromCountry } from '@/lib/currencyUtils';
 
 const TripMap = dynamic(() => import('@/components/TripMap'), { ssr: false });
 
@@ -170,6 +173,24 @@ export default function TripDetailPage() {
     } catch (error: any) {
       console.error('Failed to delete place:', error);
       alert(`Failed to delete place: ${error.message || 'Unknown error'}`);
+    }
+  };
+
+  const handleEditExpense = async (expense: TripExpense) => {
+    router.push(`/trips/${tripId}/expenses/${expense.expenseId}/edit`);
+  };
+
+  const handleDeleteExpense = async (expense: TripExpense) => {
+    if (!token) {
+      alert('Authentication token is missing. Please log in again.');
+      return;
+    }
+    try {
+      await deleteExpense(expense.expenseId, token);
+      await loadTripData(); // Reload data to reflect changes
+    } catch (error: any) {
+      console.error('Failed to delete expense:', error);
+      alert(`Failed to delete expense: ${error.message || 'Unknown error'}`);
     }
   };
 
@@ -391,6 +412,8 @@ export default function TripDetailPage() {
                       // Navigate to new expense page with placeId
                       router.push(`/trips/${tripId}/expenses/new?placeId=${place.placeId}`);
                     }}
+                    onEditExpense={handleEditExpense}
+                    onDeleteExpense={handleDeleteExpense}
                     isCreator={canEdit}
                     expenseVisibility={trip.expenseVisibility || 'members'}
                     currentUserId={user?.uid}
@@ -487,20 +510,26 @@ export default function TripDetailPage() {
               <div>
                 <p className="text-sm text-gray-600">Total Spent</p>
                 <p className="text-2xl font-bold text-gray-900">
-                  ${expenseSummary.totalSpent.toFixed(2)}
+                  {formatCurrency(
+                    expenseSummary.totalSpent,
+                    user?.defaultCurrency || (user?.country ? getCurrencyFromCountry(user.country) : 'USD')
+                  )}
                 </p>
               </div>
               {expenseSummary.settlements.length > 0 && (
                 <div className="pt-4 border-t border-blue-200">
                   <p className="text-sm font-semibold text-gray-900 mb-2">Settlements:</p>
                   <ul className="space-y-2">
-                    {expenseSummary.settlements.map((settlement, idx) => (
-                      <li key={idx} className="text-sm text-gray-700">
-                        {settlement.from.substring(0, 8)}... owes{' '}
-                        <span className="font-semibold">${settlement.amount.toFixed(2)}</span> to{' '}
-                        {settlement.to.substring(0, 8)}...
-                      </li>
-                    ))}
+                    {expenseSummary.settlements.map((settlement, idx) => {
+                      const defaultCurrency = user?.defaultCurrency || (user?.country ? getCurrencyFromCountry(user.country) : 'USD');
+                      return (
+                        <li key={idx} className="text-sm text-gray-700">
+                          {settlement.from.substring(0, 8)}... owes{' '}
+                          <span className="font-semibold">{formatCurrency(settlement.amount, defaultCurrency)}</span> to{' '}
+                          {settlement.to.substring(0, 8)}...
+                        </li>
+                      );
+                    })}
                   </ul>
                 </div>
               )}
