@@ -5,6 +5,7 @@ import type { TripPlace, RewriteTone, ModeOfTravel, TripExpense, TripParticipant
 import { rewriteText, uploadImage, createExpense } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { getCurrencyFromCountry, commonCurrencies, formatCurrency } from '@/lib/currencyUtils';
+import { toDate } from '@/lib/dateUtils';
 import dynamic from 'next/dynamic';
 
 const PlaceMapSelector = dynamic(() => import('./PlaceMapSelector'), { ssr: false });
@@ -85,6 +86,30 @@ export default function PlaceForm({ tripId, onSubmit, onCancel, token, previousP
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showExpenseSection, setShowExpenseSection] = useState(false);
   const [pendingExpense, setPendingExpense] = useState<Partial<TripExpense> | null>(null);
+
+  // Update form state when initialData changes (for edit mode)
+  useEffect(() => {
+    if (initialData) {
+      setPlaceName(initialData.name || '');
+      setCoordinates(initialData.coordinates || null);
+      setVisitedDateTime(
+        initialData.visitedAt 
+          ? formatDateTimeLocal(toDate(initialData.visitedAt))
+          : formatDateTimeLocal(new Date())
+      );
+      setModeOfTravel(initialData.modeOfTravel || null);
+      setRating(initialData.rating || 0);
+      setComment(initialData.comment || '');
+      setRewrittenComment(initialData.rewrittenComment || '');
+      setCalculatedDistance(initialData.distanceFromPrevious || null);
+      setCalculatedTime(initialData.timeFromPrevious || null);
+      setImages(
+        initialData.imageMetadata || 
+        initialData.images?.map(url => ({ url, isPublic: false })) || 
+        []
+      );
+    }
+  }, [initialData]);
 
   // Calculate distance and time when coordinates or mode changes
   useEffect(() => {
@@ -167,6 +192,10 @@ export default function PlaceForm({ tripId, onSubmit, onCancel, token, previousP
       );
       const uploadedImages = await Promise.all(uploadPromises);
       setImages([...images, ...uploadedImages]);
+      // Reset file input after successful upload
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     } catch (error) {
       console.error('Failed to upload images:', error);
       alert('Failed to upload some images');
@@ -212,12 +241,15 @@ export default function PlaceForm({ tripId, onSubmit, onCancel, token, previousP
 
     setLoading(true);
     try {
-      // Calculate visitedAt timestamp - if inserting between steps, set it between previous and next
+      // Calculate visitedAt timestamp from the form input
       let visitedAtDate: Date;
-      if (nextPlace) {
+      if (visitedDateTime) {
+        // Use the date/time from the form input
+        visitedAtDate = new Date(visitedDateTime);
+      } else if (nextPlace) {
         // Insert between steps: set timestamp between previous and next
-        const nextVisitedAt = new Date(nextPlace.visitedAt);
-        const prevVisitedAt = previousPlace ? new Date(previousPlace.visitedAt) : new Date();
+        const nextVisitedAt = toDate(nextPlace.visitedAt);
+        const prevVisitedAt = previousPlace ? toDate(previousPlace.visitedAt) : new Date();
         // Set to midpoint between previous and next, or 1 hour before next if no previous
         if (previousPlace && nextVisitedAt > prevVisitedAt) {
           const midpoint = new Date((prevVisitedAt.getTime() + nextVisitedAt.getTime()) / 2);
@@ -240,21 +272,28 @@ export default function PlaceForm({ tripId, onSubmit, onCancel, token, previousP
         modeOfTravel: previousPlace && modeOfTravel !== null ? modeOfTravel : undefined,
         distanceFromPrevious: calculatedDistance || undefined,
         timeFromPrevious: calculatedTime || undefined,
-        imageMetadata: images.length > 0 ? images : undefined,
+        // Always send imageMetadata when editing (initialData exists), otherwise only if there are images
+        imageMetadata: initialData ? images : (images.length > 0 ? images : undefined),
         previousPlace,
         nextPlace,
       });
-      // Reset form
-      setPlaceName('');
-      setCoordinates(null);
-      setRating(0);
-      setComment('');
-      setRewrittenComment('');
-      setCalculatedDistance(null);
-      setCalculatedTime(null);
-      setModeOfTravel(null);
-      setImages([]);
-      setDefaultImagePrivacy(false);
+      // Reset form only if not editing (no initialData)
+      if (!initialData) {
+        setPlaceName('');
+        setCoordinates(null);
+        setRating(0);
+        setComment('');
+        setRewrittenComment('');
+        setCalculatedDistance(null);
+        setCalculatedTime(null);
+        setModeOfTravel(null);
+        setImages([]);
+        setDefaultImagePrivacy(false);
+        // Reset file input
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
+      }
     } catch (error) {
       console.error('Failed to add place:', error);
       alert('Failed to add place');

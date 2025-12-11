@@ -387,6 +387,25 @@ router.patch('/:placeId', authenticateToken, async (req: AuthenticatedRequest, r
     // Build update object, filtering out undefined values
     const cleanUpdates: any = {};
     
+    // Handle all possible update fields
+    if (updates.name !== undefined) {
+      cleanUpdates.name = updates.name;
+    }
+    if (updates.coordinates !== undefined) {
+      cleanUpdates.coordinates = updates.coordinates;
+    }
+    if (updates.visitedAt !== undefined) {
+      cleanUpdates.visitedAt = updates.visitedAt instanceof Date ? updates.visitedAt : new Date(updates.visitedAt);
+    }
+    if (updates.rating !== undefined) {
+      cleanUpdates.rating = updates.rating;
+    }
+    if (updates.comment !== undefined) {
+      cleanUpdates.comment = updates.comment;
+    }
+    if (updates.rewrittenComment !== undefined) {
+      cleanUpdates.rewrittenComment = updates.rewrittenComment;
+    }
     if (updates.modeOfTravel !== undefined) {
       cleanUpdates.modeOfTravel = updates.modeOfTravel || null;
     }
@@ -396,6 +415,16 @@ router.patch('/:placeId', authenticateToken, async (req: AuthenticatedRequest, r
     if (updates.timeFromPrevious !== undefined) {
       cleanUpdates.timeFromPrevious = updates.timeFromPrevious || null;
     }
+    // Handle images - support both legacy and new format
+    if (updates.images !== undefined) {
+      cleanUpdates.images = updates.images;
+    }
+    if (updates.imageMetadata !== undefined) {
+      cleanUpdates.imageMetadata = updates.imageMetadata;
+    }
+    
+    // Always update the updatedAt timestamp
+    cleanUpdates.updatedAt = new Date();
 
     await placeRef.update(cleanUpdates);
 
