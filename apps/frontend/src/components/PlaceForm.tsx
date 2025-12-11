@@ -1,18 +1,26 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import type { TripPlace, RewriteTone, ModeOfTravel } from '@tripmatrix/types';
-import { rewriteText, uploadImage } from '@/lib/api';
+import type { TripPlace, RewriteTone, ModeOfTravel, TripExpense, TripParticipant } from '@tripmatrix/types';
+import { rewriteText, uploadImage, createExpense } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
+import { getCurrencyFromCountry, commonCurrencies, formatCurrency } from '@/lib/currencyUtils';
+import { toDate } from '@/lib/dateUtils';
 import dynamic from 'next/dynamic';
 
 const PlaceMapSelector = dynamic(() => import('./PlaceMapSelector'), { ssr: false });
+const ExpenseForm = dynamic(() => import('./ExpenseForm'), { ssr: false });
 
 interface PlaceFormProps {
   tripId: string;
-  onSubmit: (place: Partial<TripPlace> & { modeOfTravel?: ModeOfTravel; previousPlace?: TripPlace | null }) => Promise<void>;
+  onSubmit: (place: Partial<TripPlace> & { modeOfTravel?: ModeOfTravel; previousPlace?: TripPlace | null; nextPlace?: TripPlace | null }) => Promise<void>;
   onCancel: () => void;
   token: string | null;
   previousPlace?: TripPlace | null;
+  nextPlace?: TripPlace | null; // If inserting between steps
+  initialData?: TripPlace; // For editing existing place
+  participants?: TripParticipant[]; // Trip participants for expense form
+  placeCountry?: string; // Country code for currency detection
 }
 
 // Calculate distance between two coordinates (Haversine formula)
@@ -41,26 +49,71 @@ function calculateTime(distance: number, mode: ModeOfTravel): number {
   return Math.round(distance / speeds[mode]);
 }
 
-export default function PlaceForm({ tripId, onSubmit, onCancel, token, previousPlace }: PlaceFormProps) {
-  const [placeName, setPlaceName] = useState('');
-  const [coordinates, setCoordinates] = useState<{ lat: number; lng: number } | null>(null);
-  const [modeOfTravel, setModeOfTravel] = useState<ModeOfTravel>('car');
-  const [rating, setRating] = useState<number>(0);
-  const [comment, setComment] = useState('');
-  const [rewrittenComment, setRewrittenComment] = useState('');
+export default function PlaceForm({ tripId, onSubmit, onCancel, token, previousPlace, nextPlace, initialData, participants = [], placeCountry }: PlaceFormProps) {
+  // Format date for datetime-local input (YYYY-MM-DDTHH:mm)
+  const formatDateTimeLocal = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+  };
+
+  const [placeName, setPlaceName] = useState(initialData?.name || '');
+  const [coordinates, setCoordinates] = useState<{ lat: number; lng: number } | null>(
+    initialData?.coordinates || null
+  );
+  const [visitedDateTime, setVisitedDateTime] = useState<string>(
+    initialData?.visitedAt 
+      ? formatDateTimeLocal(new Date(initialData.visitedAt))
+      : formatDateTimeLocal(new Date())
+  );
+  const [modeOfTravel, setModeOfTravel] = useState<ModeOfTravel | null>(initialData?.modeOfTravel || null);
+  const [rating, setRating] = useState<number>(initialData?.rating || 0);
+  const [comment, setComment] = useState(initialData?.comment || '');
+  const [rewrittenComment, setRewrittenComment] = useState(initialData?.rewrittenComment || '');
   const [rewriteTone, setRewriteTone] = useState<RewriteTone>('friendly');
   const [rewriting, setRewriting] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [calculatedDistance, setCalculatedDistance] = useState<number | null>(null);
-  const [calculatedTime, setCalculatedTime] = useState<number | null>(null);
-  const [images, setImages] = useState<Array<{ url: string; isPublic: boolean }>>([]);
+  const [calculatedDistance, setCalculatedDistance] = useState<number | null>(initialData?.distanceFromPrevious || null);
+  const [calculatedTime, setCalculatedTime] = useState<number | null>(initialData?.timeFromPrevious || null);
+  const [images, setImages] = useState<Array<{ url: string; isPublic: boolean }>>(
+    initialData?.imageMetadata || initialData?.images?.map(url => ({ url, isPublic: false })) || []
+  );
   const [uploadingImages, setUploadingImages] = useState(false);
   const [defaultImagePrivacy, setDefaultImagePrivacy] = useState<boolean>(false); // false = private to trip members
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [showExpenseSection, setShowExpenseSection] = useState(false);
+  const [pendingExpense, setPendingExpense] = useState<Partial<TripExpense> | null>(null);
+
+  // Update form state when initialData changes (for edit mode)
+  useEffect(() => {
+    if (initialData) {
+      setPlaceName(initialData.name || '');
+      setCoordinates(initialData.coordinates || null);
+      setVisitedDateTime(
+        initialData.visitedAt 
+          ? formatDateTimeLocal(toDate(initialData.visitedAt))
+          : formatDateTimeLocal(new Date())
+      );
+      setModeOfTravel(initialData.modeOfTravel || null);
+      setRating(initialData.rating || 0);
+      setComment(initialData.comment || '');
+      setRewrittenComment(initialData.rewrittenComment || '');
+      setCalculatedDistance(initialData.distanceFromPrevious || null);
+      setCalculatedTime(initialData.timeFromPrevious || null);
+      setImages(
+        initialData.imageMetadata || 
+        initialData.images?.map(url => ({ url, isPublic: false })) || 
+        []
+      );
+    }
+  }, [initialData]);
 
   // Calculate distance and time when coordinates or mode changes
   useEffect(() => {
-    if (coordinates && previousPlace) {
+    if (coordinates && previousPlace && modeOfTravel) {
       const distance = calculateDistance(
         previousPlace.coordinates.lat,
         previousPlace.coordinates.lng,
@@ -70,6 +123,16 @@ export default function PlaceForm({ tripId, onSubmit, onCancel, token, previousP
       const time = calculateTime(distance, modeOfTravel);
       setCalculatedDistance(distance);
       setCalculatedTime(time);
+    } else if (coordinates && previousPlace) {
+      // Calculate distance only (without time) if no mode selected
+      const distance = calculateDistance(
+        previousPlace.coordinates.lat,
+        previousPlace.coordinates.lng,
+        coordinates.lat,
+        coordinates.lng
+      );
+      setCalculatedDistance(distance);
+      setCalculatedTime(null);
     } else {
       setCalculatedDistance(null);
       setCalculatedTime(null);
@@ -88,23 +151,37 @@ export default function PlaceForm({ tripId, onSubmit, onCancel, token, previousP
         coords.lat,
         coords.lng
       );
-      const time = calculateTime(distance, modeOfTravel);
       setCalculatedDistance(distance);
-      setCalculatedTime(time);
+      if (modeOfTravel) {
+        const time = calculateTime(distance, modeOfTravel);
+        setCalculatedTime(time);
+      } else {
+        setCalculatedTime(null);
+      }
     }
   };
 
-  const handleModeChange = (mode: ModeOfTravel) => {
+  const handleModeChange = (mode: ModeOfTravel | null) => {
     setModeOfTravel(mode);
-    if (coordinates && previousPlace && calculatedDistance !== null) {
+    if (coordinates && previousPlace && calculatedDistance !== null && mode) {
       const time = calculateTime(calculatedDistance, mode);
       setCalculatedTime(time);
+    } else if (!mode) {
+      setCalculatedTime(null);
     }
   };
 
   const handleImageUpload = async (files: FileList) => {
     if (!token) {
       alert('Please sign in to upload images');
+      return;
+    }
+
+    // Check photo limit (max 10)
+    const currentCount = images.length;
+    const newCount = Array.from(files).length;
+    if (currentCount + newCount > 10) {
+      alert(`Maximum 10 photos allowed. You have ${currentCount} photos and trying to add ${newCount}. Please remove some photos first.`);
       return;
     }
 
@@ -115,6 +192,10 @@ export default function PlaceForm({ tripId, onSubmit, onCancel, token, previousP
       );
       const uploadedImages = await Promise.all(uploadPromises);
       setImages([...images, ...uploadedImages]);
+      // Reset file input after successful upload
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     } catch (error) {
       console.error('Failed to upload images:', error);
       alert('Failed to upload some images');
@@ -160,30 +241,59 @@ export default function PlaceForm({ tripId, onSubmit, onCancel, token, previousP
 
     setLoading(true);
     try {
+      // Calculate visitedAt timestamp from the form input
+      let visitedAtDate: Date;
+      if (visitedDateTime) {
+        // Use the date/time from the form input
+        visitedAtDate = new Date(visitedDateTime);
+      } else if (nextPlace) {
+        // Insert between steps: set timestamp between previous and next
+        const nextVisitedAt = toDate(nextPlace.visitedAt);
+        const prevVisitedAt = previousPlace ? toDate(previousPlace.visitedAt) : new Date();
+        // Set to midpoint between previous and next, or 1 hour before next if no previous
+        if (previousPlace && nextVisitedAt > prevVisitedAt) {
+          const midpoint = new Date((prevVisitedAt.getTime() + nextVisitedAt.getTime()) / 2);
+          visitedAtDate = midpoint;
+        } else {
+          visitedAtDate = new Date(nextVisitedAt.getTime() - 60 * 60 * 1000); // 1 hour before next
+        }
+      } else {
+        visitedAtDate = new Date();
+      }
+
       await onSubmit({
         tripId,
         name: placeName,
         coordinates,
-        visitedAt: new Date(),
+        visitedAt: visitedAtDate,
         rating: rating > 0 ? rating : undefined,
         comment: rewrittenComment || comment || undefined,
         rewrittenComment: rewrittenComment || undefined,
-        modeOfTravel: previousPlace ? modeOfTravel : undefined,
+        modeOfTravel: previousPlace && modeOfTravel !== null ? modeOfTravel : undefined,
         distanceFromPrevious: calculatedDistance || undefined,
         timeFromPrevious: calculatedTime || undefined,
-        imageMetadata: images.length > 0 ? images : undefined,
+        // Always send imageMetadata when editing (initialData exists), otherwise only if there are images
+        imageMetadata: initialData ? images : (images.length > 0 ? images : undefined),
         previousPlace,
+        nextPlace,
       });
-      // Reset form
-      setPlaceName('');
-      setCoordinates(null);
-      setRating(0);
-      setComment('');
-      setRewrittenComment('');
-      setCalculatedDistance(null);
-      setCalculatedTime(null);
-      setImages([]);
-      setDefaultImagePrivacy(false);
+      // Reset form only if not editing (no initialData)
+      if (!initialData) {
+        setPlaceName('');
+        setCoordinates(null);
+        setRating(0);
+        setComment('');
+        setRewrittenComment('');
+        setCalculatedDistance(null);
+        setCalculatedTime(null);
+        setModeOfTravel(null);
+        setImages([]);
+        setDefaultImagePrivacy(false);
+        // Reset file input
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
+      }
     } catch (error) {
       console.error('Failed to add place:', error);
       alert('Failed to add place');
@@ -194,7 +304,22 @@ export default function PlaceForm({ tripId, onSubmit, onCancel, token, previousP
 
   return (
     <form onSubmit={handleSubmit} className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-      <h3 className="text-2xl font-bold mb-6">Add Step</h3>
+      <h3 className="text-2xl font-bold mb-6">{initialData ? 'Edit Step' : 'Add Step'}</h3>
+
+      {/* Date/Time Picker */}
+      <div className="mb-6">
+        <label htmlFor="visitedDateTime" className="block text-sm font-medium text-gray-700 mb-2">
+          Date & Time *
+        </label>
+        <input
+          type="datetime-local"
+          id="visitedDateTime"
+          value={visitedDateTime}
+          onChange={(e) => setVisitedDateTime(e.target.value)}
+          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+          required
+        />
+      </div>
 
       {/* Map Selector - Always shown */}
       <div className="mb-6">
@@ -220,9 +345,9 @@ export default function PlaceForm({ tripId, onSubmit, onCancel, token, previousP
       {previousPlace && (
         <div className="mb-6">
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            How did you get here? *
+            How did you get here? <span className="text-gray-400 text-xs font-normal">(optional)</span>
           </label>
-          <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
+          <div className="grid grid-cols-3 md:grid-cols-7 gap-2">
             {(['walk', 'bike', 'car', 'train', 'bus', 'flight'] as ModeOfTravel[]).map((mode) => (
               <button
                 key={mode}
@@ -237,27 +362,40 @@ export default function PlaceForm({ tripId, onSubmit, onCancel, token, previousP
                 {mode.charAt(0).toUpperCase() + mode.slice(1)}
               </button>
             ))}
+            <button
+              type="button"
+              onClick={() => handleModeChange(null)}
+              className={`px-4 py-2 rounded-lg border-2 transition-colors ${
+                modeOfTravel === null
+                  ? 'border-gray-400 bg-gray-100 text-gray-700 font-semibold'
+                  : 'border-gray-200 hover:border-gray-300 text-gray-700'
+              }`}
+            >
+              Skip
+            </button>
           </div>
         </div>
       )}
 
       {/* Distance and Time Info */}
-      {calculatedDistance !== null && calculatedTime !== null && (
+      {calculatedDistance !== null && previousPlace && (
         <div className="mb-6 p-4 bg-blue-50 rounded-xl border border-blue-100">
-          <div className="grid grid-cols-2 gap-4 text-sm">
+          <div className={`grid ${calculatedTime !== null ? 'grid-cols-2' : 'grid-cols-1'} gap-4 text-sm`}>
             <div>
               <p className="text-gray-600">Distance</p>
               <p className="text-lg font-bold text-gray-900">
                 {(calculatedDistance / 1000).toFixed(2)} km
               </p>
             </div>
-            <div>
-              <p className="text-gray-600">Estimated Time</p>
-              <p className="text-lg font-bold text-gray-900">
-                {Math.floor(calculatedTime / 3600) > 0 && `${Math.floor(calculatedTime / 3600)}h `}
-                {Math.floor((calculatedTime % 3600) / 60)}m
-              </p>
-            </div>
+            {calculatedTime !== null && (
+              <div>
+                <p className="text-gray-600">Estimated Time</p>
+                <p className="text-lg font-bold text-gray-900">
+                  {Math.floor(calculatedTime / 3600) > 0 && `${Math.floor(calculatedTime / 3600)}h `}
+                  {Math.floor((calculatedTime % 3600) / 60)}m
+                </p>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -284,26 +422,26 @@ export default function PlaceForm({ tripId, onSubmit, onCancel, token, previousP
           )}
         </div>
 
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          multiple
-          onChange={(e) => {
-            if (e.target.files) {
-              handleImageUpload(e.target.files);
-            }
-          }}
-          className="hidden"
-        />
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={uploadingImages}
-          className="w-full px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg text-gray-600 hover:border-gray-400 hover:text-gray-700 transition-colors disabled:opacity-50"
-        >
-          {uploadingImages ? 'Uploading...' : '+ Add Photos'}
-        </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={(e) => {
+                if (e.target.files) {
+                  handleImageUpload(e.target.files);
+                }
+              }}
+              className="hidden"
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploadingImages || images.length >= 10}
+              className="w-full px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg text-gray-600 hover:border-gray-400 hover:text-gray-700 transition-colors disabled:opacity-50"
+            >
+              {uploadingImages ? 'Uploading...' : images.length >= 10 ? `Maximum 10 photos (${images.length}/10)` : `+ Add Photos (${images.length}/10)`}
+            </button>
         {images.length > 0 && (
           <div className="mt-3 grid grid-cols-3 gap-2">
             {images.map((image, index) => (
@@ -400,13 +538,49 @@ export default function PlaceForm({ tripId, onSubmit, onCancel, token, previousP
         </div>
       )}
 
+      {/* Optional Expense Section */}
+      {participants && participants.length > 0 && (
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-3">
+            <label className="flex items-center gap-2 text-sm font-medium text-gray-700 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={showExpenseSection}
+                onChange={(e) => setShowExpenseSection(e.target.checked)}
+                className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+              />
+              <span>Add Expense (Optional)</span>
+            </label>
+          </div>
+          {showExpenseSection && (
+            <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+              <ExpenseForm
+                tripId={tripId}
+                participants={participants}
+                onSubmit={async (expenseData) => {
+                  // Store expense data to be created after place is saved
+                  setPendingExpense(expenseData);
+                  setShowExpenseSection(false);
+                  alert('Expense will be added after you save this step. Please click "Add Step" to continue.');
+                }}
+                onCancel={() => {
+                  setShowExpenseSection(false);
+                  setPendingExpense(null);
+                }}
+                placeCountry={placeCountry}
+              />
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="flex gap-4">
         <button
           type="submit"
           disabled={loading || !placeName || !coordinates}
           className="flex-1 bg-black text-white py-3 px-6 rounded-full hover:bg-gray-800 disabled:opacity-50 font-medium transition-colors"
         >
-          {loading ? 'Adding...' : 'Add Step'}
+          {loading ? (initialData ? 'Saving...' : 'Adding...') : (initialData ? 'Save Changes' : 'Add Step')}
         </button>
         <button
           type="button"

@@ -32,6 +32,7 @@ async function fetchWithAuth(
     ...(options.headers as Record<string, string>),
   };
 
+  // Add authorization header only if token is provided (for public trips, token can be null)
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
@@ -103,6 +104,16 @@ export async function updateTrip(
   return result.data;
 }
 
+export async function deleteTrip(tripId: string, token: string | null): Promise<void> {
+  const response = await fetchWithAuth(`/api/trips/${tripId}`, {
+    method: 'DELETE',
+  }, token);
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+    throw new Error(error.error || `HTTP ${response.status}`);
+  }
+}
+
 export async function addParticipants(
   tripId: string,
   participants: string[],
@@ -119,8 +130,23 @@ export async function addParticipants(
   return result.data;
 }
 
-export async function getPublicTrips(): Promise<Trip[]> {
-  const response = await fetch(`${API_URL}/api/trips/public/list`);
+export async function getPublicTrips(search?: string): Promise<Trip[]> {
+  const url = new URL(`${API_URL}/api/trips/public/list`);
+  if (search) {
+    url.searchParams.append('search', search);
+  }
+  const response = await fetch(url.toString(), {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
+  
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+    throw new Error(error.error || 'Failed to fetch public trips');
+  }
+  
   const result: ApiResponse<Trip[]> = await response.json();
   if (!result.success || !result.data) {
     throw new Error(result.error || 'Failed to fetch public trips');
@@ -142,6 +168,47 @@ export async function addPlace(
     throw new Error(result.error || 'Failed to add place');
   }
   return result.data;
+}
+
+export async function getTripPlaces(
+  tripId: string,
+  token: string | null
+): Promise<TripPlace[]> {
+  const response = await fetchWithAuth(`/api/places/trip/${tripId}`, {}, token);
+  const result: ApiResponse<TripPlace[]> = await response.json();
+  if (!result.success || !result.data) {
+    throw new Error(result.error || 'Failed to fetch places');
+  }
+  return result.data;
+}
+
+export async function updatePlace(
+  placeId: string,
+  updates: Partial<TripPlace>,
+  token: string | null
+): Promise<TripPlace> {
+  const response = await fetchWithAuth(`/api/places/${placeId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(updates),
+  }, token);
+  const result: ApiResponse<TripPlace> = await response.json();
+  if (!result.success || !result.data) {
+    throw new Error(result.error || 'Failed to update place');
+  }
+  return result.data;
+}
+
+export async function deletePlace(
+  placeId: string,
+  token: string | null
+): Promise<void> {
+  const response = await fetchWithAuth(`/api/places/${placeId}`, {
+    method: 'DELETE',
+  }, token);
+  const result: ApiResponse<{ placeId: string }> = await response.json();
+  if (!result.success) {
+    throw new Error(result.error || 'Failed to delete place');
+  }
 }
 
 // Expense APIs
@@ -182,6 +249,35 @@ export async function getExpenseSummary(
     throw new Error(result.error || 'Failed to fetch expense summary');
   }
   return result.data;
+}
+
+export async function updateExpense(
+  expenseId: string,
+  expenseData: Partial<TripExpense>,
+  token: string | null
+): Promise<TripExpense> {
+  const response = await fetchWithAuth(`/api/expenses/${expenseId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(expenseData),
+  }, token);
+  const result: ApiResponse<TripExpense> = await response.json();
+  if (!result.success || !result.data) {
+    throw new Error(result.error || 'Failed to update expense');
+  }
+  return result.data;
+}
+
+export async function deleteExpense(
+  expenseId: string,
+  token: string | null
+): Promise<void> {
+  const response = await fetchWithAuth(`/api/expenses/${expenseId}`, {
+    method: 'DELETE',
+  }, token);
+  const result: ApiResponse<{ expenseId: string }> = await response.json();
+  if (!result.success) {
+    throw new Error(result.error || 'Failed to delete expense');
+  }
 }
 
 // Route APIs
@@ -236,6 +332,21 @@ export async function searchUsers(query: string, token: string | null): Promise<
   const result: ApiResponse<User[]> = await response.json();
   if (!result.success || !result.data) {
     throw new Error(result.error || 'Failed to search users');
+  }
+  return result.data;
+}
+
+export async function updateUser(
+  updates: { country?: string; defaultCurrency?: string },
+  token: string | null
+): Promise<User> {
+  const response = await fetchWithAuth('/api/users/me', {
+    method: 'PATCH',
+    body: JSON.stringify(updates),
+  }, token);
+  const result: ApiResponse<User> = await response.json();
+  if (!result.success || !result.data) {
+    throw new Error(result.error || 'Failed to update user');
   }
   return result.data;
 }

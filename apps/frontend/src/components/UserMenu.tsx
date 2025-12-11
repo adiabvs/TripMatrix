@@ -1,38 +1,49 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { useAuth } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import {
+  IconButton,
+  Avatar,
+  Menu,
+  MenuItem,
+  ListItemIcon,
+  ListItemText,
+  Divider,
+  Typography,
+  Box,
+} from '@mui/material';
+import {
+  AccountCircle as ProfileIcon,
+  Logout as LogoutIcon,
+  ExpandMore as ExpandMoreIcon,
+} from '@mui/icons-material';
 
 export default function UserMenu() {
   const { user, signOut } = useAuth();
   const router = useRouter();
-  const [isOpen, setIsOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
+  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const open = Boolean(anchorEl);
 
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
-    };
+  const handleClick = (event: React.MouseEvent<HTMLElement>) => {
+    setAnchorEl(event.currentTarget);
+  };
 
-    if (isOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [isOpen]);
+  const handleClose = () => {
+    setAnchorEl(null);
+  };
 
   const handleSignOut = async () => {
     try {
+      router.replace('/');
       await signOut();
-      router.push('/');
+      handleClose();
     } catch (error) {
       console.error('Failed to sign out:', error);
+      router.replace('/');
+      handleClose();
     }
   };
 
@@ -41,91 +52,74 @@ export default function UserMenu() {
   }
 
   return (
-    <div className="relative" ref={menuRef}>
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-3 hover:opacity-80 transition-opacity"
+    <Box>
+      <IconButton
+        onClick={handleClick}
+        size="small"
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1,
+          p: 0.5,
+        }}
       >
-        {user.photoUrl ? (
-          <img
-            src={user.photoUrl}
-            alt={user.name}
-            className="w-10 h-10 rounded-full object-cover border-2 border-gray-200"
-          />
-        ) : (
-          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center border-2 border-gray-200">
-            <span className="text-sm font-bold text-white">
-              {user.name.charAt(0).toUpperCase()}
-            </span>
-          </div>
-        )}
-        <svg
-          className={`w-4 h-4 text-gray-600 transition-transform ${isOpen ? 'rotate-180' : ''}`}
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
+        <Avatar
+          src={user.photoUrl || undefined}
+          sx={{ width: 40, height: 40 }}
         >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M19 9l-7 7-7-7"
-          />
-        </svg>
-      </button>
-
-      {isOpen && (
-        <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-lg border border-gray-100 py-2 z-50">
-          <div className="px-4 py-3 border-b border-gray-100">
-            <p className="text-sm font-semibold text-gray-900">{user.name}</p>
-            <p className="text-xs text-gray-500 truncate">{user.email}</p>
-          </div>
-          <Link
-            href="/profile"
-            onClick={() => setIsOpen(false)}
-            className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
-          >
-            <div className="flex items-center gap-3">
-              <svg
-                className="w-4 h-4 text-gray-500"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
-                />
-              </svg>
-              Profile
-            </div>
-          </Link>
-          <button
-            onClick={handleSignOut}
-            className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
-          >
-            <div className="flex items-center gap-3">
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
-                />
-              </svg>
-              Sign Out
-            </div>
-          </button>
-        </div>
-      )}
-    </div>
+          {!user.photoUrl && user.name.charAt(0).toUpperCase()}
+        </Avatar>
+        <ExpandMoreIcon
+          sx={{
+            color: 'text.secondary',
+            transform: open ? 'rotate(180deg)' : 'rotate(0deg)',
+            transition: 'transform 0.2s',
+          }}
+        />
+      </IconButton>
+      <Menu
+        anchorEl={anchorEl}
+        open={open}
+        onClose={handleClose}
+        onClick={handleClose}
+        transformOrigin={{ horizontal: 'right', vertical: 'top' }}
+        anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
+        PaperProps={{
+          sx: {
+            mt: 1.5,
+            minWidth: 200,
+            borderRadius: 2,
+            boxShadow: '0px 4px 8px rgba(0, 0, 0, 0.12)',
+          },
+        }}
+      >
+        <Box sx={{ px: 2, py: 1.5 }}>
+          <Typography variant="subtitle2" sx={{ fontWeight: 500 }}>
+            {user.name}
+          </Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {user.email}
+          </Typography>
+        </Box>
+        <Divider />
+        <MenuItem
+          component={Link}
+          href="/profile"
+          onClick={handleClose}
+        >
+          <ListItemIcon>
+            <ProfileIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Profile</ListItemText>
+        </MenuItem>
+        <Divider />
+        <MenuItem onClick={handleSignOut} sx={{ color: 'error.main' }}>
+          <ListItemIcon>
+            <LogoutIcon fontSize="small" sx={{ color: 'error.main' }} />
+          </ListItemIcon>
+          <ListItemText>Sign Out</ListItemText>
+        </MenuItem>
+      </Menu>
+    </Box>
   );
 }
-

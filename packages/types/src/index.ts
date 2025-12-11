@@ -4,6 +4,8 @@ export interface User {
   name: string;
   email: string;
   photoUrl?: string;
+  country?: string; // ISO country code (e.g., 'US', 'IN', 'GB')
+  defaultCurrency?: string; // ISO currency code (e.g., 'USD', 'INR', 'GBP')
   createdAt: Date | string;
 }
 
@@ -18,6 +20,9 @@ export interface TripParticipant {
   isGuest: boolean;
 }
 
+export type PhotoSharingPrivacy = 'everyone' | 'members' | 'creator';
+export type ExpenseVisibility = 'everyone' | 'members' | 'creator';
+
 export interface Trip {
   tripId: string;
   creatorId: string;
@@ -31,6 +36,8 @@ export interface Trip {
   coverImage?: string;
   totalExpense?: number;
   totalDistance?: number;
+  defaultPhotoSharing?: PhotoSharingPrivacy; // Default privacy for photos
+  expenseVisibility?: ExpenseVisibility; // Who can view expenses
   createdAt: Date | string;
   updatedAt: Date | string;
 }
@@ -86,6 +93,7 @@ export interface TripExpense {
   expenseId: string;
   tripId: string;
   amount: number;
+  currency: string; // ISO currency code (e.g., 'USD', 'INR', 'GBP')
   paidBy: string; // uid or guestName
   splitBetween: string[]; // uids or guestNames
   calculatedShares: Record<string, number>; // userId/guestName -> amount

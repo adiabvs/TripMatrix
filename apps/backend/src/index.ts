@@ -93,7 +93,55 @@ app.get('/health', (req, res) => {
 });
 
 // Routes
-app.use('/api/trips', authenticateToken, tripRoutes);
+// Public trips endpoint (no auth required) - must be registered BEFORE authenticated routes
+app.get('/api/trips/public/list', async (req, res) => {
+  try {
+    const { limit, search } = req.query;
+    const { getFirestore } = await import('./config/firebase.js');
+    const db = getFirestore();
+    const snapshot = await db.collection('trips')
+      .where('isPublic', '==', true)
+      .get();
+
+    let trips = snapshot.docs.map((doc) => ({
+      tripId: doc.id,
+      ...doc.data(),
+    }));
+
+    // Filter by search query if provided
+    if (search && typeof search === 'string') {
+      const searchLower = search.toLowerCase();
+      trips = trips.filter((trip: any) => {
+        if (trip.title?.toLowerCase().includes(searchLower)) return true;
+        if (trip.description?.toLowerCase().includes(searchLower)) return true;
+        return false;
+      });
+    }
+
+    // Sort by createdAt
+    trips.sort((a: any, b: any) => {
+      const aTime = new Date(a.createdAt).getTime();
+      const bTime = new Date(b.createdAt).getTime();
+      return bTime - aTime;
+    });
+
+    // Apply limit only if provided
+    if (limit) {
+      trips = trips.slice(0, Number(limit));
+    }
+
+    res.json({ success: true, data: trips });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+// Trips routes - use optionalAuth to allow public trip viewing
+// Individual routes will check authorization as needed
+app.use('/api/trips', optionalAuth, tripRoutes);
 app.use('/api/ai', authenticateToken, aiRoutes);
 app.use('/api/expenses', optionalAuth, expenseRoutes);
 app.use('/api/routes', optionalAuth, routeRoutes);

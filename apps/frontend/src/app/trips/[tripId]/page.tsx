@@ -5,25 +5,29 @@ import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import {
-  getTrip,
-  updateTrip,
-  getTripRoutes,
-  getTripExpenses,
-  getExpenseSummary,
-  recordRoutePoints,
-  addPlace,
-} from '@/lib/api';
+      getTrip,
+      updateTrip,
+      getTripRoutes,
+      getTripExpenses,
+      getExpenseSummary,
+      recordRoutePoints,
+      updatePlace,
+      deletePlace,
+      getTripPlaces,
+      updateExpense,
+      deleteExpense,
+    } from '@/lib/api';
 import { db } from '@/lib/firebase';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
-import type { Trip, TripRoute, TripPlace, TripExpense, ExpenseSummary } from '@tripmatrix/types';
-import PlaceForm from '@/components/PlaceForm';
-import ExpenseForm from '@/components/ExpenseForm';
+import type { Trip, TripRoute, TripPlace, TripExpense, ExpenseSummary, ModeOfTravel } from '@tripmatrix/types';
 import StepCard from '@/components/StepCard';
+import StepConnector from '@/components/StepConnector';
 import UserMenu from '@/components/UserMenu';
 import { formatDistance, formatDuration } from '@tripmatrix/utils';
 import { format } from 'date-fns';
 import dynamic from 'next/dynamic';
 import { toDate } from '@/lib/dateUtils';
+import { formatCurrency, getCurrencyFromCountry } from '@/lib/currencyUtils';
 
 const TripMap = dynamic(() => import('@/components/TripMap'), { ssr: false });
 
@@ -39,39 +43,53 @@ export default function TripDetailPage() {
   const [expenses, setExpenses] = useState<TripExpense[]>([]);
   const [expenseSummary, setExpenseSummary] = useState<ExpenseSummary | null>(null);
   const [loading, setLoading] = useState(true);
-  const [showPlaceForm, setShowPlaceForm] = useState(false);
-  const [showExpenseForm, setShowExpenseForm] = useState(false);
   const [trackingLocation, setTrackingLocation] = useState(false);
   const [currentLocation, setCurrentLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [watchId, setWatchId] = useState<number | null>(null);
   const [token, setToken] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!authLoading && !user) {
-      router.push('/auth');
-    }
-  }, [user, authLoading, router]);
-
-  useEffect(() => {
-    if (tripId && user) {
+    if (tripId) {
       loadTripData();
-      // Load token for forms
-      getIdToken().then(setToken).catch(console.error);
+      // Load token for forms if user is logged in
+      if (user) {
+        getIdToken().then(setToken).catch(console.error);
+      }
     }
   }, [tripId, user]);
 
   const loadTripData = async () => {
     try {
-      const token = await getIdToken();
-      const [tripData, routesData, expensesData] = await Promise.all([
-        getTrip(tripId, token),
-        getTripRoutes(tripId, token),
-        getTripExpenses(tripId, token),
+      // Get token if user is logged in, otherwise null (for public trips)
+      let token: string | null = null;
+      try {
+        if (user) {
+          token = await getIdToken();
+        }
+      } catch (error) {
+        // If getting token fails, continue without token (for public trips)
+        console.log('No token available, attempting to load as public trip');
+      }
+      
+      // Try to load trip data (works for public trips without auth)
+      const [tripData, routesData, expensesData, placesData] = await Promise.all([
+        getTrip(tripId, token).catch((err) => {
+          // If it's a private trip and user is not logged in, redirect to auth
+          if (!user && (err.message.includes('Authentication required') || err.message.includes('401'))) {
+            router.push('/auth');
+            throw err;
+          }
+          throw err;
+        }),
+        getTripRoutes(tripId, token).catch(() => []), // Routes may fail for public trips
+        getTripExpenses(tripId, token).catch(() => []), // Expenses may fail for public trips
+        getTripPlaces(tripId, token).catch(() => []), // Places may fail for public trips
       ]);
 
       setTrip(tripData);
       setRoutes(routesData);
       setExpenses(expensesData);
+      setPlaces(placesData.sort((a, b) => toDate(a.visitedAt).getTime() - toDate(b.visitedAt).getTime()));
 
       // Load expense summary if trip is completed
       if (tripData.status === 'completed') {
@@ -127,6 +145,52 @@ export default function TripDetailPage() {
     } catch (error) {
       console.error('Failed to update trip:', error);
       alert('Failed to update trip');
+    }
+  };
+
+  const handleUpdateModeOfTravel = async (placeId: string, mode: ModeOfTravel | null) => {
+    if (!token) {
+      alert('Authentication token is missing. Please log in again.');
+      return;
+    }
+    try {
+      await updatePlace(placeId, { modeOfTravel: mode || undefined }, token);
+      await loadTripData(); // Reload data to reflect changes
+    } catch (error) {
+      console.error('Failed to update mode of travel:', error);
+      alert('Failed to update mode of travel');
+    }
+  };
+
+  const handleDeletePlace = async (place: TripPlace) => {
+    if (!token) {
+      alert('Authentication token is missing. Please log in again.');
+      return;
+    }
+    try {
+      await deletePlace(place.placeId, token);
+      await loadTripData(); // Reload data to reflect changes
+    } catch (error: any) {
+      console.error('Failed to delete place:', error);
+      alert(`Failed to delete place: ${error.message || 'Unknown error'}`);
+    }
+  };
+
+  const handleEditExpense = async (expense: TripExpense) => {
+    router.push(`/trips/${tripId}/expenses/${expense.expenseId}/edit`);
+  };
+
+  const handleDeleteExpense = async (expense: TripExpense) => {
+    if (!token) {
+      alert('Authentication token is missing. Please log in again.');
+      return;
+    }
+    try {
+      await deleteExpense(expense.expenseId, token);
+      await loadTripData(); // Reload data to reflect changes
+    } catch (error: any) {
+      console.error('Failed to delete expense:', error);
+      alert(`Failed to delete expense: ${error.message || 'Unknown error'}`);
     }
   };
 
@@ -192,48 +256,7 @@ export default function TripDetailPage() {
     setTrackingLocation(false);
   };
 
-  const handleAddPlace = async (placeData: Partial<TripPlace> & { previousPlace?: TripPlace | null }) => {
-    try {
-      const token = await getIdToken();
-      // Remove previousPlace from the data sent to API (it's only for frontend calculation)
-      const { previousPlace, ...dataToSend } = placeData;
-      
-      // Use the API function which has better error handling
-      await addPlace(dataToSend, token);
-      
-      setShowPlaceForm(false);
-      await loadTripData(); // Reload to get new place and re-sort
-    } catch (error: any) {
-      console.error('Failed to add place:', error);
-      const errorMessage = error.message || 'Failed to add place';
-      alert(errorMessage);
-      throw error;
-    }
-  };
 
-  const handleAddExpense = async (expenseData: Partial<TripExpense>) => {
-    try {
-      const token = await getIdToken();
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/expenses`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(expenseData),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to add expense');
-      }
-
-      setShowExpenseForm(false);
-      await loadTripData();
-    } catch (error) {
-      console.error('Failed to add expense:', error);
-      throw error;
-    }
-  };
 
   if (authLoading || loading) {
     return (
@@ -252,6 +275,8 @@ export default function TripDetailPage() {
   }
 
   const isCreator = user?.uid === trip.creatorId;
+  const isParticipant = trip.participants?.some(p => p.uid === user?.uid) || false;
+  const canEdit = isCreator || isParticipant; // Can edit if creator or participant
   const allRoutePoints = routes.flatMap((r) => r.points);
   const totalDistance = trip.totalDistance || 0;
   const totalDuration =
@@ -278,27 +303,17 @@ export default function TripDetailPage() {
             <span className="text-sm font-medium">Back</span>
           </Link>
           <div className="flex items-center gap-4">
-            {isCreator && (
-              <>
-                {trip.status === 'in_progress' && (
-                  <button
-                    onClick={handleEndTrip}
-                    className="text-sm text-red-600 hover:text-red-700 font-medium"
-                  >
-                    End Trip
-                  </button>
-                )}
-                <button
-                  onClick={handleTogglePublic}
-                  className={`text-xs px-3 py-1.5 rounded-full font-medium ${
-                    trip.isPublic
-                      ? 'bg-purple-100 text-purple-700'
-                      : 'bg-gray-100 text-gray-700'
-                  }`}
-                >
-                  {trip.isPublic ? 'Public' : 'Private'}
-                </button>
-              </>
+            {canEdit && (
+              <Link
+                href={`/trips/${tripId}/settings`}
+                className="text-gray-600 hover:text-gray-900 transition-colors"
+                title="Trip Settings"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+              </Link>
             )}
             <UserMenu />
           </div>
@@ -306,68 +321,46 @@ export default function TripDetailPage() {
       </nav>
 
       {/* Hero Section */}
-      <div className="relative">
-        {trip.coverImage ? (
-          <div className="w-full h-[60vh] min-h-[400px] relative overflow-hidden">
+      <div className="max-w-4xl mx-auto px-6">
+        {/* Cover Image Banner */}
+        {trip.coverImage && (
+          <div className="w-full h-48 mb-8 rounded-2xl overflow-hidden">
             <img
               src={trip.coverImage}
               alt={trip.title}
               className="w-full h-full object-cover"
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
-            <div className="absolute bottom-0 left-0 right-0 p-12 max-w-4xl mx-auto">
-              <h1 className="text-5xl font-bold text-white mb-4">{trip.title}</h1>
-              {trip.description && (
-                <p className="text-xl text-white/90 mb-6">{trip.description}</p>
-              )}
-              <div className="flex items-center gap-6 text-white/80 text-sm">
-                <span>{format(toDate(trip.startTime), 'MMM d, yyyy')}</span>
-                {trip.endTime && (
-                  <>
-                    <span>→</span>
-                    <span>{format(toDate(trip.endTime), 'MMM d, yyyy')}</span>
-                  </>
-                )}
-                {totalDistance > 0 && (
-                  <>
-                    <span>•</span>
-                    <span>{formatDistance(totalDistance)}</span>
-                  </>
-                )}
-                {totalDuration > 0 && (
-                  <>
-                    <span>•</span>
-                    <span>{formatDuration(totalDuration)}</span>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="w-full h-[40vh] min-h-[300px] bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
-            <div className="text-center max-w-4xl mx-auto px-6">
-              <h1 className="text-5xl font-bold text-gray-900 mb-4">{trip.title}</h1>
-              {trip.description && (
-                <p className="text-xl text-gray-700 mb-6">{trip.description}</p>
-              )}
-              <div className="flex items-center justify-center gap-6 text-gray-600 text-sm">
-                <span>{format(toDate(trip.startTime), 'MMM d, yyyy')}</span>
-                {trip.endTime && (
-                  <>
-                    <span>→</span>
-                    <span>{format(toDate(trip.endTime), 'MMM d, yyyy')}</span>
-                  </>
-                )}
-                {totalDistance > 0 && (
-                  <>
-                    <span>•</span>
-                    <span>{formatDistance(totalDistance)}</span>
-                  </>
-                )}
-              </div>
-            </div>
           </div>
         )}
+
+        {/* Trip Title and Details */}
+        <div className="mb-12">
+          <h1 className="text-3xl font-bold text-gray-900 mb-4">{trip.title}</h1>
+          {trip.description && (
+            <p className="text-base text-gray-700 mb-6">{trip.description}</p>
+          )}
+          <div className="flex items-center gap-6 text-gray-600 text-sm">
+            <span>{format(toDate(trip.startTime), 'MMM d, yyyy')}</span>
+            {trip.endTime && (
+              <>
+                <span>→</span>
+                <span>{format(toDate(trip.endTime), 'MMM d, yyyy')}</span>
+              </>
+            )}
+            {totalDistance > 0 && (
+              <>
+                <span>•</span>
+                <span>{formatDistance(totalDistance)}</span>
+              </>
+            )}
+            {totalDuration > 0 && (
+              <>
+                <span>•</span>
+                <span>{formatDuration(totalDuration)}</span>
+              </>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Main Content */}
@@ -376,14 +369,14 @@ export default function TripDetailPage() {
         {/* Timeline - Steps (Places) */}
         <div className="mb-16">
           <div className="flex items-center justify-between mb-8">
-            <h2 className="text-3xl font-bold text-gray-900">Steps</h2>
-            {isCreator && trip.status === 'in_progress' && (
-              <button
-                onClick={() => setShowPlaceForm(!showPlaceForm)}
+            <h2 className="text-2xl font-bold text-gray-900">Steps</h2>
+            {canEdit && (
+              <Link
+                href={`/trips/${tripId}/steps/new`}
                 className="text-sm font-medium text-gray-700 hover:text-gray-900 px-4 py-2 rounded-full border border-gray-300 hover:border-gray-400 transition-colors"
               >
-                {showPlaceForm ? 'Cancel' : '+ Add Step'}
-              </button>
+                + Add Step
+              </Link>
             )}
           </div>
 
@@ -401,17 +394,67 @@ export default function TripDetailPage() {
           ) : (
             <div className="space-y-0">
               {sortedPlaces.map((place, index) => (
-                <StepCard
-                  key={place.placeId}
-                  place={place}
-                  index={index}
-                  isLast={index === sortedPlaces.length - 1}
-                  expenses={expenses}
-                  showAddButton={isCreator && trip.status === 'in_progress' && index === sortedPlaces.length - 1}
-                  onAddStep={() => {
-                    setShowPlaceForm(true);
-                  }}
-                />
+                <div key={place.placeId}>
+                  <StepCard
+                    place={place}
+                    index={index}
+                    isLast={index === sortedPlaces.length - 1}
+                    expenses={expenses}
+                    showAddButton={canEdit && index === sortedPlaces.length - 1}
+                    onAddStep={() => {
+                      router.push(`/trips/${tripId}/steps/new`);
+                    }}
+                    onEdit={(place) => {
+                      router.push(`/trips/${tripId}/steps/${place.placeId}/edit`);
+                    }}
+                    onDelete={handleDeletePlace}
+                    onAddExpense={async (place) => {
+                      // Navigate to new expense page with placeId
+                      router.push(`/trips/${tripId}/expenses/new?placeId=${place.placeId}`);
+                    }}
+                    onEditExpense={handleEditExpense}
+                    onDeleteExpense={handleDeleteExpense}
+                    isCreator={canEdit}
+                    expenseVisibility={trip.expenseVisibility || 'members'}
+                    currentUserId={user?.uid}
+                    isTripMember={isCreator || trip.participants?.some(p => p.uid === user?.uid) || false}
+                  />
+                  {/* Connector between steps */}
+                  {index < sortedPlaces.length - 1 && (
+                    <StepConnector
+                      fromPlace={place}
+                      toPlace={sortedPlaces[index + 1]}
+                      isCreator={canEdit}
+                      onUpdateMode={async (placeId, modeOfTravel, distance, time) => {
+                        if (!token) {
+                          alert('Authentication token is missing. Please log in again.');
+                          return;
+                        }
+                        try {
+                          await updatePlace(
+                            placeId,
+                            {
+                              modeOfTravel: modeOfTravel || undefined,
+                              distanceFromPrevious: distance,
+                              timeFromPrevious: time || undefined,
+                            },
+                            token
+                          );
+                          await loadTripData(); // Reload to refresh the display
+                        } catch (error: any) {
+                          console.error('Failed to update mode of travel:', error);
+                          throw error;
+                        }
+                      }}
+                      onAddStep={(previousPlace) => {
+                        // Store the previous place in sessionStorage or state to pass to new step page
+                        sessionStorage.setItem('previousPlaceForNewStep', JSON.stringify(previousPlace));
+                        router.push(`/trips/${tripId}/steps/new?after=${previousPlace.placeId}`);
+                      }}
+                      token={token}
+                    />
+                  )}
+                </div>
               ))}
             </div>
           )}
@@ -420,11 +463,15 @@ export default function TripDetailPage() {
         {/* Map Section */}
         {(routes.length > 0 || places.length > 0) && (
           <div className="mb-16">
-            <h2 className="text-3xl font-bold text-gray-900 mb-6">Route</h2>
+            <h2 className="text-2xl font-bold text-gray-900 mb-6">Route</h2>
             <div className="rounded-2xl overflow-hidden border border-gray-200 shadow-sm">
               <TripMap
                 routes={routes}
-                places={places}
+                places={sortedPlaces.map(place => ({
+                  coordinates: place.coordinates,
+                  name: place.name,
+                  modeOfTravel: place.modeOfTravel,
+                }))}
                 currentLocation={currentLocation || undefined}
                 height="500px"
               />
@@ -433,7 +480,7 @@ export default function TripDetailPage() {
         )}
 
         {/* Actions for Creator */}
-        {isCreator && trip.status === 'in_progress' && (
+        {canEdit && (
           <div className="mb-16 p-6 bg-gray-50 rounded-2xl">
             <div className="flex flex-wrap gap-3">
               {!trackingLocation ? (
@@ -463,20 +510,26 @@ export default function TripDetailPage() {
               <div>
                 <p className="text-sm text-gray-600">Total Spent</p>
                 <p className="text-2xl font-bold text-gray-900">
-                  ${expenseSummary.totalSpent.toFixed(2)}
+                  {formatCurrency(
+                    expenseSummary.totalSpent,
+                    user?.defaultCurrency || (user?.country ? getCurrencyFromCountry(user.country) : 'USD')
+                  )}
                 </p>
               </div>
               {expenseSummary.settlements.length > 0 && (
                 <div className="pt-4 border-t border-blue-200">
                   <p className="text-sm font-semibold text-gray-900 mb-2">Settlements:</p>
                   <ul className="space-y-2">
-                    {expenseSummary.settlements.map((settlement, idx) => (
-                      <li key={idx} className="text-sm text-gray-700">
-                        {settlement.from.substring(0, 8)}... owes{' '}
-                        <span className="font-semibold">${settlement.amount.toFixed(2)}</span> to{' '}
-                        {settlement.to.substring(0, 8)}...
-                      </li>
-                    ))}
+                    {expenseSummary.settlements.map((settlement, idx) => {
+                      const defaultCurrency = user?.defaultCurrency || (user?.country ? getCurrencyFromCountry(user.country) : 'USD');
+                      return (
+                        <li key={idx} className="text-sm text-gray-700">
+                          {settlement.from.substring(0, 8)}... owes{' '}
+                          <span className="font-semibold">{formatCurrency(settlement.amount, defaultCurrency)}</span> to{' '}
+                          {settlement.to.substring(0, 8)}...
+                        </li>
+                      );
+                    })}
                   </ul>
                 </div>
               )}
@@ -484,18 +537,6 @@ export default function TripDetailPage() {
           </div>
         )}
 
-        {/* Steps / Forms (moved to bottom) */}
-        {showPlaceForm && (
-          <div className="mt-6">
-            <PlaceForm
-              tripId={tripId}
-              onSubmit={handleAddPlace}
-              onCancel={() => setShowPlaceForm(false)}
-              token={token}
-              previousPlace={sortedPlaces.length > 0 ? sortedPlaces[sortedPlaces.length - 1] : null}
-            />
-          </div>
-        )}
       </div>
     </div>
   );

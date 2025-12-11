@@ -43,5 +43,47 @@ router.get('/search', async (req: AuthenticatedRequest, res) => {
   }
 });
 
+// Update user profile (country, currency, etc.)
+router.patch('/me', async (req: AuthenticatedRequest, res) => {
+  try {
+    const { country, defaultCurrency } = req.body;
+    const uid = req.uid!;
+    const db = getDb();
+
+    const userRef = db.collection('users').doc(uid);
+    const userDoc = await userRef.get();
+
+    if (!userDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        error: 'User not found',
+      });
+    }
+
+    const updates: any = {};
+    if (country !== undefined) {
+      updates.country = country;
+    }
+    if (defaultCurrency !== undefined) {
+      updates.defaultCurrency = defaultCurrency;
+    }
+
+    await userRef.update(updates);
+
+    const updatedDoc = await userRef.get();
+    const updatedUser = { uid: updatedDoc.id, ...updatedDoc.data() };
+
+    res.json({
+      success: true,
+      data: updatedUser,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
 export default router;
 

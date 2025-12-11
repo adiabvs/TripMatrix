@@ -12,6 +12,11 @@ import { auth } from './firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from './firebase';
 import type { User as UserType } from '@tripmatrix/types';
+import { updateUser } from './api';
+import { getCurrencyFromCountry } from './currencyUtils';
+import dynamic from 'next/dynamic';
+
+const CountrySelector = dynamic(() => import('@/components/CountrySelector'), { ssr: false });
 
 interface AuthContextType {
   user: UserType | null;
@@ -35,6 +40,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
   const [user, setUser] = useState<UserType | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showCountrySelector, setShowCountrySelector] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -45,9 +51,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const userDoc = await getDoc(userDocRef);
         
         if (userDoc.exists()) {
-          setUser(userDoc.data() as UserType);
+          const userData = userDoc.data() as UserType;
+          setUser(userData);
+          // Check if country is missing - show country selector
+          if (!userData.country) {
+            setShowCountrySelector(true);
+          }
         } else {
-          // Create new user document
+          // Create new user document (country will be set by CountrySelectorModal)
           const newUser: UserType = {
             uid: user.uid,
             name: user.displayName || '',
@@ -57,6 +68,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           };
           await setDoc(userDocRef, newUser);
           setUser(newUser);
+          // Show country selector for new users
+          setShowCountrySelector(true);
         }
       } else {
         setUser(null);
@@ -82,6 +95,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return await firebaseUser.getIdToken();
   };
 
+  const handleCountrySelect = async (countryCode: string, currency: string) => {
+    if (!firebaseUser) return;
+    
+    try {
+      const token = await firebaseUser.getIdToken();
+      const updatedUser = await updateUser(
+        { country: countryCode, defaultCurrency: currency },
+        token
+      );
+      setUser(updatedUser);
+      setShowCountrySelector(false);
+    } catch (error) {
+      console.error('Failed to update user country:', error);
+      alert('Failed to save country. Please try again.');
+    }
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -94,6 +124,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }}
     >
       {children}
+      {showCountrySelector && user && (
+        <CountrySelector
+          onSelect={handleCountrySelect}
+          currentCountry={user.country}
+        />
+      )}
     </AuthContext.Provider>
   );
 }

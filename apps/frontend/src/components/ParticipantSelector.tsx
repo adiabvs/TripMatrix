@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react';
 import type { TripParticipant, User } from '@tripmatrix/types';
 import { searchUsers } from '@/lib/api';
+import { db } from '@/lib/firebase';
+import { doc, getDoc } from 'firebase/firestore';
 
 interface ParticipantSelectorProps {
   participants: TripParticipant[];
@@ -21,6 +23,41 @@ export default function ParticipantSelector({
   const [showGuestForm, setShowGuestForm] = useState(false);
   const [guestName, setGuestName] = useState('');
   const [guestEmail, setGuestEmail] = useState('');
+  const [userMap, setUserMap] = useState<Record<string, User>>({});
+
+  // Fetch user data for participants with UIDs
+  useEffect(() => {
+    const fetchUserData = async () => {
+      const userIds = participants
+        .filter(p => !p.isGuest && p.uid)
+        .map(p => p.uid!);
+      
+      if (userIds.length === 0) return;
+
+      const userDataPromises = userIds.map(async (uid) => {
+        try {
+          const userDoc = await getDoc(doc(db, 'users', uid));
+          if (userDoc.exists()) {
+            return { uid, user: userDoc.data() as User };
+          }
+        } catch (error) {
+          console.error(`Failed to fetch user ${uid}:`, error);
+        }
+        return null;
+      });
+
+      const results = await Promise.all(userDataPromises);
+      const newUserMap: Record<string, User> = {};
+      results.forEach(result => {
+        if (result) {
+          newUserMap[result.uid] = result.user;
+        }
+      });
+      setUserMap(newUserMap);
+    };
+
+    fetchUserData();
+  }, [participants]);
 
   useEffect(() => {
     const searchTimeout = setTimeout(() => {
@@ -218,8 +255,15 @@ export default function ParticipantSelector({
                   <p className="text-sm font-medium text-gray-900">
                     {participant.isGuest
                       ? participant.guestName
-                      : `User ${participant.uid?.substring(0, 8)}...`}
+                      : (participant.uid && userMap[participant.uid]
+                          ? userMap[participant.uid].name
+                          : participant.uid
+                            ? `User ${participant.uid.substring(0, 8)}...`
+                            : 'Unknown User')}
                   </p>
+                  {!participant.isGuest && participant.uid && userMap[participant.uid] && (
+                    <p className="text-xs text-gray-500">{userMap[participant.uid].email}</p>
+                  )}
                   {participant.isGuest && participant.guestEmail && (
                     <p className="text-xs text-gray-500">{participant.guestEmail}</p>
                   )}

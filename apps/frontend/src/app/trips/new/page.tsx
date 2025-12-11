@@ -4,7 +4,7 @@ import { useAuth } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { createTrip } from '@/lib/api';
+import { createTrip, uploadImage } from '@/lib/api';
 import type { Trip, TripParticipant } from '@tripmatrix/types';
 import ParticipantSelector from '@/components/ParticipantSelector';
 
@@ -14,6 +14,8 @@ export default function NewTripPage() {
   const [loading, setLoading] = useState(false);
   const [token, setToken] = useState<string | null>(null);
   const [participants, setParticipants] = useState<TripParticipant[]>([]);
+  const [coverImage, setCoverImage] = useState<string | null>(null);
+  const [uploadingCover, setUploadingCover] = useState(false);
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -64,6 +66,7 @@ export default function NewTripPage() {
           endTime: formData.endTime ? new Date(formData.endTime) : undefined,
           status: formData.isCompleted ? 'completed' : 'in_progress',
           participants,
+          coverImage: coverImage || undefined,
         },
         token
       );
@@ -127,6 +130,52 @@ export default function NewTripPage() {
               className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent"
               placeholder="Describe your trip..."
             />
+          </div>
+
+          <div>
+            <label htmlFor="coverImage" className="block text-sm font-medium text-gray-700 mb-2">
+              Cover Image (Optional)
+            </label>
+            <input
+              type="file"
+              id="coverImage"
+              accept="image/*"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file || !token) return;
+                setUploadingCover(true);
+                try {
+                  const uploaded = await uploadImage(file, token, true); // Public cover image
+                  setCoverImage(uploaded.url);
+                } catch (error) {
+                  console.error('Failed to upload cover image:', error);
+                  alert('Failed to upload cover image');
+                } finally {
+                  setUploadingCover(false);
+                }
+              }}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent"
+              disabled={uploadingCover}
+            />
+            {coverImage && (
+              <div className="mt-4">
+                <img
+                  src={coverImage}
+                  alt="Cover preview"
+                  className="w-full h-64 object-cover rounded-lg border border-gray-200"
+                />
+                <button
+                  type="button"
+                  onClick={() => setCoverImage(null)}
+                  className="mt-2 text-sm text-red-600 hover:text-red-700"
+                >
+                  Remove cover image
+                </button>
+              </div>
+            )}
+            {uploadingCover && (
+              <p className="mt-2 text-sm text-gray-500">Uploading cover image...</p>
+            )}
           </div>
 
           <div>
