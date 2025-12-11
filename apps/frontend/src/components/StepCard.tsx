@@ -157,9 +157,9 @@ export default function StepCard({ place, index, isLast, expenses = [], onAddSte
             )}
 
             {/* Photo Viewer */}
-            {viewingPhotos && (
+            {viewingPhotos && imageList.length > 0 && (
               <PhotoViewer
-                images={imageMetadata.length > 0 ? imageMetadata : imageList}
+                images={imageMetadata.length > 0 ? imageMetadata : imageList.map(url => ({ url, isPublic: false }))}
                 initialIndex={photoIndex}
                 onClose={() => setViewingPhotos(false)}
               />
@@ -169,7 +169,7 @@ export default function StepCard({ place, index, isLast, expenses = [], onAddSte
               <div className="flex items-start justify-between mb-3">
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-1">
-                    <h3 className="text-2xl font-bold text-gray-900">{place.name}</h3>
+                    <h3 className="text-xl font-bold text-gray-900">{place.name}</h3>
                     {isCreator && (onEdit || onDelete) && (
                       <div className="flex items-center gap-2">
                         {onEdit && (
@@ -238,7 +238,7 @@ export default function StepCard({ place, index, isLast, expenses = [], onAddSte
               {/* Expenses for this step */}
               <div className="mt-4 pt-4 border-t border-gray-100">
                 <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs font-semibold text-gray-700">
+                  <p className="text-xs font-medium text-gray-700">
                     Expenses
                     {totalByCurrency.length > 0 && (
                       <span className="ml-2">
@@ -272,7 +272,7 @@ export default function StepCard({ place, index, isLast, expenses = [], onAddSte
                           <span className="font-medium text-gray-900">
                             {formatCurrency(expense.amount, expense.currency || 'USD')}
                           </span>
-                          <span className="text-gray-500">{expense.paidBy.substring(0, 8)}...</span>
+                          <span className="text-gray-500 text-xs">{expense.paidBy}</span>
                         </div>
                         {expense.description && (
                           <p className="text-gray-600 mt-1">{expense.description}</p>

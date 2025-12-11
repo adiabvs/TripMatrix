@@ -53,20 +53,24 @@ export default function StepConnector({ fromPlace, toPlace, isCreator, onUpdateM
   const [selectedMode, setSelectedMode] = useState<ModeOfTravel | null>(toPlace.modeOfTravel || null);
   const [isSaving, setIsSaving] = useState(false);
 
-  const distance = toPlace.distanceFromPrevious || calculateDistance(
+  const distanceMeters = toPlace.distanceFromPrevious || calculateDistance(
     fromPlace.coordinates.lat,
     fromPlace.coordinates.lng,
     toPlace.coordinates.lat,
     toPlace.coordinates.lng
   );
+  // Convert meters to kilometers for formatDistance
+  const distance = distanceMeters / 1000;
 
   const handleSave = async () => {
     if (!token || !isCreator) return;
     
     setIsSaving(true);
     try {
-      const time = selectedMode ? calculateTime(distance, selectedMode) : null;
-      await onUpdateMode(toPlace.placeId, selectedMode, distance, time);
+      // Convert km back to meters for storage
+      const distanceMeters = distance * 1000;
+      const time = selectedMode ? calculateTime(distanceMeters, selectedMode) : null;
+      await onUpdateMode(toPlace.placeId, selectedMode, distanceMeters, time);
       setIsEditing(false);
     } catch (error) {
       console.error('Failed to update mode of travel:', error);
@@ -188,7 +192,7 @@ export default function StepConnector({ fromPlace, toPlace, isCreator, onUpdateM
               </div>
               {selectedMode && (
                 <div className="text-xs text-gray-600">
-                  Est. time: {formatDuration(calculateTime(distance, selectedMode))}
+                  Est. time: {formatDuration(calculateTime(distance * 1000, selectedMode))}
                 </div>
               )}
               <div className="flex gap-2">

@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import type { TripExpense, TripParticipant } from '@tripmatrix/types';
 import { getCurrencyFromCountry, commonCurrencies, formatCurrency } from '@/lib/currencyUtils';
 import { useAuth } from '@/lib/auth';
+import { db } from '@/lib/firebase';
+import { doc, getDoc } from 'firebase/firestore';
 
 interface ExpenseFormProps {
   tripId: string;
@@ -54,11 +56,50 @@ export default function ExpenseForm({
     // 'people' mode: user manually selects (starts empty)
   }, [splitMode, participants]);
 
+  const [userMap, setUserMap] = useState<Record<string, { name: string; email: string }>>({});
+
+  // Fetch user data for participants with UIDs
+  useEffect(() => {
+    const fetchUserData = async () => {
+      const userIds = participants
+        .filter(p => !p.isGuest && p.uid)
+        .map(p => p.uid!);
+      
+      if (userIds.length === 0) return;
+
+      const userDataPromises = userIds.map(async (uid) => {
+        try {
+          const userDoc = await getDoc(doc(db, 'users', uid));
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
+            return { uid, name: userData.name || 'Unknown', email: userData.email || '' };
+          }
+        } catch (error) {
+          console.error(`Failed to fetch user ${uid}:`, error);
+        }
+        return null;
+      });
+
+      const results = await Promise.all(userDataPromises);
+      const newUserMap: Record<string, { name: string; email: string }> = {};
+      results.forEach(result => {
+        if (result) {
+          newUserMap[result.uid] = { name: result.name, email: result.email };
+        }
+      });
+      setUserMap(newUserMap);
+    };
+
+    fetchUserData();
+  }, [participants]);
+
   const participantOptions = participants.map((p) => ({
     id: p.uid || p.guestName || '',
     label: p.isGuest 
       ? (p.guestName || 'Guest')
-      : (p.uid ? `User ${p.uid.substring(0, 8)}...` : 'Unknown'),
+      : (p.uid && userMap[p.uid]
+          ? userMap[p.uid].name
+          : (p.uid ? `User ${p.uid.substring(0, 8)}...` : 'Unknown')),
     isGuest: p.isGuest,
   }));
 

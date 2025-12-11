@@ -314,9 +314,9 @@ export default function TripDetailPage() {
 
         {/* Trip Title and Details */}
         <div className="mb-12">
-          <h1 className="text-5xl font-bold text-gray-900 mb-4">{trip.title}</h1>
+          <h1 className="text-3xl font-bold text-gray-900 mb-4">{trip.title}</h1>
           {trip.description && (
-            <p className="text-xl text-gray-700 mb-6">{trip.description}</p>
+            <p className="text-base text-gray-700 mb-6">{trip.description}</p>
           )}
           <div className="flex items-center gap-6 text-gray-600 text-sm">
             <span>{format(toDate(trip.startTime), 'MMM d, yyyy')}</span>
@@ -348,7 +348,7 @@ export default function TripDetailPage() {
         {/* Timeline - Steps (Places) */}
         <div className="mb-16">
           <div className="flex items-center justify-between mb-8">
-            <h2 className="text-3xl font-bold text-gray-900">Steps</h2>
+            <h2 className="text-2xl font-bold text-gray-900">Steps</h2>
             {canEdit && (
               <Link
                 href={`/trips/${tripId}/steps/new`}
@@ -440,7 +440,7 @@ export default function TripDetailPage() {
         {/* Map Section */}
         {(routes.length > 0 || places.length > 0) && (
           <div className="mb-16">
-            <h2 className="text-3xl font-bold text-gray-900 mb-6">Route</h2>
+            <h2 className="text-2xl font-bold text-gray-900 mb-6">Route</h2>
             <div className="rounded-2xl overflow-hidden border border-gray-200 shadow-sm">
               <TripMap
                 routes={routes}
