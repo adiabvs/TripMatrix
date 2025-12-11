@@ -470,7 +470,7 @@ export default function TripDetailPage() {
                 places={sortedPlaces.map(place => ({
                   coordinates: place.coordinates,
                   name: place.name,
-                  modeOfTravel: place.modeOfTravel,
+                  modeOfTravel: place.modeOfTravel ?? undefined,
                 }))}
                 currentLocation={currentLocation || undefined}
                 height="500px"

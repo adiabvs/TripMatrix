@@ -126,14 +126,25 @@ export interface Settlement {
 }
 
 // AI Types
+export type RewriteTone = 'casual' | 'formal' | 'poetic' | 'humorous' | 'friendly';
+
 export interface RewriteRequest {
   text: string;
-  style?: 'casual' | 'formal' | 'poetic' | 'humorous';
+  style?: RewriteTone;
+  tone?: RewriteTone; // Legacy support
 }
 
 export interface RewriteResponse {
   original: string;
   rewritten: string;
+  rewrittenText?: string; // Legacy support
+}
+
+// API Response Types
+export interface ApiResponse<T> {
+  success: boolean;
+  data?: T;
+  error?: string;
 }
 
 // Book/Diary Types

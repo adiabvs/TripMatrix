@@ -194,13 +194,13 @@ export default function AdobeExpressEditor({
                   setLoading(false);
                 }
               },
-              onPublish: (publishParams) => {
+              onPublish: (publishParams: { projectId: string; asset?: { data?: { url?: string } } }) => {
                 if (isMounted && onDesignSave) {
                   onDesignSave(publishParams.projectId, publishParams.asset?.data?.url || '');
                   setLoading(false);
                 }
               },
-              onError: (err) => {
+              onError: (err: Error | string) => {
                 if (isMounted) {
                   const error = err instanceof Error ? err : new Error(String(err));
                   setError(error.message);
@@ -252,13 +252,13 @@ export default function AdobeExpressEditor({
                   setLoading(false);
                 }
               },
-              onPublish: (publishParams) => {
+              onPublish: (publishParams: { projectId: string; asset?: { data?: { url?: string } } }) => {
                 if (isMounted && onDesignSave) {
                   onDesignSave(publishParams.projectId, publishParams.asset?.data?.url || '');
                   setLoading(false);
                 }
               },
-              onError: (err) => {
+              onError: (err: Error | string) => {
                 if (isMounted) {
                   const error = err instanceof Error ? err : new Error(String(err));
                   setError(error.message);
@@ -316,16 +316,17 @@ export default function AdobeExpressEditor({
                     projectId: designId,
                     callbacks: {
                       onCancel: () => setLoading(false),
-                      onPublish: (publishParams) => {
+                      onPublish: (publishParams: { projectId: string; asset?: { data?: { url?: string } } }) => {
                         if (onDesignSave) {
                           onDesignSave(publishParams.projectId, publishParams.asset?.data?.url || '');
                         }
                         setLoading(false);
                       },
-                      onError: (err) => {
-                        setError(err.message);
+                      onError: (err: Error | string) => {
+                        const error = err instanceof Error ? err : new Error(String(err));
+                        setError(error.message);
                         setLoading(false);
-                        if (onError) onError(err);
+                        if (onError) onError(error);
                       },
                     },
                     outputParams: { outputType: 'url' },
@@ -334,16 +335,17 @@ export default function AdobeExpressEditor({
                   editor.createDesign({
                     callbacks: {
                       onCancel: () => setLoading(false),
-                      onPublish: (publishParams) => {
+                      onPublish: (publishParams: { projectId: string; asset?: { data?: { url?: string } } }) => {
                         if (onDesignSave) {
                           onDesignSave(publishParams.projectId, publishParams.asset?.data?.url || '');
                         }
                         setLoading(false);
                       },
-                      onError: (err) => {
-                        setError(err.message);
+                      onError: (err: Error | string) => {
+                        const error = err instanceof Error ? err : new Error(String(err));
+                        setError(error.message);
                         setLoading(false);
-                        if (onError) onError(err);
+                        if (onError) onError(error);
                       },
                     },
                     outputParams: { outputType: 'url' },

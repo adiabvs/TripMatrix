@@ -181,7 +181,15 @@ export default function PublicTripViewPage() {
         {routes.length > 0 || places.length > 0 ? (
           <div className="bg-white rounded-lg shadow-md p-6 mb-6">
             <h2 className="text-2xl font-bold mb-4">Route Map</h2>
-            <TripMap routes={routes} places={places} height="500px" />
+            <TripMap 
+              routes={routes} 
+              places={places.map(p => ({
+                coordinates: p.coordinates,
+                name: p.name,
+                modeOfTravel: p.modeOfTravel ?? undefined,
+              }))} 
+              height="500px" 
+            />
           </div>
         ) : null}
 

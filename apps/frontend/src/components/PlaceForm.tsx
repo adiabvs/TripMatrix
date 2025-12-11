@@ -221,8 +221,8 @@ export default function PlaceForm({ tripId, onSubmit, onCancel, token, previousP
 
     setRewriting(true);
     try {
-      const result = await rewriteText({ text: comment, tone: rewriteTone }, token);
-      setRewrittenComment(result.rewrittenText);
+      const result = await rewriteText({ text: comment, style: rewriteTone }, token);
+      setRewrittenComment(result.rewrittenText || result.rewritten);
     } catch (error) {
       console.error('Failed to rewrite:', error);
       alert('Failed to rewrite text');

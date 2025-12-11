@@ -20,7 +20,7 @@ interface TripMapProps {
   places?: Array<{ 
     coordinates: { lat: number; lng: number }; 
     name: string;
-    modeOfTravel?: string;
+    modeOfTravel?: string | null;
   }>;
   currentLocation?: { lat: number; lng: number };
   height?: string;
