@@ -444,7 +444,11 @@ export default function TripDetailPage() {
             <div className="rounded-2xl overflow-hidden border border-gray-200 shadow-sm">
               <TripMap
                 routes={routes}
-                places={places}
+                places={sortedPlaces.map(place => ({
+                  coordinates: place.coordinates,
+                  name: place.name,
+                  modeOfTravel: place.modeOfTravel,
+                }))}
                 currentLocation={currentLocation || undefined}
                 height="500px"
               />

@@ -17,7 +17,11 @@ if (typeof window !== 'undefined') {
 
 interface TripMapProps {
   routes: TripRoute[];
-  places?: Array<{ coordinates: { lat: number; lng: number }; name: string }>;
+  places?: Array<{ 
+    coordinates: { lat: number; lng: number }; 
+    name: string;
+    modeOfTravel?: string;
+  }>;
   currentLocation?: { lat: number; lng: number };
   height?: string;
 }
@@ -31,6 +35,24 @@ const modeColors: Record<string, string> = {
   flight: '#ec4899',
 };
 
+const modeIcons: Record<string, string> = {
+  walk: '🚶',
+  bike: '🚴',
+  car: '🚗',
+  train: '🚂',
+  bus: '🚌',
+  flight: '✈️',
+};
+
+const modeLabels: Record<string, string> = {
+  walk: 'Walk',
+  bike: 'Bike',
+  car: 'Car',
+  train: 'Train',
+  bus: 'Bus',
+  flight: 'Flight',
+};
+
 export default function TripMap({
   routes,
   places = [],
@@ -39,6 +61,7 @@ export default function TripMap({
 }: TripMapProps) {
   const mapRef = useRef<L.Map | null>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
+  const layersRef = useRef<L.Layer[]>([]);
 
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
@@ -66,6 +89,12 @@ export default function TripMap({
     const map = mapRef.current;
     const bounds = L.latLngBounds([]);
 
+    // Clear previous layers
+    layersRef.current.forEach(layer => {
+      map.removeLayer(layer);
+    });
+    layersRef.current = [];
+
     // Draw routes
     routes.forEach((route) => {
       if (route.points.length === 0) return;
@@ -79,33 +108,111 @@ export default function TripMap({
           opacity: 0.7,
         }
       ).addTo(map);
+      layersRef.current.push(polyline);
 
       bounds.extend(polyline.getBounds());
 
       // Add start marker
       const startPoint = route.points[0];
-      L.marker([startPoint.lat, startPoint.lng])
+      const startMarker = L.marker([startPoint.lat, startPoint.lng])
         .addTo(map)
         .bindPopup(`Start: ${route.modeOfTravel}`);
+      layersRef.current.push(startMarker);
 
       // Add end marker
       const endPoint = route.points[route.points.length - 1];
-      L.marker([endPoint.lat, endPoint.lng])
+      const endMarker = L.marker([endPoint.lat, endPoint.lng])
         .addTo(map)
         .bindPopup(`End: ${route.modeOfTravel}`);
+      layersRef.current.push(endMarker);
     });
+
+    // Draw lines between consecutive places based on mode of travel
+    for (let i = 0; i < places.length - 1; i++) {
+      const currentPlace = places[i];
+      const nextPlace = places[i + 1];
+      
+      if (nextPlace.modeOfTravel) {
+        const color = modeColors[nextPlace.modeOfTravel] || '#3b82f6';
+        const icon = modeIcons[nextPlace.modeOfTravel] || '📍';
+        const label = modeLabels[nextPlace.modeOfTravel] || 'Travel';
+        
+        // Draw line between places
+        const polyline = L.polyline(
+          [
+            [currentPlace.coordinates.lat, currentPlace.coordinates.lng],
+            [nextPlace.coordinates.lat, nextPlace.coordinates.lng]
+          ],
+          {
+            color,
+            weight: 5,
+            opacity: 0.8,
+            dashArray: nextPlace.modeOfTravel === 'flight' ? '10, 10' : undefined,
+          }
+        ).addTo(map);
+        layersRef.current.push(polyline);
+        
+        bounds.extend(polyline.getBounds());
+        
+        // Add mode icon at midpoint of the route
+        const midLat = (currentPlace.coordinates.lat + nextPlace.coordinates.lat) / 2;
+        const midLng = (currentPlace.coordinates.lng + nextPlace.coordinates.lng) / 2;
+        
+        // Create custom icon with emoji
+        const modeIcon = L.divIcon({
+          className: 'mode-travel-icon',
+          html: `<div style="
+            background: white;
+            border: 2px solid ${color};
+            border-radius: 50%;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+          ">${icon}</div>`,
+          iconSize: [32, 32],
+          iconAnchor: [16, 16],
+        });
+        
+        const modeMarker = L.marker([midLat, midLng], { icon: modeIcon })
+          .addTo(map)
+          .bindPopup(`${label}: ${currentPlace.name} → ${nextPlace.name}`);
+        layersRef.current.push(modeMarker);
+      } else {
+        // If no mode of travel, draw a simple gray line
+        const polyline = L.polyline(
+          [
+            [currentPlace.coordinates.lat, currentPlace.coordinates.lng],
+            [nextPlace.coordinates.lat, nextPlace.coordinates.lng]
+          ],
+          {
+            color: '#9ca3af',
+            weight: 3,
+            opacity: 0.5,
+            dashArray: '5, 5',
+          }
+        ).addTo(map);
+        layersRef.current.push(polyline);
+        
+        bounds.extend(polyline.getBounds());
+      }
+    }
 
     // Add place markers
     places.forEach((place) => {
       const marker = L.marker([place.coordinates.lat, place.coordinates.lng])
         .addTo(map)
         .bindPopup(place.name);
+      layersRef.current.push(marker);
       bounds.extend([place.coordinates.lat, place.coordinates.lng]);
     });
 
     // Add current location marker
     if (currentLocation) {
-      L.marker([currentLocation.lat, currentLocation.lng], {
+      const currentMarker = L.marker([currentLocation.lat, currentLocation.lng], {
         icon: L.icon({
           iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
           iconSize: [25, 41],
@@ -114,6 +221,7 @@ export default function TripMap({
       })
         .addTo(map)
         .bindPopup('Current Location');
+      layersRef.current.push(currentMarker);
       bounds.extend([currentLocation.lat, currentLocation.lng]);
     }
 
