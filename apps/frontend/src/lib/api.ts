@@ -398,6 +398,20 @@ export async function updateDiary(
   return result.data;
 }
 
+export async function regenerateDesignData(
+  diaryId: string,
+  token: string | null
+): Promise<TravelDiary> {
+  const response = await fetchWithAuth(`/api/diary/${diaryId}/regenerate-design-data`, {
+    method: 'POST',
+  }, token);
+  const result: ApiResponse<TravelDiary> = await response.json();
+  if (!result.success || !result.data) {
+    throw new Error(result.error || 'Failed to regenerate design data');
+  }
+  return result.data;
+}
+
 // Upload APIs
 export async function uploadImage(
   file: File,

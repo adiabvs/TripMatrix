@@ -154,9 +154,24 @@ export interface TravelDiary {
   title: string;
   description?: string;
   coverImageUrl?: string;
-  adobeExpressDesignId?: string; // Adobe Express design ID for editing
-  adobeExpressEditorUrl?: string; // Adobe Express editor URL
-  videoUrl?: string; // Video of book opening
+  canvaDesignId?: string; // Canva design ID
+  canvaDesignUrl?: string; // Canva design view URL
+  canvaEditorUrl?: string; // Canva editor URL for editing
+  designData?: {
+    cover: {
+      title: string;
+      description?: string;
+      coverImage?: string;
+    };
+    pages: Array<{
+      placeName: string;
+      description: string;
+      rating?: number;
+      images: string[];
+      modeOfTravel?: string;
+    }>;
+  }; // Design data structure for Canva
+  videoUrl?: string; // Video of book opening (future feature)
   createdAt: Date | string;
   updatedAt: Date | string;
 }

@@ -14,6 +14,7 @@ import userRoutes from './routes/users.js';
 import geocodingRoutes from './routes/geocoding.js';
 import uploadRoutes from './routes/upload.js';
 import diaryRoutes from './routes/diary.js';
+import canvaOAuthRoutes from './routes/canva-oauth.js';
 
 dotenv.config();
 
@@ -151,6 +152,7 @@ app.use('/api/users', authenticateToken, userRoutes);
 app.use('/api/geocoding', geocodingRoutes); // Public endpoint for geocoding
 app.use('/api/upload', authenticateToken, uploadRoutes); // Image upload endpoint
 app.use('/api/diary', authenticateToken, diaryRoutes); // Travel diary routes
+app.use('/api/canva', authenticateToken, canvaOAuthRoutes); // Canva OAuth routes
 
 // Error handling
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {

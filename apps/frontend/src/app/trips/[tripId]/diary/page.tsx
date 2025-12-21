@@ -4,7 +4,7 @@ import { useAuth } from '@/lib/auth';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { getTrip, generateDiary, getDiary, updateDiary } from '@/lib/api';
+import { getTrip, generateDiary, getDiary, updateDiary, regenerateDesignData } from '@/lib/api';
 import type { Trip, TravelDiary } from '@tripmatrix/types';
 import {
   Box,
@@ -21,8 +21,9 @@ import {
   Edit as EditIcon,
   VideoLibrary as VideoIcon,
   ArrowBack as ArrowBackIcon,
+  Refresh as RefreshIcon,
 } from '@mui/icons-material';
-import AdobeExpressEditor from '@/components/AdobeExpressEditor';
+import CanvaEmbeddedEditor from '@/components/CanvaEmbeddedEditor';
 
 export default function DiaryPage() {
   const { user, loading: authLoading, getIdToken } = useAuth();
@@ -35,9 +36,7 @@ export default function DiaryPage() {
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showEditor, setShowEditor] = useState(false);
-
-  const adobeExpressClientId = process.env.NEXT_PUBLIC_ADOBE_EXPRESS_CLIENT_ID || '';
+  const [authToken, setAuthToken] = useState<string | null>(null);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -51,6 +50,14 @@ export default function DiaryPage() {
     }
   }, [tripId, user]);
 
+  useEffect(() => {
+    if (user) {
+      getIdToken().then(setAuthToken).catch(console.error);
+    }
+  }, [user, getIdToken]);
+
+  const [showEditor, setShowEditor] = useState(false);
+
   const loadData = async () => {
     try {
       const token = await getIdToken();
@@ -60,6 +67,11 @@ export default function DiaryPage() {
       ]);
       setTrip(tripData);
       setDiary(diaryData);
+      
+      // Show editor if diary exists
+      if (diaryData) {
+        setShowEditor(true);
+      }
     } catch (error: any) {
       console.error('Failed to load data:', error);
       setError(error.message || 'Failed to load data');
@@ -89,26 +101,57 @@ export default function DiaryPage() {
     }
   };
 
-  const handleDesignSave = async (designId: string, editorUrl: string) => {
+  const handleDesignCreated = async (designId: string, designUrl: string) => {
     if (!diary) return;
-
+    
     try {
       const token = await getIdToken();
-      const updatedDiary = await updateDiary(
-        diary.diaryId,
-        {
-          adobeExpressDesignId: designId,
-          adobeExpressEditorUrl: editorUrl,
-        },
-        token
-      );
+      const updatedDiary = await updateDiary(diary.diaryId, {
+        canvaDesignId: designId,
+        canvaDesignUrl: designUrl,
+        canvaEditorUrl: `https://www.canva.com/design/${designId}/edit`,
+      }, token);
       setDiary(updatedDiary);
-      alert('Diary saved successfully!');
     } catch (error: any) {
-      console.error('Failed to save diary:', error);
-      alert('Failed to save diary: ' + error.message);
+      console.error('Failed to update diary with design:', error);
+      setError(error.message || 'Failed to save design');
     }
   };
+
+  const handleDesignUpdated = async (designId: string, designUrl: string) => {
+    if (!diary) return;
+    
+    try {
+      const token = await getIdToken();
+      const updatedDiary = await updateDiary(diary.diaryId, {
+        canvaDesignId: designId,
+        canvaDesignUrl: designUrl,
+        canvaEditorUrl: `https://www.canva.com/design/${designId}/edit`,
+      }, token);
+      setDiary(updatedDiary);
+    } catch (error: any) {
+      console.error('Failed to update diary with design:', error);
+      setError(error.message || 'Failed to save design');
+    }
+  };
+
+  const handleRegenerateDesignData = async () => {
+    if (!diary) return;
+
+    setGenerating(true);
+    setError(null);
+    try {
+      const token = await getIdToken();
+      const updatedDiary = await regenerateDesignData(diary.diaryId, token);
+      setDiary(updatedDiary);
+    } catch (error: any) {
+      console.error('Failed to regenerate design data:', error);
+      setError(error.message || 'Failed to regenerate design data');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
 
   const handleGenerateVideo = async () => {
     if (!diary) return;
@@ -195,7 +238,7 @@ export default function DiaryPage() {
             </Typography>
             <Typography color="text.secondary" sx={{ mb: 3 }}>
               {trip.status === 'completed'
-                ? 'Create a beautiful travel diary from your completed trip using Adobe Express'
+                ? 'Create a beautiful travel diary from your completed trip using Canva'
                 : 'Complete your trip first to create a travel diary'}
             </Typography>
             {trip.status === 'completed' && (
@@ -213,83 +256,62 @@ export default function DiaryPage() {
           </Card>
         ) : (
           <Box>
-            {showEditor || diary.adobeExpressDesignId ? (
-              <Card sx={{ mb: 3 }}>
-                <CardContent sx={{ p: 0 }}>
-                  <Box sx={{ p: 3, borderBottom: 1, borderColor: 'divider' }}>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Typography variant="h6" sx={{ fontWeight: 400 }}>
-                        {diary.title}
-                      </Typography>
-                      <Button
-                        variant="outlined"
-                        size="small"
-                        onClick={() => setShowEditor(!showEditor)}
-                        startIcon={<EditIcon />}
-                        sx={{ textTransform: 'none' }}
-                      >
-                        {showEditor ? 'Hide Editor' : 'Edit Diary'}
-                      </Button>
-                    </Box>
-                  </Box>
-                  {showEditor && (
-                    <Box sx={{ p: 3 }}>
-                      {adobeExpressClientId ? (
-                        <AdobeExpressEditor
-                          clientId={adobeExpressClientId}
-                          designId={diary.adobeExpressDesignId}
-                          onDesignSave={handleDesignSave}
-                          onError={(err) => setError(err.message)}
-                        />
-                      ) : (
-                        <Alert severity="warning">
-                          Adobe Express Client ID not configured. Please set NEXT_PUBLIC_ADOBE_EXPRESS_CLIENT_ID in your environment variables.
-                        </Alert>
-                      )}
-                    </Box>
+            <Card sx={{ mb: 3 }}>
+              <CardContent sx={{ p: 3 }}>
+                <Box sx={{ mb: 2 }}>
+                  <Typography variant="h6" sx={{ fontWeight: 400, mb: 1 }}>
+                    {diary.title}
+                  </Typography>
+                  {diary.description && (
+                    <Typography variant="body2" color="text.secondary">
+                      {diary.description}
+                    </Typography>
                   )}
-                </CardContent>
-              </Card>
-            ) : (
-              <Card sx={{ mb: 3 }}>
-                <CardContent sx={{ p: 4 }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
-                    <BookIcon sx={{ fontSize: 48, color: 'primary.main' }} />
-                    <Box sx={{ flex: 1 }}>
-                      <Typography variant="h5" component="h2" sx={{ fontWeight: 400 }}>
-                        {diary.title}
-                      </Typography>
-                      {diary.description && (
-                        <Typography variant="body2" color="text.secondary">
-                          {diary.description}
-                        </Typography>
-                      )}
-                    </Box>
-                  </Box>
-
-                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <Button
-                      variant="contained"
-                      startIcon={<EditIcon />}
-                      onClick={() => setShowEditor(true)}
-                      sx={{ textTransform: 'none' }}
-                    >
-                      Create/Edit Diary in Adobe Express
-                    </Button>
-
-                    <Button
-                      variant="outlined"
-                      startIcon={<VideoIcon />}
-                      onClick={handleGenerateVideo}
-                      disabled={true}
-                      sx={{ textTransform: 'none' }}
-                    >
-                      Generate Video (Coming Soon)
-                    </Button>
-                  </Box>
-                </CardContent>
-              </Card>
-            )}
+                </Box>
+                {showEditor && (
+                  <>
+                    {diary.designData ? (
+                      <CanvaEmbeddedEditor
+                        diaryId={diary.diaryId}
+                        designId={diary.canvaDesignId}
+                        designUrl={diary.canvaDesignUrl}
+                        onDesignCreated={handleDesignCreated}
+                        tripTitle={diary.title}
+                        token={authToken}
+                      />
+                    ) : (
+                      <Box>
+                        <Alert severity="warning" sx={{ mb: 2 }}>
+                          <Typography variant="body2" sx={{ mb: 1 }}>
+                            Design data not available. Click the button below to regenerate it.
+                          </Typography>
+                        </Alert>
+                        <Button
+                          variant="contained"
+                          onClick={handleRegenerateDesignData}
+                          disabled={generating}
+                          startIcon={generating ? <CircularProgress size={20} /> : <RefreshIcon />}
+                          sx={{ textTransform: 'none', mb: 3 }}
+                        >
+                          {generating ? 'Regenerating...' : 'Regenerate Design Data'}
+                        </Button>
+                        {/* Show Canva editor even without designData - user can still create designs */}
+                        <Box sx={{ mt: 2 }}>
+                          <CanvaEmbeddedEditor
+                            diaryId={diary.diaryId}
+                            designId={diary.canvaDesignId}
+                            designUrl={diary.canvaDesignUrl}
+                            onDesignCreated={handleDesignCreated}
+                            tripTitle={diary.title}
+                            token={authToken}
+                          />
+                        </Box>
+                      </Box>
+                    )}
+                  </>
+                )}
+              </CardContent>
+            </Card>
 
             {diary.videoUrl && (
               <Card>

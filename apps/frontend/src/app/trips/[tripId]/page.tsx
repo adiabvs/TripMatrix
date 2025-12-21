@@ -511,7 +511,7 @@ export default function TripDetailPage() {
                 {trip.status === 'completed' ? (
                   <>
                     <p className="text-sm text-gray-600 mb-4">
-                      Create a beautiful travel diary with Adobe Express
+                      Create a beautiful travel diary with Google Slides
                     </p>
                     <Link
                       href={`/trips/${tripId}/diary`}
@@ -526,7 +526,7 @@ export default function TripDetailPage() {
                 ) : (
                   <>
                     <p className="text-sm text-gray-600 mb-4">
-                      Complete your trip to create a beautiful travel diary with Adobe Express
+                      Complete your trip to create a beautiful travel diary with Google Slides
                     </p>
                     <button
                       onClick={handleEndTrip}
