@@ -139,12 +139,27 @@ export function getTravelDiaryDesignData(
     return page;
   });
 
+  // Build cover object, only including defined values (Firestore doesn't allow undefined)
+  const cover: {
+    title: string;
+    description?: string;
+    coverImage?: string;
+  } = {
+    title: trip.title,
+  };
+
+  // Only add description if it exists
+  if (trip.description) {
+    cover.description = trip.description;
+  }
+
+  // Only add coverImage if it exists
+  if (coverImage) {
+    cover.coverImage = coverImage;
+  }
+
   return {
-    cover: {
-      title: trip.title,
-      description: trip.description,
-      coverImage,
-    },
+    cover,
     pages,
   };
 }

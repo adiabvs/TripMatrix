@@ -1,9 +1,17 @@
 /**
  * Canva Design Generator Service
  * Generates travel diary presentations in Canva with photos and content
+ * Uses Autofill API with Brand Templates for automatic design generation
+ * Reference: https://www.canva.dev/docs/connect/autofill-guide/
  */
 
-import { getCanvaDesign, createCanvaDesign } from './canvaOAuthService.js';
+import { uploadImagesToCanva } from './canvaAssetService.js';
+import {
+  getBrandTemplateDataset,
+  createAutofillJob,
+  waitForAutofillJob,
+  type AutofillData,
+} from './canvaAutofillService.js';
 import type { Trip, TripPlace } from '@tripmatrix/types';
 
 export interface CanvaDesignGenerationResult {
@@ -13,7 +21,9 @@ export interface CanvaDesignGenerationResult {
 }
 
 /**
- * Generate a travel diary design in Canva with all trip content
+ * Generate a travel diary design in Canva using Autofill API with Brand Templates
+ * This automatically creates a design with content populated from trip data
+ * Reference: https://www.canva.dev/docs/connect/autofill-guide/
  */
 export async function generateTravelDiaryDesign(
   accessToken: string,
@@ -21,228 +31,181 @@ export async function generateTravelDiaryDesign(
   places: TripPlace[]
 ): Promise<CanvaDesignGenerationResult> {
   try {
-    // Sort places by visitedAt
+    // Get brand template ID from environment variable
+    const brandTemplateId = process.env.CANVA_BRAND_TEMPLATE_ID;
+    
+    if (!brandTemplateId) {
+      throw new Error('CANVA_BRAND_TEMPLATE_ID environment variable is not set. Please configure a brand template ID.');
+    }
+
+    console.log('Using brand template:', brandTemplateId);
+
+    // Step 1: Get brand template dataset to understand available fields
+    console.log('Fetching brand template dataset...');
+    const dataset = await getBrandTemplateDataset(accessToken, brandTemplateId);
+    console.log('Available template fields:', Object.keys(dataset.dataset));
+
+    // Step 2: Sort places by visitedAt
     const sortedPlaces = [...places].sort((a, b) => {
       const aTime = a.visitedAt ? new Date(a.visitedAt).getTime() : 0;
       const bTime = b.visitedAt ? new Date(b.visitedAt).getTime() : 0;
       return aTime - bTime;
     });
 
-    // Step 1: Create empty presentation design
-    console.log('Creating Canva design...');
-    const design = await createCanvaDesign(accessToken, {
-      title: `${trip.title} - Travel Diary`,
-      type: 'PRESENTATION',
+    // Step 3: Upload images to Canva as assets
+    console.log('Uploading images to Canva...');
+    const imageUrls: string[] = [];
+    
+    // Collect all image URLs
+    if (trip.coverImage) {
+      imageUrls.push(trip.coverImage);
+    }
+    
+    sortedPlaces.forEach(place => {
+      if (place.imageMetadata && place.imageMetadata.length > 0) {
+        imageUrls.push(...place.imageMetadata.map(img => img.url));
+      }
+      if (place.images && place.images.length > 0) {
+        imageUrls.push(...place.images);
+      }
     });
 
-    console.log('Design created:', design.designId);
+    const imageToAssetMap = new Map<string, string>();
+    
+    if (imageUrls.length > 0) {
+      try {
+        const uploadedAssets = await uploadImagesToCanva(accessToken, imageUrls);
+        console.log(`Uploaded ${uploadedAssets.length} images to Canva`);
+        
+        // Map uploaded assets back to their original URLs
+        uploadedAssets.forEach((asset, index) => {
+          if (index < imageUrls.length && !asset.assetId.startsWith('placeholder-')) {
+            imageToAssetMap.set(imageUrls[index], asset.assetId);
+          }
+        });
+      } catch (error: any) {
+        console.warn('Failed to upload some images to Canva:', error.message);
+        // Continue - we'll use available assets
+      }
+    }
 
-    // Step 2: Get design details to work with pages
-    const designDetails = await getCanvaDesign(accessToken, design.designId);
-    console.log('Design details retrieved');
+    // Step 4: Prepare autofill data based on template fields
+    const autofillData: AutofillData = {};
+    
+    // Map trip data to template fields
+    // Common field names (adjust based on your template)
+    const fieldMappings: Record<string, string> = {
+      'TRIP_TITLE': 'TRIP_TITLE',
+      'TRIP_DESCRIPTION': 'TRIP_DESCRIPTION',
+      'COVER_IMAGE': 'COVER_IMAGE',
+      'PLACE_NAME': 'PLACE_NAME',
+      'PLACE_DESCRIPTION': 'PLACE_DESCRIPTION',
+      'PLACE_IMAGE': 'PLACE_IMAGE',
+    };
 
-    // Step 3: Use Canva Design Editing API to add content
-    // Note: Canva's Design Editing API allows programmatic content addition
-    await populateDesignWithContent(accessToken, design.designId, trip, sortedPlaces);
+    // Get available fields from template
+    const availableFields = Object.keys(dataset.dataset);
+    console.log('Template fields:', availableFields);
+
+    // Fill text fields
+    availableFields.forEach(fieldName => {
+      const fieldType = dataset.dataset[fieldName].type;
+      
+      if (fieldType === 'text') {
+        // Map common field names to trip data
+        if (fieldName.toUpperCase().includes('TITLE') || fieldName === 'TRIP_TITLE') {
+          autofillData[fieldName] = {
+            type: 'text',
+            text: trip.title || '',
+          };
+        } else if (fieldName.toUpperCase().includes('DESCRIPTION') || fieldName === 'TRIP_DESCRIPTION') {
+          autofillData[fieldName] = {
+            type: 'text',
+            text: trip.description || '',
+          };
+        } else if (fieldName.toUpperCase().includes('PLACE') && fieldName.toUpperCase().includes('NAME')) {
+          // Use first place name if available
+          const firstPlace = sortedPlaces[0];
+          if (firstPlace) {
+            autofillData[fieldName] = {
+              type: 'text',
+              text: firstPlace.name || '',
+            };
+          }
+        } else if (fieldName.toUpperCase().includes('PLACE') && fieldName.toUpperCase().includes('DESCRIPTION')) {
+          // Use first place description if available
+          const firstPlace = sortedPlaces[0];
+          if (firstPlace) {
+            const description = firstPlace.rewrittenComment || firstPlace.comment || '';
+            autofillData[fieldName] = {
+              type: 'text',
+              text: description,
+            };
+          }
+        }
+      } else if (fieldType === 'image') {
+        // Map image fields
+        if (fieldName.toUpperCase().includes('COVER') || fieldName === 'COVER_IMAGE') {
+          const coverAssetId = trip.coverImage ? imageToAssetMap.get(trip.coverImage) : undefined;
+          if (coverAssetId) {
+            autofillData[fieldName] = {
+              type: 'image',
+              asset_id: coverAssetId,
+            };
+          }
+        } else if (fieldName.toUpperCase().includes('PLACE') && fieldName.toUpperCase().includes('IMAGE')) {
+          // Use first place image if available
+          const firstPlace = sortedPlaces[0];
+          if (firstPlace) {
+            const placeImageUrl = firstPlace.imageMetadata?.[0]?.url || firstPlace.images?.[0];
+            if (placeImageUrl) {
+              const placeAssetId = imageToAssetMap.get(placeImageUrl);
+              if (placeAssetId) {
+                autofillData[fieldName] = {
+                  type: 'image',
+                  asset_id: placeAssetId,
+                };
+              }
+            }
+          }
+        }
+      }
+    });
+
+    console.log('Prepared autofill data:', JSON.stringify(autofillData, null, 2));
+
+    // Step 5: Create autofill job
+    console.log('Creating autofill job...');
+    const { jobId } = await createAutofillJob(accessToken, brandTemplateId, autofillData);
+    console.log('Autofill job created:', jobId);
+
+    // Step 6: Wait for job completion
+    console.log('Waiting for autofill job to complete...');
+    const completedJob = await waitForAutofillJob(accessToken, jobId);
+    
+    if (completedJob.status !== 'success' || !completedJob.result) {
+      throw new Error(`Autofill job failed or incomplete: ${completedJob.status}`);
+    }
+
+    // Extract design ID from URL
+    // URL format: https://www.canva.com/design/{DESIGN-ID}/edit
+    const designUrl = completedJob.result.design.url;
+    const designIdMatch = designUrl.match(/\/design\/([^\/]+)\//);
+    if (!designIdMatch) {
+      throw new Error('Could not extract design ID from autofill result');
+    }
+
+    const designId = designIdMatch[1];
+    console.log('Design generated successfully:', designId);
 
     return {
-      designId: design.designId,
-      designUrl: `https://www.canva.com/design/${design.designId}/view`,
-      editorUrl: `https://www.canva.com/design/${design.designId}/edit`,
+      designId,
+      designUrl: designUrl.replace('/edit', '/view'),
+      editorUrl: designUrl,
     };
   } catch (error: any) {
     console.error('Failed to generate Canva design:', error);
     throw new Error(`Failed to generate Canva design: ${error.message}`);
   }
-}
-
-/**
- * Populate design with trip content (images, text, etc.)
- */
-async function populateDesignWithContent(
-  accessToken: string,
-  designId: string,
-  trip: Trip,
-  places: TripPlace[]
-): Promise<void> {
-  try {
-    // Get cover image
-    const coverImage = trip.coverImage || places[0]?.imageMetadata?.[0]?.url || places[0]?.images?.[0];
-
-    // Use Canva Design Editing API to modify the design
-    // This API allows adding elements, images, text, etc.
-    const updates: any[] = [];
-
-    // Update first page (cover) with trip title and cover image
-    if (coverImage) {
-      updates.push({
-        type: 'ADD_IMAGE',
-        pageIndex: 0,
-        imageUrl: coverImage,
-        x: 0,
-        y: 0,
-        width: 1920,
-        height: 1080,
-      });
-    }
-
-    // Add title text
-    updates.push({
-      type: 'ADD_TEXT',
-      pageIndex: 0,
-      text: trip.title,
-      x: 960,
-      y: 400,
-      fontSize: 72,
-      fontWeight: 'bold',
-      color: '#FFFFFF',
-    });
-
-    // Add description if available
-    if (trip.description) {
-      updates.push({
-        type: 'ADD_TEXT',
-        pageIndex: 0,
-        text: trip.description,
-        x: 960,
-        y: 500,
-        fontSize: 32,
-        color: '#FFFFFF',
-      });
-    }
-
-    // Add pages for each place
-    places.forEach((place, index) => {
-      const pageIndex = index + 1;
-
-      // Get images for this place
-      const images: string[] = [];
-      if (place.imageMetadata && place.imageMetadata.length > 0) {
-        images.push(...place.imageMetadata.map(img => img.url));
-      }
-      if (place.images && place.images.length > 0) {
-        images.push(...place.images);
-      }
-
-      // Add place name
-      updates.push({
-        type: 'ADD_TEXT',
-        pageIndex,
-        text: place.name,
-        x: 960,
-        y: 200,
-        fontSize: 64,
-        fontWeight: 'bold',
-        color: '#000000',
-      });
-
-      // Add description/comment
-      const description = place.rewrittenComment || place.comment || '';
-      if (description) {
-        updates.push({
-          type: 'ADD_TEXT',
-          pageIndex,
-          text: description,
-          x: 960,
-          y: 400,
-          fontSize: 32,
-          color: '#333333',
-        });
-      }
-
-      // Add rating if available
-      if (place.rating) {
-        const stars = '⭐'.repeat(place.rating);
-        updates.push({
-          type: 'ADD_TEXT',
-          pageIndex,
-          text: stars,
-          x: 960,
-          y: 500,
-          fontSize: 48,
-        });
-      }
-
-      // Add images
-      images.slice(0, 3).forEach((imageUrl, imgIndex) => {
-        updates.push({
-          type: 'ADD_IMAGE',
-          pageIndex,
-          imageUrl,
-          x: 200 + (imgIndex * 500),
-          y: 600,
-          width: 400,
-          height: 300,
-        });
-      });
-
-      // Add mode of travel (if available and not first place)
-      if (index > 0 && place.modeOfTravel) {
-        const modeEmoji = getModeEmoji(place.modeOfTravel);
-        updates.push({
-          type: 'ADD_TEXT',
-          pageIndex,
-          text: `${modeEmoji} ${place.modeOfTravel}`,
-          x: 960,
-          y: 1000,
-          fontSize: 24,
-          color: '#666666',
-        });
-      }
-    });
-
-    // Apply all updates via Canva Design Editing API
-    if (updates.length > 0) {
-      await applyDesignUpdates(accessToken, designId, updates);
-      console.log(`Applied ${updates.length} design updates`);
-    }
-  } catch (error: any) {
-    console.error('Failed to populate design content:', error);
-    // Don't throw - design is created, user can edit manually
-    console.warn('Design created but content population failed. User can edit manually.');
-  }
-}
-
-/**
- * Apply design updates using Canva Design Editing API
- */
-async function applyDesignUpdates(
-  accessToken: string,
-  designId: string,
-  updates: any[]
-): Promise<void> {
-  // Note: Canva's Design Editing API endpoint
-  // This might need to be adjusted based on actual Canva API documentation
-  const response = await fetch(`https://api.canva.com/rest/v1/designs/${designId}/edits`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      updates,
-    }),
-  });
-
-  if (!response.ok) {
-    const error = await response.text();
-    console.error('Failed to apply design updates:', response.status, error);
-    // Don't throw - design is still created, just without pre-populated content
-  }
-}
-
-/**
- * Get emoji for mode of travel
- */
-function getModeEmoji(mode: string | null | undefined): string {
-  const modeMap: Record<string, string> = {
-    walk: '🚶',
-    bike: '🚴',
-    car: '🚗',
-    train: '🚂',
-    bus: '🚌',
-    flight: '✈️',
-  };
-  return modeMap[mode || ''] || '📍';
 }
 

@@ -1,7 +1,11 @@
 /**
  * Canva OAuth Service
  * Handles OAuth 2.0 authentication with Canva Connect API
+ * Following the pattern from canva-connect-api-starter-kit
  */
+
+import crypto from 'node:crypto';
+import * as jose from 'jose';
 
 export interface CanvaOAuthConfig {
   clientId: string;
@@ -15,7 +19,8 @@ export interface CanvaOAuthConfig {
 export function getCanvaConfig(): CanvaOAuthConfig {
   const clientId = process.env.CANVA_CLIENT_ID;
   const clientSecret = process.env.CANVA_CLIENT_SECRET;
-  const redirectUri = process.env.CANVA_REDIRECT_URI || `${process.env.FRONTEND_URL || 'http://localhost:3000'}/api/canva/callback`;
+  // Redirect URI following starter kit pattern: /oauth/redirect
+  const redirectUri = process.env.CANVA_REDIRECT_URI || `${process.env.BACKEND_URL || 'http://127.0.0.1:3001'}/oauth/redirect`;
 
   if (!clientId || !clientSecret) {
     throw new Error('Canva OAuth credentials not configured. Please set CANVA_CLIENT_ID and CANVA_CLIENT_SECRET.');
@@ -33,39 +38,113 @@ export interface CanvaTokenResponse {
 }
 
 /**
- * Get OAuth authorization URL
+ * Get Canva Connect API base URL
+ * Following the starter kit pattern: https://api.canva.com/rest
  */
-export function getCanvaAuthUrl(config: CanvaOAuthConfig, state?: string): string {
-  const params = new URLSearchParams({
-    client_id: config.clientId,
-    redirect_uri: config.redirectUri,
-    response_type: 'code',
-    scope: 'design:read design:write', // Required scopes for design operations
-    ...(state && { state }),
-  });
-
-  return `https://www.canva.com/api/oauth/authorize?${params.toString()}`;
+export function getCanvaApiBaseUrl(): string {
+  return process.env.BASE_CANVA_CONNECT_API_URL || 'https://api.canva.com/rest';
 }
 
 /**
- * Exchange authorization code for access token
+ * Get Canva Connect Auth base URL
+ * Following the starter kit pattern: https://www.canva.com/api
+ */
+function getCanvaAuthBaseUrl(): string {
+  return process.env.BASE_CANVA_CONNECT_AUTH_URL || 'https://www.canva.com/api';
+}
+
+/**
+ * Generate PKCE code verifier and challenge
+ */
+export function generatePKCE() {
+  const codeVerifier = crypto.randomBytes(96).toString('base64url');
+  const codeChallenge = crypto
+    .createHash('sha256')
+    .update(codeVerifier)
+    .digest()
+    .toString('base64url');
+  
+  return { codeVerifier, codeChallenge };
+}
+
+/**
+ * Get OAuth authorization URL with PKCE
+ * Following the pattern from canva-connect-api-starter-kit
+ */
+export function getCanvaAuthUrl(
+  config: CanvaOAuthConfig,
+  state: string,
+  codeChallenge: string
+): string {
+  const scopes = [
+    'asset:read',
+    'asset:write',
+    'brandtemplate:content:read',
+    'brandtemplate:meta:read',
+    'design:content:read',
+    'design:content:write',
+    'design:meta:read',
+    'profile:read',
+  ];
+  const scopeString = scopes.join(' ');
+
+  const authBaseUrl = getCanvaAuthBaseUrl();
+  const url = new URL(`${authBaseUrl}/oauth/authorize`);
+  url.searchParams.append('code_challenge', codeChallenge);
+  url.searchParams.append('code_challenge_method', 'S256');
+  url.searchParams.append('scope', scopeString);
+  url.searchParams.append('response_type', 'code');
+  url.searchParams.append('client_id', config.clientId);
+  url.searchParams.append('redirect_uri', config.redirectUri);
+  url.searchParams.append('state', state);
+
+  return url.toString();
+}
+
+/**
+ * Get basic auth client for Canva API
+ */
+export function getBasicAuthClient() {
+  const config = getCanvaConfig();
+  const credentials = `${config.clientId}:${config.clientSecret}`;
+  const localClient = createClient({
+    headers: {
+      Authorization: `Basic ${Buffer.from(credentials).toString('base64')}`,
+    },
+    baseUrl: getCanvaApiBaseUrl(),
+  });
+
+  return localClient;
+}
+
+/**
+ * Exchange authorization code for access token with PKCE
+ * Following the pattern from canva-connect-api-starter-kit
  */
 export async function exchangeCodeForToken(
   config: CanvaOAuthConfig,
-  code: string
+  code: string,
+  codeVerifier: string
 ): Promise<CanvaTokenResponse> {
-  const response = await fetch('https://api.canva.com/rest/v1/oauth/token', {
+  const params = new URLSearchParams({
+    grant_type: 'authorization_code',
+    code_verifier: codeVerifier,
+    code,
+    redirect_uri: config.redirectUri,
+  });
+
+  const apiBaseUrl = getCanvaApiBaseUrl();
+  // Starter kit uses base /rest, so we need to add /v1 for the endpoint
+  const tokenEndpoint = apiBaseUrl.endsWith('/v1') 
+    ? `${apiBaseUrl}/oauth/token` 
+    : `${apiBaseUrl}/v1/oauth/token`;
+  const response = await fetch(tokenEndpoint, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
+      'Authorization': `Basic ${Buffer.from(`${config.clientId}:${config.clientSecret}`).toString('base64')}`,
     },
-    body: new URLSearchParams({
-      grant_type: 'authorization_code',
-      client_id: config.clientId,
-      client_secret: config.clientSecret,
-      redirect_uri: config.redirectUri,
-      code,
-    }),
+    body: params.toString(),
   });
 
   if (!response.ok) {
@@ -73,27 +152,34 @@ export async function exchangeCodeForToken(
     throw new Error(`Failed to exchange code for token: ${response.status} ${error}`);
   }
 
-  return await response.json();
+  return await response.json() as CanvaTokenResponse;
 }
 
 /**
  * Refresh access token using refresh token
+ * Following the pattern from canva-connect-api-starter-kit
  */
 export async function refreshAccessToken(
   config: CanvaOAuthConfig,
   refreshToken: string
 ): Promise<CanvaTokenResponse> {
-  const response = await fetch('https://api.canva.com/rest/v1/oauth/token', {
+  const params = new URLSearchParams({
+    grant_type: 'refresh_token',
+    refresh_token: refreshToken,
+  });
+
+  const apiBaseUrl = getCanvaApiBaseUrl();
+  // Starter kit uses base /rest, so we need to add /v1 for the endpoint
+  const tokenEndpoint = apiBaseUrl.endsWith('/v1') 
+    ? `${apiBaseUrl}/oauth/token` 
+    : `${apiBaseUrl}/v1/oauth/token`;
+  const response = await fetch(tokenEndpoint, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
+      'Authorization': `Basic ${Buffer.from(`${config.clientId}:${config.clientSecret}`).toString('base64')}`,
     },
-    body: new URLSearchParams({
-      grant_type: 'refresh_token',
-      client_id: config.clientId,
-      client_secret: config.clientSecret,
-      refresh_token: refreshToken,
-    }),
+    body: params.toString(),
   });
 
   if (!response.ok) {
@@ -101,7 +187,21 @@ export async function refreshAccessToken(
     throw new Error(`Failed to refresh token: ${response.status} ${error}`);
   }
 
-  return await response.json();
+  return await response.json() as CanvaTokenResponse;
+}
+
+/**
+ * Get user client with access token
+ */
+export function getUserClient(accessToken: string) {
+  const localClient = createClient({
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    baseUrl: getCanvaApiBaseUrl(),
+  });
+
+  return localClient;
 }
 
 /**
@@ -113,28 +213,61 @@ export async function createCanvaDesign(
     title: string;
     type?: string;
   }
-): Promise<{ designId: string; designUrl: string }> {
-  const response = await fetch('https://api.canva.com/rest/v1/designs', {
+): Promise<{ designId: string; designUrl: string; editUrl: string }> {
+  const apiBaseUrl = getCanvaApiBaseUrl();
+  // Starter kit uses base /rest, so we need to add /v1 for the endpoint
+  const designsEndpoint = apiBaseUrl.endsWith('/v1') 
+    ? `${apiBaseUrl}/designs` 
+    : `${apiBaseUrl}/v1/designs`;
+  
+  // Canva API requires 'design_type' field as an object with type and name
+  const requestBody: any = {
+    title: designData.title,
+  };
+  
+  // Map 'type' to 'design_type' for Canva API
+  // design_type should be an object: { type: "preset", name: "presentation" }
+  const designType = (designData.type || 'PRESENTATION').toLowerCase();
+  requestBody.design_type = {
+    type: 'preset',
+    name: designType === 'presentation' ? 'presentation' : 'presentation', // Default to presentation
+  };
+  
+  const response = await fetch(designsEndpoint, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${accessToken}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      title: designData.title,
-      type: designData.type || 'PRESENTATION',
-    }),
+    body: JSON.stringify(requestBody),
   });
 
   if (!response.ok) {
     const error = await response.text();
+    console.error('Canva API error response:', error);
     throw new Error(`Failed to create design: ${response.status} ${error}`);
   }
 
   const data = await response.json();
+  console.log('Canva API response:', JSON.stringify(data, null, 2));
+  
+  // Canva API returns nested structure: { design: { id: "...", urls: { edit_url: "...", view_url: "..." } } }
+  const design = data.design || data;
+  const designId = design.id || data.id || data.designId || data.design_id;
+  
+  if (!designId) {
+    console.error('No design ID in response:', data);
+    throw new Error('Failed to create design: No design ID in response');
+  }
+  
+  // Use URLs from API response if available, otherwise construct them
+  const editUrl = design.urls?.edit_url || `https://www.canva.com/design/${designId}/edit`;
+  const viewUrl = design.urls?.view_url || `https://www.canva.com/design/${designId}/view`;
+  
   return {
-    designId: data.id,
-    designUrl: `https://www.canva.com/design/${data.id}/edit`,
+    designId,
+    designUrl: viewUrl,
+    editUrl,
   };
 }
 
@@ -145,7 +278,12 @@ export async function getCanvaDesign(
   accessToken: string,
   designId: string
 ): Promise<any> {
-  const response = await fetch(`https://api.canva.com/rest/v1/designs/${designId}`, {
+  const apiBaseUrl = getCanvaApiBaseUrl();
+  // Starter kit uses base /rest, so we need to add /v1 for the endpoint
+  const designEndpoint = apiBaseUrl.endsWith('/v1') 
+    ? `${apiBaseUrl}/designs/${designId}` 
+    : `${apiBaseUrl}/v1/designs/${designId}`;
+  const response = await fetch(designEndpoint, {
     method: 'GET',
     headers: {
       'Authorization': `Bearer ${accessToken}`,

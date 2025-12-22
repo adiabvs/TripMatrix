@@ -13,13 +13,15 @@ const roboto = Roboto({
 export const metadata: Metadata = {
   title: 'TripMatrix - Trip Logging & Social Travel Tracking',
   description: 'Create trips, track navigation, log places, split expenses, and share your travel experiences',
-  themeColor: '#6750A4',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
     title: 'TripMatrix',
   },
   manifest: '/manifest.json',
+  other: {
+    'mobile-web-app-capable': 'yes',
+  }
 };
 
 export const viewport: Viewport = {
@@ -28,6 +30,7 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: 'cover',
+  themeColor: '#6750A4',
 };
 
 export default function RootLayout({

@@ -1,11 +1,15 @@
 import express from 'express';
+import crypto from 'node:crypto';
 import { AuthenticatedRequest } from '../middleware/auth.js';
 import { getFirestore } from '../config/firebase.js';
+import { getAuth } from '../config/firebase.js';
 import {
   getCanvaAuthUrl,
   exchangeCodeForToken,
   refreshAccessToken,
   createCanvaDesign,
+  generatePKCE,
+  getCanvaConfig,
 } from '../services/canvaOAuthService.js';
 
 const router = express.Router();
@@ -14,20 +18,6 @@ function getDb() {
   return getFirestore();
 }
 
-/**
- * Get Canva OAuth configuration
- */
-function getCanvaConfig(): { clientId: string; clientSecret: string; redirectUri: string } {
-  const clientId = process.env.CANVA_CLIENT_ID;
-  const clientSecret = process.env.CANVA_CLIENT_SECRET;
-  const redirectUri = process.env.CANVA_REDIRECT_URI || `${process.env.FRONTEND_URL || 'http://localhost:3000'}/api/canva/callback`;
-
-  if (!clientId || !clientSecret) {
-    throw new Error('Canva OAuth credentials not configured. Please set CANVA_CLIENT_ID and CANVA_CLIENT_SECRET.');
-  }
-
-  return { clientId, clientSecret, redirectUri };
-}
 
 /**
  * Initiate OAuth flow - redirect to Canva authorization
@@ -46,19 +36,32 @@ router.get('/auth', async (req: AuthenticatedRequest, res) => {
 
     const config = getCanvaConfig();
     
-    // Generate state parameter for security (include user ID and diary ID)
-    const state = Buffer.from(JSON.stringify({ uid, diaryId: diaryId || null })).toString('base64');
+    // Log configuration for debugging
+    console.log('Canva OAuth config:', {
+      clientId: config.clientId,
+      redirectUri: config.redirectUri,
+      hasClientSecret: !!config.clientSecret,
+    });
     
-    // Store state in session/cookie for verification (or use database)
+    // Generate PKCE code verifier and challenge
+    const { codeVerifier, codeChallenge } = generatePKCE();
+    
+    // Generate state parameter for security (include user ID and diary ID)
+    const state = crypto.randomBytes(96).toString('base64url');
+    
+    // Store state and code verifier in database for verification
     const db = getDb();
     await db.collection('canvaOAuthStates').doc(state).set({
       uid,
       diaryId: diaryId || null,
+      codeVerifier, // Store code verifier for later use
       createdAt: new Date(),
       expiresAt: new Date(Date.now() + 10 * 60 * 1000), // 10 minutes
     });
 
-    const authUrl = getCanvaAuthUrl(config, state);
+    const authUrl = getCanvaAuthUrl(config, state, codeChallenge);
+    
+    console.log('Generated OAuth URL:', authUrl);
     
     res.json({
       success: true,
@@ -74,9 +77,11 @@ router.get('/auth', async (req: AuthenticatedRequest, res) => {
 });
 
 /**
- * OAuth callback - exchange code for token
+ * OAuth redirect endpoint - exchange code for token
+ * Following the starter kit pattern: /oauth/redirect
+ * Note: This endpoint doesn't require auth - Canva redirects here
  */
-router.get('/callback', async (req: AuthenticatedRequest, res) => {
+router.get('/redirect', async (req, res) => {
   try {
     const { code, state, error } = req.query;
 
@@ -85,7 +90,9 @@ router.get('/callback', async (req: AuthenticatedRequest, res) => {
     }
 
     if (!code || !state) {
-      return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/trips?canva_error=missing_code_or_state`);
+      console.error('Missing code or state:', { code: !!code, state: !!state });
+      const frontendUrl = process.env.FRONTEND_URL || 'http://127.0.0.1:3000';
+      return res.redirect(`${frontendUrl}/trips?canva_error=missing_code_or_state`);
     }
 
     // Verify state
@@ -99,6 +106,12 @@ router.get('/callback', async (req: AuthenticatedRequest, res) => {
     const stateData = stateDoc.data()!;
     const uid = stateData.uid;
     const diaryId = stateData.diaryId;
+    const codeVerifier = stateData.codeVerifier;
+
+    if (!codeVerifier) {
+      await db.collection('canvaOAuthStates').doc(state as string).delete();
+      return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/trips?canva_error=missing_code_verifier`);
+    }
 
     // Check if state expired
     if (new Date(stateData.expiresAt.toDate()) < new Date()) {
@@ -106,9 +119,9 @@ router.get('/callback', async (req: AuthenticatedRequest, res) => {
       return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/trips?canva_error=state_expired`);
     }
 
-    // Exchange code for token
+    // Exchange code for token with PKCE
     const config = getCanvaConfig();
-    const tokenResponse = await exchangeCodeForToken(config, code as string);
+    const tokenResponse = await exchangeCodeForToken(config, code as string, codeVerifier);
 
     // Store tokens in database (associated with user)
     await db.collection('canvaTokens').doc(uid).set({
@@ -329,14 +342,24 @@ router.post('/designs', async (req: AuthenticatedRequest, res) => {
       type: type || 'PRESENTATION',
     });
 
+    console.log('Design created successfully:', design);
+
     // If diaryId provided, update diary with design info
-    if (diaryId) {
-      await db.collection('travelDiaries').doc(diaryId).update({
+    if (diaryId && design.designId) {
+      const updateData: any = {
         canvaDesignId: design.designId,
-        canvaDesignUrl: design.designUrl,
-        canvaEditorUrl: design.designUrl,
         updatedAt: new Date(),
-      });
+      };
+      
+      if (design.designUrl) {
+        updateData.canvaDesignUrl = design.designUrl;
+      }
+      
+      if (design.editUrl) {
+        updateData.canvaEditorUrl = design.editUrl;
+      }
+      
+      await db.collection('travelDiaries').doc(diaryId).update(updateData);
     }
 
     res.json({
@@ -351,6 +374,8 @@ router.post('/designs', async (req: AuthenticatedRequest, res) => {
     });
   }
 });
+
+// Note: /return-nav route is handled directly in index.ts to avoid router mounting conflicts
 
 export default router;
 

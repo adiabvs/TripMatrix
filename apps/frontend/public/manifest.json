@@ -1,0 +1,8 @@
+{
+  "short_name": "TripMatrix",
+  "name": "TripMatrix Travel Planner",
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#000000",
+  "background_color": "#ffffff"
+}

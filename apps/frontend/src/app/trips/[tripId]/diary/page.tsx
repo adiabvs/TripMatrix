@@ -4,7 +4,7 @@ import { useAuth } from '@/lib/auth';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { getTrip, generateDiary, getDiary, updateDiary, regenerateDesignData } from '@/lib/api';
+import { getTrip, generateDiary, getDiary, updateDiary, regenerateDesignData, deleteDiary } from '@/lib/api';
 import type { Trip, TravelDiary } from '@tripmatrix/types';
 import {
   Box,
@@ -22,6 +22,7 @@ import {
   VideoLibrary as VideoIcon,
   ArrowBack as ArrowBackIcon,
   Refresh as RefreshIcon,
+  Delete as DeleteIcon,
 } from '@mui/icons-material';
 import CanvaEmbeddedEditor from '@/components/CanvaEmbeddedEditor';
 
@@ -50,6 +51,22 @@ export default function DiaryPage() {
     }
   }, [tripId, user]);
 
+  // Handle return from Canva after editing
+  useEffect(() => {
+    const canvaReturn = new URLSearchParams(window.location.search).get('canva_return');
+    if (canvaReturn === 'success') {
+      // Reload diary data to get updated design info
+      if (tripId && user) {
+        loadData();
+      }
+      // Remove query param
+      const url = new URL(window.location.href);
+      url.searchParams.delete('canva_return');
+      url.searchParams.delete('diaryId');
+      window.history.replaceState({}, '', url.toString());
+    }
+  }, [tripId, user]);
+
   useEffect(() => {
     if (user) {
       getIdToken().then(setAuthToken).catch(console.error);
@@ -62,9 +79,22 @@ export default function DiaryPage() {
     try {
       const token = await getIdToken();
       const [tripData, diaryData] = await Promise.all([
-        getTrip(tripId, token),
+        getTrip(tripId, token).catch((err: any) => {
+          // If trip not found, redirect to trips list
+          if (err.message?.includes('not found') || err.message?.includes('404')) {
+            router.push('/trips');
+            return null;
+          }
+          throw err;
+        }),
         getDiary(tripId, token).catch(() => null), // Diary might not exist yet
       ]);
+      
+      if (!tripData) {
+        // Trip not found, redirect already handled
+        return;
+      }
+      
       setTrip(tripData);
       setDiary(diaryData);
       
@@ -74,7 +104,12 @@ export default function DiaryPage() {
       }
     } catch (error: any) {
       console.error('Failed to load data:', error);
-      setError(error.message || 'Failed to load data');
+      // If it's a "not found" error, redirect to trips list
+      if (error.message?.includes('not found') || error.message?.includes('404')) {
+        router.push('/trips');
+      } else {
+        setError(error.message || 'Failed to load data');
+      }
     } finally {
       setLoading(false);
     }
@@ -93,10 +128,17 @@ export default function DiaryPage() {
       const newDiary = await generateDiary(tripId, token);
       setDiary(newDiary);
       setShowEditor(true);
+      
+      // Auto-open Canva editor if design was created
+      if (newDiary.canvaDesignId && newDiary.canvaEditorUrl) {
+        // Redirect to Canva editor immediately after creating diary
+        // Images are already uploaded to user's Canva account
+        const editUrl = newDiary.canvaEditorUrl || `https://www.canva.com/design/${newDiary.canvaDesignId}/edit`;
+        window.location.href = editUrl;
+      }
     } catch (error: any) {
       console.error('Failed to generate diary:', error);
       setError(error.message || 'Failed to create diary');
-    } finally {
       setGenerating(false);
     }
   };
@@ -152,6 +194,61 @@ export default function DiaryPage() {
     }
   };
 
+  const handleDeleteDiary = async () => {
+    if (!diary) return;
+    
+    if (!confirm('Are you sure you want to delete this diary? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      setGenerating(true);
+      setError(null);
+      const token = await getIdToken();
+      await deleteDiary(diary.diaryId, token);
+      setDiary(null);
+      setShowEditor(false);
+      setError(null);
+    } catch (error: any) {
+      console.error('Failed to delete diary:', error);
+      setError(error.message || 'Failed to delete diary');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const handleRegenerateDiary = async () => {
+    if (!diary) return;
+    
+    if (!confirm('This will delete the current diary and create a new one. Are you sure?')) {
+      return;
+    }
+
+    try {
+      setGenerating(true);
+      setError(null);
+      const token = await getIdToken();
+      
+      // Delete existing diary
+      await deleteDiary(diary.diaryId, token);
+      
+      // Generate new diary
+      const newDiary = await generateDiary(tripId, token);
+      setDiary(newDiary);
+      setShowEditor(true);
+      
+      // Auto-open Canva editor if design was created
+      if (newDiary.canvaDesignId && newDiary.canvaEditorUrl) {
+        const editUrl = newDiary.canvaEditorUrl || `https://www.canva.com/design/${newDiary.canvaDesignId}/edit`;
+        window.location.href = editUrl;
+      }
+    } catch (error: any) {
+      console.error('Failed to regenerate diary:', error);
+      setError(error.message || 'Failed to regenerate diary');
+    } finally {
+      setGenerating(false);
+    }
+  };
 
   const handleGenerateVideo = async () => {
     if (!diary) return;
@@ -258,15 +355,40 @@ export default function DiaryPage() {
           <Box>
             <Card sx={{ mb: 3 }}>
               <CardContent sx={{ p: 3 }}>
-                <Box sx={{ mb: 2 }}>
-                  <Typography variant="h6" sx={{ fontWeight: 400, mb: 1 }}>
-                    {diary.title}
-                  </Typography>
-                  {diary.description && (
-                    <Typography variant="body2" color="text.secondary">
-                      {diary.description}
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+                  <Box sx={{ flex: 1 }}>
+                    <Typography variant="h6" sx={{ fontWeight: 400, mb: 1 }}>
+                      {diary.title}
                     </Typography>
-                  )}
+                    {diary.description && (
+                      <Typography variant="body2" color="text.secondary">
+                        {diary.description}
+                      </Typography>
+                    )}
+                  </Box>
+                  <Box sx={{ display: 'flex', gap: 1, ml: 2 }}>
+                    <Button
+                      variant="outlined"
+                      color="error"
+                      size="small"
+                      onClick={handleDeleteDiary}
+                      disabled={generating}
+                      startIcon={generating ? <CircularProgress size={16} /> : <DeleteIcon />}
+                      sx={{ textTransform: 'none' }}
+                    >
+                      Delete
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      onClick={handleRegenerateDiary}
+                      disabled={generating}
+                      startIcon={generating ? <CircularProgress size={16} /> : <RefreshIcon />}
+                      sx={{ textTransform: 'none' }}
+                    >
+                      Regenerate
+                    </Button>
+                  </Box>
                 </Box>
                 {showEditor && (
                   <>
@@ -275,8 +397,11 @@ export default function DiaryPage() {
                         diaryId={diary.diaryId}
                         designId={diary.canvaDesignId}
                         designUrl={diary.canvaDesignUrl}
+                        editUrl={diary.canvaEditorUrl}
                         onDesignCreated={handleDesignCreated}
+                        onDesignUpdated={handleDesignUpdated}
                         tripTitle={diary.title}
+                        tripId={tripId}
                         token={authToken}
                       />
                     ) : (
@@ -301,8 +426,11 @@ export default function DiaryPage() {
                             diaryId={diary.diaryId}
                             designId={diary.canvaDesignId}
                             designUrl={diary.canvaDesignUrl}
+                            editUrl={diary.canvaEditorUrl}
                             onDesignCreated={handleDesignCreated}
+                            onDesignUpdated={handleDesignUpdated}
                             tripTitle={diary.title}
+                            tripId={tripId}
                             token={authToken}
                           />
                         </Box>

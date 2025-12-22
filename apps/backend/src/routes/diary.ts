@@ -178,6 +178,26 @@ router.post('/generate/:tripId', async (req: AuthenticatedRequest, res) => {
       });
     }
 
+    // Helper function to remove undefined values recursively
+    const removeUndefined = (obj: any): any => {
+      if (obj === null || obj === undefined) {
+        return null;
+      }
+      if (Array.isArray(obj)) {
+        return obj.map(removeUndefined).filter(item => item !== undefined);
+      }
+      if (typeof obj === 'object') {
+        const cleaned: any = {};
+        for (const [key, value] of Object.entries(obj)) {
+          if (value !== undefined) {
+            cleaned[key] = removeUndefined(value);
+          }
+        }
+        return cleaned;
+      }
+      return obj;
+    };
+
     // Create diary record with Canva design
     const diaryData: any = {
       tripId,
@@ -187,7 +207,7 @@ router.post('/generate/:tripId', async (req: AuthenticatedRequest, res) => {
       canvaDesignId: canvaDesign.designId,
       canvaDesignUrl: canvaDesign.designUrl,
       canvaEditorUrl: canvaDesign.editorUrl,
-      designData, // Store the prepared design data for reference
+      designData: removeUndefined(designData), // Remove any undefined values before saving
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -507,6 +527,62 @@ router.patch('/:diaryId', async (req: AuthenticatedRequest, res) => {
     res.status(500).json({
       success: false,
       error: error.message,
+    });
+  }
+});
+
+/**
+ * Delete a diary
+ */
+router.delete('/:diaryId', async (req: AuthenticatedRequest, res) => {
+  try {
+    const { diaryId } = req.params;
+    const uid = req.uid!;
+
+    const db = getDb();
+    
+    // Get diary to verify ownership
+    const diaryDoc = await db.collection('travelDiaries').doc(diaryId).get();
+    
+    if (!diaryDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        error: 'Diary not found',
+      });
+    }
+
+    const diary = diaryDoc.data() as TravelDiary;
+    
+    // Verify trip access
+    const tripDoc = await db.collection('trips').doc(diary.tripId).get();
+    if (!tripDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        error: 'Trip not found',
+      });
+    }
+
+    const trip = tripDoc.data() as Trip;
+    
+    if (trip.creatorId !== uid && !trip.participants?.some((p: any) => p.uid === uid)) {
+      return res.status(403).json({
+        success: false,
+        error: 'Not authorized to delete this diary',
+      });
+    }
+
+    // Delete diary
+    await db.collection('travelDiaries').doc(diaryId).delete();
+
+    res.json({
+      success: true,
+      message: 'Diary deleted successfully',
+    });
+  } catch (error: any) {
+    console.error('Failed to delete diary:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to delete diary',
     });
   }
 });

@@ -152,7 +152,102 @@ app.use('/api/users', authenticateToken, userRoutes);
 app.use('/api/geocoding', geocodingRoutes); // Public endpoint for geocoding
 app.use('/api/upload', authenticateToken, uploadRoutes); // Image upload endpoint
 app.use('/api/diary', authenticateToken, diaryRoutes); // Travel diary routes
-app.use('/api/canva', authenticateToken, canvaOAuthRoutes); // Canva OAuth routes
+// Canva OAuth routes - /oauth/redirect and /return-nav are public (no auth), /api/canva/* requires auth
+app.use('/oauth', canvaOAuthRoutes); // OAuth redirect endpoint (public - Canva redirects here)
+// Return navigation endpoint (public - Canva redirects here after editing)
+// Handle directly in index.ts to avoid router mounting conflicts
+app.get('/return-nav', async (req, res) => {
+  try {
+    const { correlation_jwt, correlation_state } = req.query;
+    const { jose } = await import('jose');
+    const frontendUrl = process.env.FRONTEND_URL || 'http://127.0.0.1:3000';
+
+    // Canva sends correlation_jwt (JWT token) or correlation_state (base64 encoded)
+    const correlationToken = correlation_jwt || correlation_state;
+
+    if (!correlationToken || typeof correlationToken !== 'string') {
+      console.error('Missing correlation_jwt or correlation_state in return navigation');
+      return res.redirect(`${frontendUrl}/trips?canva_error=missing_correlation_state`);
+    }
+
+    // Decode the correlation state
+    let correlationState: {
+      originPage?: string;
+      returnTo?: string;
+      diaryId?: string;
+      tripId?: string;
+    };
+
+    try {
+      if (correlation_jwt) {
+        // Decode JWT token (Canva sends correlation_jwt)
+        const decoded = await jose.decodeJwt(correlationToken);
+        console.log('Decoded correlation JWT payload:', decoded);
+        
+        // Extract correlation_state from JWT payload
+        const encodedState = decoded.correlation_state as string;
+        if (encodedState) {
+          try {
+            // Decode base64 correlation state
+            const decodedState = Buffer.from(encodedState, 'base64').toString('utf-8');
+            correlationState = JSON.parse(decodedState);
+            console.log('Extracted correlation state from JWT:', correlationState);
+          } catch (base64Error) {
+            // Try base64url decoding (URL-safe base64)
+            try {
+              const decodedState = Buffer.from(encodedState.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf-8');
+              correlationState = JSON.parse(decodedState);
+              console.log('Extracted correlation state from JWT (base64url):', correlationState);
+            } catch (urlError) {
+              console.warn('Failed to decode correlation_state from JWT, using JWT payload directly');
+              correlationState = decoded as any;
+            }
+          }
+        } else {
+          correlationState = decoded as any;
+          console.log('No correlation_state in JWT, using JWT payload directly:', correlationState);
+        }
+      } else {
+        // Legacy: decode base64 correlation_state
+        const urlDecoded = decodeURIComponent(correlationToken);
+        const decoded = Buffer.from(urlDecoded, 'base64').toString('utf-8');
+        correlationState = JSON.parse(decoded);
+        console.log('Decoded correlation state:', correlationState);
+      }
+    } catch (decodeError: any) {
+      console.error('Failed to decode correlation state:', decodeError);
+      console.error('Raw correlation token:', correlationToken);
+      return res.redirect(`${frontendUrl}/trips?canva_error=invalid_correlation_state`);
+    }
+    
+    // Determine where to redirect
+    let redirectPath = '/trips';
+    
+    if (correlationState.returnTo) {
+      redirectPath = correlationState.returnTo;
+    } else if (correlationState.diaryId) {
+      redirectPath = `/trips/${correlationState.tripId || correlationState.diaryId}/diary`;
+    } else if (correlationState.tripId) {
+      redirectPath = `/trips/${correlationState.tripId}`;
+    }
+
+    // Redirect to frontend with success indicator
+    const redirectUrl = new URL(redirectPath, frontendUrl);
+    redirectUrl.searchParams.append('canva_return', 'success');
+    
+    if (correlationState.diaryId) {
+      redirectUrl.searchParams.append('diaryId', correlationState.diaryId);
+    }
+    
+    console.log('Redirecting from Canva return navigation to:', redirectUrl.toString());
+    res.redirect(redirectUrl.toString());
+  } catch (error: any) {
+    console.error('Failed to handle Canva return navigation:', error);
+    const frontendUrl = process.env.FRONTEND_URL || 'http://127.0.0.1:3000';
+    res.redirect(`${frontendUrl}/trips?canva_error=${encodeURIComponent(error.message || 'return_nav_failed')}`);
+  }
+});
+app.use('/api/canva', authenticateToken, canvaOAuthRoutes); // Other Canva API routes (authenticated)
 
 // Error handling
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {

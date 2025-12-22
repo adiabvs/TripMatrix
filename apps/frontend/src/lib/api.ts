@@ -382,6 +382,19 @@ export async function getDiary(
   return result.data || null;
 }
 
+export async function deleteDiary(
+  diaryId: string,
+  token: string | null
+): Promise<void> {
+  const response = await fetchWithAuth(`/api/diary/${diaryId}`, {
+    method: 'DELETE',
+  }, token);
+  const result: ApiResponse<void> = await response.json();
+  if (!result.success) {
+    throw new Error(result.error || 'Failed to delete diary');
+  }
+}
+
 export async function updateDiary(
   diaryId: string,
   updates: Partial<TravelDiary>,
