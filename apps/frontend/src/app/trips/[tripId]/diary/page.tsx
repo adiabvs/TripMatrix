@@ -15,6 +15,8 @@ import {
   Card,
   CardContent,
   Alert,
+  ToggleButton,
+  ToggleButtonGroup,
 } from '@mui/material';
 import {
   Book as BookIcon,
@@ -23,6 +25,7 @@ import {
   ArrowBack as ArrowBackIcon,
   Refresh as RefreshIcon,
   Delete as DeleteIcon,
+  PictureAsPdf as PdfIcon,
 } from '@mui/icons-material';
 import CanvaEmbeddedEditor from '@/components/CanvaEmbeddedEditor';
 
@@ -115,6 +118,8 @@ export default function DiaryPage() {
     }
   };
 
+  const [selectedPlatform, setSelectedPlatform] = useState<'canva' | 'pdf'>('canva');
+
   const handleGenerateDiary = async () => {
     if (!trip || trip.status !== 'completed') {
       alert('Trip must be completed before creating a diary');
@@ -125,16 +130,16 @@ export default function DiaryPage() {
     setError(null);
     try {
       const token = await getIdToken();
-      const newDiary = await generateDiary(tripId, token);
+      const newDiary = await generateDiary(tripId, token, selectedPlatform);
       setDiary(newDiary);
       setShowEditor(true);
       
-      // Auto-open Canva editor if design was created
-      if (newDiary.canvaDesignId && newDiary.canvaEditorUrl) {
-        // Redirect to Canva editor immediately after creating diary
-        // Images are already uploaded to user's Canva account
+      // Auto-open editor based on platform
+      if (selectedPlatform === 'canva' && newDiary.canvaDesignId && newDiary.canvaEditorUrl) {
         const editUrl = newDiary.canvaEditorUrl || `https://www.canva.com/design/${newDiary.canvaDesignId}/edit`;
         window.location.href = editUrl;
+      } else if (selectedPlatform === 'pdf' && newDiary.pdfUrl) {
+        // PDF will be displayed in the UI, no need to open new window
       }
     } catch (error: any) {
       console.error('Failed to generate diary:', error);
@@ -232,16 +237,18 @@ export default function DiaryPage() {
       // Delete existing diary
       await deleteDiary(diary.diaryId, token);
       
-      // Generate new diary
-      const newDiary = await generateDiary(tripId, token);
+      // Generate new diary with the same platform
+      const platform = diary.platform || 'canva';
+      const newDiary = await generateDiary(tripId, token, platform);
       setDiary(newDiary);
       setShowEditor(true);
       
       // Auto-open Canva editor if design was created
-      if (newDiary.canvaDesignId && newDiary.canvaEditorUrl) {
+      if (platform === 'canva' && newDiary.canvaDesignId && newDiary.canvaEditorUrl) {
         const editUrl = newDiary.canvaEditorUrl || `https://www.canva.com/design/${newDiary.canvaDesignId}/edit`;
         window.location.href = editUrl;
       }
+      // PDF will be displayed in the UI automatically
     } catch (error: any) {
       console.error('Failed to regenerate diary:', error);
       setError(error.message || 'Failed to regenerate diary');
@@ -335,20 +342,45 @@ export default function DiaryPage() {
             </Typography>
             <Typography color="text.secondary" sx={{ mb: 3 }}>
               {trip.status === 'completed'
-                ? 'Create a beautiful travel diary from your completed trip using Canva'
+                ? 'Create a beautiful travel diary from your completed trip'
                 : 'Complete your trip first to create a travel diary'}
             </Typography>
             {trip.status === 'completed' && (
-              <Button
-                variant="contained"
-                size="large"
-                onClick={handleGenerateDiary}
-                disabled={generating}
-                startIcon={generating ? <CircularProgress size={20} /> : <BookIcon />}
-                sx={{ textTransform: 'none' }}
-              >
-                {generating ? 'Creating...' : 'Create Travel Diary'}
-              </Button>
+              <Box>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  Choose a platform:
+                </Typography>
+                <ToggleButtonGroup
+                  value={selectedPlatform}
+                  exclusive
+                  onChange={(_, value) => value && setSelectedPlatform(value)}
+                  aria-label="platform selection"
+                  sx={{ mb: 3 }}
+                >
+                  <ToggleButton value="canva" aria-label="canva">
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <BookIcon sx={{ fontSize: 20 }} />
+                      <Typography>Canva</Typography>
+                    </Box>
+                  </ToggleButton>
+                  <ToggleButton value="pdf" aria-label="pdf">
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <PdfIcon sx={{ fontSize: 20 }} />
+                      <Typography>PDF</Typography>
+                    </Box>
+                  </ToggleButton>
+                </ToggleButtonGroup>
+                <Button
+                  variant="contained"
+                  size="large"
+                  onClick={handleGenerateDiary}
+                  disabled={generating}
+                  startIcon={generating ? <CircularProgress size={20} /> : (selectedPlatform === 'canva' ? <BookIcon /> : <PdfIcon />)}
+                  sx={{ textTransform: 'none' }}
+                >
+                  {generating ? 'Creating...' : `Create Travel Diary as ${selectedPlatform === 'canva' ? 'Canva Design' : 'PDF'}`}
+                </Button>
+              </Box>
             )}
           </Card>
         ) : (
@@ -392,7 +424,103 @@ export default function DiaryPage() {
                 </Box>
                 {showEditor && (
                   <>
-                    {diary.designData ? (
+                    {diary.platform === 'pdf' ? (
+                      <Box>
+                        <Alert severity="success" sx={{ mb: 2 }}>
+                          PDF diary created successfully!
+                          {diary.pdfDownloadUrl && (
+                            <Box component="div" sx={{ mt: 1, color: 'warning.main' }}>
+                              Note: PDF is too large for cloud storage. Use the download button below.
+                            </Box>
+                          )}
+                        </Alert>
+                        {diary.pdfUrl ? (
+                          <Box sx={{ mt: 2 }}>
+                            <iframe
+                              src={diary.pdfUrl}
+                              width="100%"
+                              height="800px"
+                              style={{ border: 'none', borderRadius: '8px' }}
+                              title="PDF Diary"
+                            />
+                            <Box sx={{ display: 'flex', gap: 2, mt: 2, flexWrap: 'wrap' }}>
+                              <Button
+                                variant="contained"
+                                startIcon={<PdfIcon />}
+                                onClick={() => {
+                                  window.open(diary.pdfUrl, '_blank', 'noopener,noreferrer');
+                                }}
+                                sx={{ textTransform: 'none' }}
+                              >
+                                Open PDF in New Tab
+                              </Button>
+                              <Button
+                                variant="outlined"
+                                startIcon={<PdfIcon />}
+                                onClick={() => {
+                                  const link = document.createElement('a');
+                                  link.href = diary.pdfUrl!;
+                                  link.download = diary.pdfFileName || 'diary.pdf';
+                                  document.body.appendChild(link);
+                                  link.click();
+                                  document.body.removeChild(link);
+                                }}
+                                sx={{ textTransform: 'none' }}
+                              >
+                                Download PDF
+                              </Button>
+                            </Box>
+                          </Box>
+                        ) : diary.pdfDownloadUrl ? (
+                          <Box sx={{ mt: 2 }}>
+                            <Alert severity="info" sx={{ mb: 2 }}>
+                              <Typography variant="body2">
+                                The PDF is too large to store in cloud storage. Click the button below to download it directly.
+                              </Typography>
+                            </Alert>
+                            <Button
+                              variant="contained"
+                              size="large"
+                              startIcon={<PdfIcon />}
+                              onClick={async () => {
+                                try {
+                                  const token = await getIdToken();
+                                  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:3001';
+                                  const downloadUrl = `${apiUrl}${diary.pdfDownloadUrl}`;
+                                  
+                                  const response = await fetch(downloadUrl, {
+                                    headers: {
+                                      'Authorization': `Bearer ${token}`,
+                                    },
+                                  });
+                                  
+                                  if (!response.ok) {
+                                    const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+                                    throw new Error(errorData.error || `Failed to download PDF: ${response.status} ${response.statusText}`);
+                                  }
+                                  
+                                  const blob = await response.blob();
+                                  const url = window.URL.createObjectURL(blob);
+                                  const link = document.createElement('a');
+                                  link.href = url;
+                                  link.download = diary.pdfFileName || 'diary.pdf';
+                                  document.body.appendChild(link);
+                                  link.click();
+                                  document.body.removeChild(link);
+                                  window.URL.revokeObjectURL(url);
+                                } catch (error: any) {
+                                  console.error('Failed to download PDF:', error);
+                                  setError(error.message || 'Failed to download PDF');
+                                }
+                              }}
+                              sx={{ textTransform: 'none' }}
+                            >
+                              Download PDF Diary
+                            </Button>
+                          </Box>
+                        ) : null}
+                      </Box>
+                    ) : diary.designData ? (
                       <CanvaEmbeddedEditor
                         diaryId={diary.diaryId}
                         designId={diary.canvaDesignId}

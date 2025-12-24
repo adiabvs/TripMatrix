@@ -1,10 +1,14 @@
 /**
  * Canva Design Generator Service
  * Generates travel diary presentations in Canva with photos and content
- * Uses Autofill API with Brand Templates for automatic design generation
- * Reference: https://www.canva.dev/docs/connect/autofill-guide/
+ * 
+ * Without Brand Templates: Creates empty design and uploads images to user's media library
+ * With Brand Templates: Uses Autofill API for automatic design generation
+ * 
+ * Reference: https://www.canva.dev/docs/connect/
  */
 
+import { createCanvaDesign } from './canvaOAuthService.js';
 import { uploadImagesToCanva } from './canvaAssetService.js';
 import {
   getBrandTemplateDataset,
@@ -21,9 +25,12 @@ export interface CanvaDesignGenerationResult {
 }
 
 /**
- * Generate a travel diary design in Canva using Autofill API with Brand Templates
- * This automatically creates a design with content populated from trip data
- * Reference: https://www.canva.dev/docs/connect/autofill-guide/
+ * Generate a travel diary design in Canva
+ * 
+ * If CANVA_BRAND_TEMPLATE_ID is set: Uses Autofill API with Brand Templates for automatic design
+ * Otherwise: Creates empty design and uploads images to user's media library
+ * 
+ * Reference: https://www.canva.dev/docs/connect/
  */
 export async function generateTravelDiaryDesign(
   accessToken: string,
@@ -31,19 +38,47 @@ export async function generateTravelDiaryDesign(
   places: TripPlace[]
 ): Promise<CanvaDesignGenerationResult> {
   try {
-    // Get brand template ID from environment variable
+    // Check if brand template is configured
     const brandTemplateId = process.env.CANVA_BRAND_TEMPLATE_ID;
     
-    if (!brandTemplateId) {
-      throw new Error('CANVA_BRAND_TEMPLATE_ID environment variable is not set. Please configure a brand template ID.');
+    if (brandTemplateId) {
+      // Use Autofill API with Brand Template
+      return await generateDesignWithAutofill(accessToken, trip, places, brandTemplateId);
+    } else {
+      // Create empty design and upload images
+      return await generateDesignWithoutTemplate(accessToken, trip, places);
     }
+  } catch (error: any) {
+    console.error('Failed to generate Canva design:', error);
+    throw new Error(`Failed to generate Canva design: ${error.message}`);
+  }
+}
 
+/**
+ * Generate design using Autofill API with Brand Templates
+ * This automatically creates a design with content populated from trip data
+ */
+async function generateDesignWithAutofill(
+  accessToken: string,
+  trip: Trip,
+  places: TripPlace[],
+  brandTemplateId: string
+): Promise<CanvaDesignGenerationResult> {
     console.log('Using brand template:', brandTemplateId);
 
     // Step 1: Get brand template dataset to understand available fields
     console.log('Fetching brand template dataset...');
     const dataset = await getBrandTemplateDataset(accessToken, brandTemplateId);
     console.log('Available template fields:', Object.keys(dataset.dataset));
+    
+    // Expected fields based on template: time, place, comments, cover_image, temperature
+    const expectedFields = ['time', 'place', 'comments', 'cover_image', 'temperature'];
+    const availableFieldNames = Object.keys(dataset.dataset).map(f => f.toLowerCase());
+    console.log('Template field mapping check:', {
+      expected: expectedFields,
+      available: availableFieldNames,
+      match: expectedFields.filter(f => availableFieldNames.includes(f.toLowerCase())),
+    });
 
     // Step 2: Sort places by visitedAt
     const sortedPlaces = [...places].sort((a, b) => {
@@ -89,84 +124,94 @@ export async function generateTravelDiaryDesign(
       }
     }
 
-    // Step 4: Prepare autofill data based on template fields
-    const autofillData: AutofillData = {};
+    // Step 4: Prepare autofill data for the template
+    // Template field names: time, place, comments, cover_image, temperature
+    // We'll use the first place for now - user can duplicate slides in Canva for other places
+    const placeToUse = sortedPlaces[0];
     
-    // Map trip data to template fields
-    // Common field names (adjust based on your template)
-    const fieldMappings: Record<string, string> = {
-      'TRIP_TITLE': 'TRIP_TITLE',
-      'TRIP_DESCRIPTION': 'TRIP_DESCRIPTION',
-      'COVER_IMAGE': 'COVER_IMAGE',
-      'PLACE_NAME': 'PLACE_NAME',
-      'PLACE_DESCRIPTION': 'PLACE_DESCRIPTION',
-      'PLACE_IMAGE': 'PLACE_IMAGE',
-    };
+    if (!placeToUse) {
+      throw new Error('No places found in trip');
+    }
 
-    // Get available fields from template
+    const autofillData: AutofillData = {};
     const availableFields = Object.keys(dataset.dataset);
-    console.log('Template fields:', availableFields);
+    
+    console.log('Mapping data for place:', placeToUse.name);
+    console.log('Available template fields:', availableFields);
 
-    // Fill text fields
+    // Map to exact field names: time, place, comments, cover_image, temperature
     availableFields.forEach(fieldName => {
       const fieldType = dataset.dataset[fieldName].type;
+      const fieldNameLower = fieldName.toLowerCase();
       
       if (fieldType === 'text') {
-        // Map common field names to trip data
-        if (fieldName.toUpperCase().includes('TITLE') || fieldName === 'TRIP_TITLE') {
+        // Map exact field names from template
+        if (fieldNameLower === 'time') {
+          // Format time from visitedAt
+          let timeStr = '';
+          if (placeToUse.visitedAt) {
+            const visitedDate = new Date(placeToUse.visitedAt);
+            timeStr = visitedDate.toLocaleTimeString('en-US', { 
+              hour: '2-digit', 
+              minute: '2-digit',
+              hour12: true 
+            });
+          } else {
+            timeStr = new Date().toLocaleTimeString('en-US', { 
+              hour: '2-digit', 
+              minute: '2-digit',
+              hour12: true 
+            });
+          }
           autofillData[fieldName] = {
             type: 'text',
-            text: trip.title || '',
+            text: timeStr,
           };
-        } else if (fieldName.toUpperCase().includes('DESCRIPTION') || fieldName === 'TRIP_DESCRIPTION') {
+        } else if (fieldNameLower === 'place') {
+          // Place name
           autofillData[fieldName] = {
             type: 'text',
-            text: trip.description || '',
+            text: placeToUse.name || '',
           };
-        } else if (fieldName.toUpperCase().includes('PLACE') && fieldName.toUpperCase().includes('NAME')) {
-          // Use first place name if available
-          const firstPlace = sortedPlaces[0];
-          if (firstPlace) {
-            autofillData[fieldName] = {
-              type: 'text',
-              text: firstPlace.name || '',
-            };
-          }
-        } else if (fieldName.toUpperCase().includes('PLACE') && fieldName.toUpperCase().includes('DESCRIPTION')) {
-          // Use first place description if available
-          const firstPlace = sortedPlaces[0];
-          if (firstPlace) {
-            const description = firstPlace.rewrittenComment || firstPlace.comment || '';
-            autofillData[fieldName] = {
-              type: 'text',
-              text: description,
-            };
-          }
+        } else if (fieldNameLower === 'comments') {
+          // Place comments/description
+          const description = placeToUse.rewrittenComment || placeToUse.comment || '';
+          autofillData[fieldName] = {
+            type: 'text',
+            text: description,
+          };
+        } else if (fieldNameLower === 'temperature') {
+          // Temperature - leave empty (can be extended to include weather data)
+          autofillData[fieldName] = {
+            type: 'text',
+            text: '', // Empty by default
+          };
         }
       } else if (fieldType === 'image') {
-        // Map image fields
-        if (fieldName.toUpperCase().includes('COVER') || fieldName === 'COVER_IMAGE') {
-          const coverAssetId = trip.coverImage ? imageToAssetMap.get(trip.coverImage) : undefined;
-          if (coverAssetId) {
+        // Map image field
+        if (fieldNameLower === 'cover_image') {
+          // Use place image (first image from place)
+          let imageUrl: string | undefined;
+          let assetId: string | undefined;
+          
+          // Get first image from place
+          imageUrl = placeToUse.imageMetadata?.[0]?.url || placeToUse.images?.[0];
+          if (imageUrl) {
+            assetId = imageToAssetMap.get(imageUrl);
+          }
+          
+          // Fallback to trip cover image if place has no image
+          if (!assetId && trip.coverImage) {
+            assetId = imageToAssetMap.get(trip.coverImage);
+          }
+          
+          if (assetId) {
             autofillData[fieldName] = {
               type: 'image',
-              asset_id: coverAssetId,
+              asset_id: assetId,
             };
-          }
-        } else if (fieldName.toUpperCase().includes('PLACE') && fieldName.toUpperCase().includes('IMAGE')) {
-          // Use first place image if available
-          const firstPlace = sortedPlaces[0];
-          if (firstPlace) {
-            const placeImageUrl = firstPlace.imageMetadata?.[0]?.url || firstPlace.images?.[0];
-            if (placeImageUrl) {
-              const placeAssetId = imageToAssetMap.get(placeImageUrl);
-              if (placeAssetId) {
-                autofillData[fieldName] = {
-                  type: 'image',
-                  asset_id: placeAssetId,
-                };
-              }
-            }
+          } else {
+            console.warn('No image available for cover_image field');
           }
         }
       }
@@ -203,9 +248,86 @@ export async function generateTravelDiaryDesign(
       designUrl: designUrl.replace('/edit', '/view'),
       editorUrl: designUrl,
     };
-  } catch (error: any) {
-    console.error('Failed to generate Canva design:', error);
-    throw new Error(`Failed to generate Canva design: ${error.message}`);
+}
+
+/**
+ * Generate design without Brand Template
+ * Creates an empty presentation and uploads images to user's Canva media library
+ * Images will be available when user opens the design in Canva editor
+ */
+async function generateDesignWithoutTemplate(
+  accessToken: string,
+  trip: Trip,
+  places: TripPlace[]
+): Promise<CanvaDesignGenerationResult> {
+  console.log('Creating design without template (images will be uploaded to media library)');
+
+  // Step 1: Sort places by visitedAt
+  const sortedPlaces = [...places].sort((a, b) => {
+    const aTime = a.visitedAt ? new Date(a.visitedAt).getTime() : 0;
+    const bTime = b.visitedAt ? new Date(b.visitedAt).getTime() : 0;
+    return aTime - bTime;
+  });
+
+  // Step 2: Collect all image URLs
+  const imageUrls: string[] = [];
+  
+  if (trip.coverImage) {
+    imageUrls.push(trip.coverImage);
   }
+  
+  sortedPlaces.forEach(place => {
+    if (place.imageMetadata && place.imageMetadata.length > 0) {
+      imageUrls.push(...place.imageMetadata.map(img => img.url));
+    }
+    if (place.images && place.images.length > 0) {
+      imageUrls.push(...place.images);
+    }
+  });
+
+  // Step 3: Upload images to Canva as assets (they'll be in user's media library)
+  console.log(`Uploading ${imageUrls.length} images to Canva...`);
+  let coverAssetId: string | undefined;
+  
+  if (imageUrls.length > 0) {
+    try {
+      const uploadedAssets = await uploadImagesToCanva(accessToken, imageUrls);
+      console.log(`Successfully uploaded ${uploadedAssets.length} images to Canva`);
+      
+      // Get cover image asset ID if available (for optional initial asset)
+      if (trip.coverImage) {
+        const coverAsset = uploadedAssets.find(asset => 
+          !asset.assetId.startsWith('placeholder-') && 
+          asset.assetUrl === trip.coverImage
+        );
+        if (coverAsset) {
+          coverAssetId = coverAsset.assetId;
+          console.log('Cover image uploaded as asset:', coverAssetId);
+        }
+      }
+    } catch (error: any) {
+      console.warn('Failed to upload some images to Canva:', error.message);
+      // Continue - design will still be created
+    }
+  }
+
+  // Step 4: Create presentation design
+  // Optionally include cover image as initial asset if available
+  console.log('Creating presentation design...');
+  const design = await createCanvaDesign(accessToken, {
+    title: `${trip.title} - Travel Diary`,
+    type: 'PRESENTATION',
+    assetId: coverAssetId, // Add cover image to design if available
+  });
+
+  console.log('Design created:', design.designId);
+  console.log('All images have been uploaded to your Canva media library.');
+  console.log('Open the design in Canva editor to add images and text.');
+
+  return {
+    designId: design.designId,
+    designUrl: design.designUrl,
+    editorUrl: design.editUrl,
+  };
 }
 

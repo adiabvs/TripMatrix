@@ -355,10 +355,12 @@ export async function updateUser(
 // Diary APIs
 export async function generateDiary(
   tripId: string,
-  token: string | null
+  token: string | null,
+  platform: 'canva' | 'pdf' = 'canva'
 ): Promise<TravelDiary> {
   const response = await fetchWithAuth(`/api/diary/generate/${tripId}`, {
     method: 'POST',
+    body: JSON.stringify({ platform }),
   }, token);
   const result: ApiResponse<TravelDiary> = await response.json();
   if (!result.success || !result.data) {

@@ -30,7 +30,7 @@ const nextConfig = {
           },
           {
             key: 'Content-Security-Policy',
-            value: "frame-ancestors 'self' https://www.canva.com; frame-src 'self' https://www.canva.com https://accounts.google.com https://*.firebaseapp.com https://*.firebaseapp.com/*; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://sdk.canva.com https://static.cloudflareinsights.com https://apis.google.com https://www.gstatic.com; connect-src 'self' http://localhost:* http://127.0.0.1:* https://localhost:* https://www.canva.com https://identitytoolkit.googleapis.com https://www.googleapis.com https://accounts.google.com https://*.firebaseapp.com https://*.firebaseio.com https://firestore.googleapis.com https://*.firestore.googleapis.com;",   
+            value: "frame-ancestors 'self'; frame-src 'self' https://accounts.google.com https://*.firebaseapp.com https://*.firebaseapp.com/*; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://sdk.canva.com https://static.cloudflareinsights.com https://apis.google.com https://www.gstatic.com; connect-src 'self' http://localhost:* http://127.0.0.1:* https://localhost:* https://www.canva.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com https://accounts.google.com https://*.firebaseapp.com https://*.firebaseio.com https://firestore.googleapis.com https://*.firestore.googleapis.com;",   
           },
         ],
       },

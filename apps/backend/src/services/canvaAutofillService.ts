@@ -40,6 +40,7 @@ export interface AutofillJob {
 
 /**
  * Get brand template dataset to see available fields
+ * Official endpoint: GET https://api.canva.com/rest/v1/brand-templates/{TEMPLATE-ID}/dataset
  * Reference: https://www.canva.dev/docs/connect/autofill-guide/
  */
 export async function getBrandTemplateDataset(
@@ -47,9 +48,12 @@ export async function getBrandTemplateDataset(
   brandTemplateId: string
 ): Promise<BrandTemplateDataset> {
   const apiBaseUrl = getCanvaApiBaseUrl();
+  // Ensure correct endpoint path
   const datasetEndpoint = apiBaseUrl.endsWith('/v1') 
     ? `${apiBaseUrl}/brand-templates/${brandTemplateId}/dataset` 
     : `${apiBaseUrl}/v1/brand-templates/${brandTemplateId}/dataset`;
+  
+  console.log('Fetching brand template dataset from:', datasetEndpoint);
   
   const response = await fetch(datasetEndpoint, {
     method: 'GET',
@@ -60,14 +64,18 @@ export async function getBrandTemplateDataset(
 
   if (!response.ok) {
     const error = await response.text();
+    console.error('Failed to get brand template dataset:', error);
     throw new Error(`Failed to get brand template dataset: ${response.status} ${error}`);
   }
 
-  return await response.json() as BrandTemplateDataset;
+  const data = await response.json() as BrandTemplateDataset;
+  console.log('Brand template dataset retrieved:', Object.keys(data.dataset));
+  return data;
 }
 
 /**
  * Create an autofill job to generate a design from a brand template
+ * Official endpoint: POST https://api.canva.com/rest/v1/autofills
  * Reference: https://www.canva.dev/docs/connect/autofill-guide/
  * 
  * @param accessToken - Canva access token
@@ -81,6 +89,7 @@ export async function createAutofillJob(
   autofillData: AutofillData
 ): Promise<{ jobId: string; status: string }> {
   const apiBaseUrl = getCanvaApiBaseUrl();
+  // Ensure correct endpoint path
   const autofillEndpoint = apiBaseUrl.endsWith('/v1') 
     ? `${apiBaseUrl}/autofills` 
     : `${apiBaseUrl}/v1/autofills`;
@@ -90,7 +99,8 @@ export async function createAutofillJob(
     data: autofillData,
   };
 
-  console.log('Creating autofill job with data:', JSON.stringify(requestBody, null, 2));
+  console.log('Creating autofill job at:', autofillEndpoint);
+  console.log('Request body:', JSON.stringify(requestBody, null, 2));
 
   const response = await fetch(autofillEndpoint, {
     method: 'POST',
@@ -114,6 +124,7 @@ export async function createAutofillJob(
 
 /**
  * Get autofill job status and result
+ * Official endpoint: GET https://api.canva.com/rest/v1/autofills/{JOB-ID}
  * Reference: https://www.canva.dev/docs/connect/autofill-guide/
  * 
  * @param accessToken - Canva access token
@@ -125,6 +136,7 @@ export async function getAutofillJobStatus(
   jobId: string
 ): Promise<AutofillJob> {
   const apiBaseUrl = getCanvaApiBaseUrl();
+  // Ensure correct endpoint path
   const statusEndpoint = apiBaseUrl.endsWith('/v1') 
     ? `${apiBaseUrl}/autofills/${jobId}` 
     : `${apiBaseUrl}/v1/autofills/${jobId}`;

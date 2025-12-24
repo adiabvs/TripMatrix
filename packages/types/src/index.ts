@@ -148,15 +148,23 @@ export interface ApiResponse<T> {
 }
 
 // Book/Diary Types
+export type DiaryPlatform = 'canva' | 'pdf';
+
 export interface TravelDiary {
   diaryId: string;
   tripId: string;
   title: string;
   description?: string;
   coverImageUrl?: string;
+  platform?: DiaryPlatform; // Which platform was used to create the diary
+  // Canva fields
   canvaDesignId?: string; // Canva design ID
   canvaDesignUrl?: string; // Canva design view URL
   canvaEditorUrl?: string; // Canva editor URL for editing
+  // PDF fields
+  pdfUrl?: string; // PDF file URL (Supabase URL if uploaded successfully)
+  pdfFileName?: string; // PDF file name
+  pdfDownloadUrl?: string; // Download endpoint URL (if Supabase upload failed due to size)
   designData?: {
     cover: {
       title: string;

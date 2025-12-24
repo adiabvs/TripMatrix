@@ -69,12 +69,15 @@ export async function uploadImageToCanva(
       };
     }
 
-    // If job_id is returned, poll for status
-    const jobId = uploadResponse.job_id || uploadResponse.jobId;
+    // Check for nested job object (response structure: { job: { id: "...", status: "..." } })
+    // Or direct job_id/jobId
+    const jobId = uploadResponse.job?.id || uploadResponse.job_id || uploadResponse.jobId;
     if (!jobId) {
-      console.error('Upload response:', uploadResponse);
-      throw new Error('No job_id or asset_id in upload response');
+      console.error('Upload response:', JSON.stringify(uploadResponse, null, 2));
+      throw new Error('No job_id or asset_id in upload response. Response structure: ' + JSON.stringify(uploadResponse));
     }
+    
+    console.log('Extracted job ID:', jobId);
 
     // Step 3: Poll for upload completion
     // Try different endpoint patterns as Canva API structure may vary
@@ -86,8 +89,9 @@ export async function uploadImageToCanva(
       await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
       
       // Try different endpoint patterns
+      // Canva API endpoint: GET /v1/asset-uploads/{job_id}
       const statusEndpoints = [
-        `${apiBaseUrl}/v1/asset-uploads/${jobId}`,
+        `${apiBaseUrl}/v1/asset-uploads/${jobId}`,  // Most likely correct format
         `${apiBaseUrl}/asset-uploads/${jobId}`,
         `${apiBaseUrl}/v1/assets/upload-jobs/${jobId}`,
         `${apiBaseUrl}/assets/upload-jobs/${jobId}`,
@@ -131,21 +135,36 @@ export async function uploadImageToCanva(
         continue; // Try again
       }
 
-      jobStatus = await statusResponse.json() as { status: string; asset_id?: string; assetId?: string };
-      console.log(`Asset upload status (attempt ${attempts + 1}):`, jobStatus);
+      const statusData = await statusResponse.json();
+      console.log(`Asset upload status response (attempt ${attempts + 1}):`, JSON.stringify(statusData, null, 2));
+      
+      // Handle nested job object: { job: { status: "...", asset_id: "..." } }
+      // Or direct structure: { status: "...", asset_id: "..." }
+      jobStatus = statusData.job || statusData;
+      
+      const currentStatus = jobStatus.status;
+      console.log(`Asset upload status: ${currentStatus}`);
       attempts++;
 
       if (attempts >= maxAttempts) {
         throw new Error('Asset upload timeout');
       }
-    } while (jobStatus.status === 'PENDING' || jobStatus.status === 'PROCESSING');
+      
+      // Break if job is complete (success or failed)
+      if (currentStatus !== 'PENDING' && currentStatus !== 'PROCESSING' && currentStatus !== 'in_progress') {
+        break;
+      }
+    } while (jobStatus.status === 'PENDING' || jobStatus.status === 'PROCESSING' || jobStatus.status === 'in_progress');
 
-    if (jobStatus.status !== 'SUCCESS') {
-      throw new Error(`Asset upload failed with status: ${jobStatus.status}`);
+    const finalStatus = jobStatus.status;
+    if (finalStatus !== 'SUCCESS' && finalStatus !== 'success') {
+      throw new Error(`Asset upload failed with status: ${finalStatus}`);
     }
 
-    const assetId = jobStatus.asset_id || jobStatus.assetId;
+    // Extract asset_id from nested or direct structure
+    const assetId = jobStatus.asset_id || jobStatus.assetId || jobStatus.asset?.id;
     if (!assetId) {
+      console.error('Job status response:', JSON.stringify(jobStatus, null, 2));
       throw new Error('Asset upload succeeded but no asset_id in response');
     }
 

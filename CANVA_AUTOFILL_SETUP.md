@@ -1,15 +1,49 @@
-# Canva Autofill Setup Guide
+# Canva Design Generation Setup Guide
 
-This guide explains how to set up automatic design generation using Canva's Autofill API with Brand Templates.
+This guide explains how to set up automatic design generation in Canva. You can use either:
+
+1. **Without Brand Templates** (Simpler): Creates empty design and uploads images to media library
+2. **With Brand Templates** (Automatic): Uses Autofill API to automatically populate designs with content
 
 ## Overview
 
-The Autofill API allows you to automatically generate designs from a brand template by filling in data fields. This creates a fully populated design without manual editing.
+### Option 1: Without Brand Templates (Default)
 
-**Reference**: [Canva Autofill Guide](https://www.canva.dev/docs/connect/autofill-guide/)
+- Creates an empty presentation design
+- Uploads all trip images to user's Canva media library
+- Optionally adds cover image to the design
+- User opens design in Canva editor and adds images/text manually
+- **No setup required** - works immediately
+
+### Option 2: With Brand Templates (Automatic)
+
+- Uses Autofill API to automatically populate designs
+- Creates fully populated design with trip data (title, description, images, place info)
+- Requires Canva Enterprise subscription
+- Requires creating and configuring a Brand Template
+
+**Official Documentation**: 
+- [Canva Connect API](https://www.canva.dev/docs/connect/)
+- [Autofill Guide](https://www.canva.dev/docs/connect/autofill-guide/)
+- [API Reference](https://www.canva.dev/docs/connect/api-reference/)
+
+## API Endpoints Used
+
+The implementation uses the official Canva Connect API endpoints:
+
+- **Base URL**: `https://api.canva.com/rest/v1`
+- **Create Design**: `POST /designs`
+- **Get Brand Template Dataset**: `GET /brand-templates/{TEMPLATE-ID}/dataset`
+- **Create Autofill Job**: `POST /autofills`
+- **Get Autofill Job Status**: `GET /autofills/{JOB-ID}`
 
 ## Prerequisites
 
+### For Option 1 (Without Templates)
+- **No special requirements** - works with any Canva account
+- Only needs basic scopes: `design:meta:read`, `asset:read`, `asset:write`
+
+### For Option 2 (With Brand Templates)
 1. **Canva Enterprise Subscription** (or development access)
    - Autofill and Brand Templates require Canva Enterprise
    - You can request development access when setting up your integration
@@ -84,7 +118,7 @@ CANVA_BRAND_TEMPLATE_ID=AEN3TrQftXo
 
 Replace `AEN3TrQftXo` with your actual brand template ID.
 
-## Step 3: Test the Integration
+### Step 2: Test the Integration
 
 1. Complete a trip with images and places
 2. Click "Create Travel Diary"

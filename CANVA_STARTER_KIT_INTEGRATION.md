@@ -66,11 +66,17 @@ This allows Canva to redirect users back to the correct page after editing.
 
 ### 4. API Client Updates
 
-Updated to use the correct Canva Connect API endpoints:
+Updated to use the official Canva Connect API endpoints per [official documentation](https://www.canva.dev/docs/connect/):
 
 - **Base URLs**:
-  - API: `https://api.canva.com/rest/v1` (or `BASE_CANVA_CONNECT_API_URL`)
-  - Auth: `https://api.canva.com` (or `BASE_CANVA_CONNECT_AUTH_URL`)
+  - API: `https://api.canva.com/rest/v1` (default, or `BASE_CANVA_CONNECT_API_URL` env var)
+  - Auth: `https://www.canva.com/api` (default, or `BASE_CANVA_CONNECT_AUTH_URL` env var)
+
+- **Endpoints**:
+  - Create Design: `POST https://api.canva.com/rest/v1/designs`
+  - Brand Template Dataset: `GET https://api.canva.com/rest/v1/brand-templates/{ID}/dataset`
+  - Create Autofill Job: `POST https://api.canva.com/rest/v1/autofills`
+  - Get Autofill Job: `GET https://api.canva.com/rest/v1/autofills/{JOB-ID}`
 
 - **Scopes**: Full set of scopes matching starter kit:
   - `asset:read`, `asset:write`

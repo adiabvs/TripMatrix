@@ -234,27 +234,12 @@ export default function CanvaOAuthEditor({
           </Box>
 
           {designUrl && (
-            <Box
-              sx={{
-                mt: 3,
-                width: '100%',
-                minHeight: '400px',
-                border: '1px solid',
-                borderColor: 'divider',
-                borderRadius: 1,
-                overflow: 'hidden',
-                position: 'relative',
-              }}
-            >
-              <iframe
-                src={designUrl.replace('/edit', '/view')}
-                width="100%"
-                height="600px"
-                frameBorder="0"
-                allowFullScreen
-                style={{ border: 'none' }}
-                title="Travel Diary Design"
-              />
+            <Box sx={{ mt: 3 }}>
+              <Alert severity="info">
+                <Typography variant="body2">
+                  Canva designs cannot be embedded in iframes. Click "View Design" to open in a new tab.
+                </Typography>
+              </Alert>
             </Box>
           )}
 

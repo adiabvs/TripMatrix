@@ -41,8 +41,15 @@ export interface CanvaTokenResponse {
  * Get Canva Connect API base URL
  * Following the starter kit pattern: https://api.canva.com/rest
  */
+/**
+ * Get Canva Connect API base URL
+ * Official API base: https://api.canva.com/rest/v1
+ * Reference: https://www.canva.dev/docs/connect/
+ */
 export function getCanvaApiBaseUrl(): string {
-  return process.env.BASE_CANVA_CONNECT_API_URL || 'https://api.canva.com/rest';
+  // If env var is set, use it (should include /v1 if needed)
+  // Otherwise use the official base URL
+  return process.env.BASE_CANVA_CONNECT_API_URL || 'https://api.canva.com/rest/v1';
 }
 
 /**
@@ -207,20 +214,29 @@ export function getUserClient(accessToken: string) {
 /**
  * Create a design using Canva Connect API
  */
+/**
+ * Create a Canva design using the Connect API
+ * Reference: https://www.canva.dev/docs/connect/api-reference/designs/create-design/
+ * 
+ * Official endpoint: POST https://api.canva.com/rest/v1/designs
+ */
 export async function createCanvaDesign(
   accessToken: string,
   designData: {
     title: string;
     type?: string;
+    assetId?: string; // Optional: Add an initial asset (image) to the design
   }
 ): Promise<{ designId: string; designUrl: string; editUrl: string }> {
   const apiBaseUrl = getCanvaApiBaseUrl();
-  // Starter kit uses base /rest, so we need to add /v1 for the endpoint
+  // Ensure we have the correct endpoint path
+  // Base URL should be https://api.canva.com/rest/v1, so endpoint is /designs
   const designsEndpoint = apiBaseUrl.endsWith('/v1') 
     ? `${apiBaseUrl}/designs` 
     : `${apiBaseUrl}/v1/designs`;
   
   // Canva API requires 'design_type' field as an object with type and name
+  // Reference: https://www.canva.dev/docs/connect/api-reference/designs/create-design/
   const requestBody: any = {
     title: designData.title,
   };
@@ -232,6 +248,15 @@ export async function createCanvaDesign(
     type: 'preset',
     name: designType === 'presentation' ? 'presentation' : 'presentation', // Default to presentation
   };
+  
+  // Optionally add an initial asset (image) to the design
+  // Reference: https://www.canva.dev/docs/connect/api-reference/designs/create-design/
+  if (designData.assetId) {
+    requestBody.asset_id = designData.assetId;
+  }
+  
+  console.log('Creating design with endpoint:', designsEndpoint);
+  console.log('Request body:', JSON.stringify(requestBody, null, 2));
   
   const response = await fetch(designsEndpoint, {
     method: 'POST',
