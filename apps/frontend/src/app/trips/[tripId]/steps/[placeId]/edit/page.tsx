@@ -110,7 +110,7 @@ export default function EditStepPage() {
   if (!isCreator) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-lg text-gray-700">You don't have permission to edit this step</div>
+        <div className="text-lg text-gray-700">You don&apos;t have permission to edit this step</div>
       </div>
     );
   }

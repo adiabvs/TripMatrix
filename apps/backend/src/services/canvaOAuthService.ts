@@ -5,7 +5,6 @@
  */
 
 import crypto from 'node:crypto';
-import * as jose from 'jose';
 
 export interface CanvaOAuthConfig {
   clientId: string;

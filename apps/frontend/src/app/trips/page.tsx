@@ -2,36 +2,30 @@
 
 import { useAuth } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
-import { getUserTrips } from '@/lib/api';
-import type { Trip } from '@tripmatrix/types';
 import Link from 'next/link';
-import { format } from 'date-fns';
-import { toDate } from '@/lib/dateUtils';
+import { useEffect, useState } from 'react';
+import dynamic from 'next/dynamic';
+import { getUserTrips, getTripPlaces, getTripRoutes } from '@/lib/api';
+import type { Trip, TripPlace, TripRoute } from '@tripmatrix/types';
+import CompactTripCard from '@/components/CompactTripCard';
 import UserMenu from '@/components/UserMenu';
-import {
-  AppBar,
-  Toolbar,
-  Typography,
-  Container,
-  Box,
-  Button,
-  CircularProgress,
-  Card,
-  CardMedia,
-  CardContent,
-  Chip,
-} from '@mui/material';
-import {
-  Add as AddIcon,
-  Explore as ExploreIcon,
-  Home as HomeIcon,
-} from '@mui/icons-material';
+
+// Dynamically import HomeMapView with SSR disabled
+const HomeMapView = dynamic(() => import('@/components/HomeMapView'), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-full flex items-center justify-center bg-gray-100">
+      <div className="text-sm text-gray-600">Loading map...</div>
+    </div>
+  ),
+});
 
 export default function TripsPage() {
   const { user, loading: authLoading, getIdToken } = useAuth();
   const router = useRouter();
   const [trips, setTrips] = useState<Trip[]>([]);
+  const [allPlaces, setAllPlaces] = useState<TripPlace[]>([]);
+  const [allRoutes, setAllRoutes] = useState<TripRoute[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -50,7 +44,35 @@ export default function TripsPage() {
     try {
       const token = await getIdToken();
       const userTrips = await getUserTrips(token);
-      setTrips(userTrips);
+      
+      // Sort by date descending (newest first)
+      const sorted = userTrips.sort((a, b) => {
+        const aTime = new Date(a.createdAt).getTime();
+        const bTime = new Date(b.createdAt).getTime();
+        return bTime - aTime;
+      });
+      
+      setTrips(sorted);
+
+      // Load places and routes for all trips
+      const placesPromises = sorted.map(trip => 
+        getTripPlaces(trip.tripId, token).catch(() => [])
+      );
+      const routesPromises = sorted.map(trip => 
+        getTripRoutes(trip.tripId, token).catch(() => [])
+      );
+
+      const [placesResults, routesResults] = await Promise.all([
+        Promise.all(placesPromises),
+        Promise.all(routesPromises),
+      ]);
+
+      // Flatten all places and routes
+      const flattenedPlaces = placesResults.flat();
+      const flattenedRoutes = routesResults.flat();
+
+      setAllPlaces(flattenedPlaces);
+      setAllRoutes(flattenedRoutes);
     } catch (error) {
       console.error('Failed to load trips:', error);
     } finally {
@@ -58,209 +80,123 @@ export default function TripsPage() {
     }
   };
 
+  const handleTripPress = (tripId: string) => {
+    window.location.href = `/trips/${tripId}`;
+  };
+
   if (authLoading || loading) {
     return (
-      <Box
-        sx={{
-          minHeight: '100vh',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        <CircularProgress />
-      </Box>
+      <div className="min-h-screen flex items-center justify-center bg-[#424242]">
+        <div className="text-sm text-white">Loading...</div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-[#424242] flex flex-col items-center justify-center px-4">
+        <div className="text-6xl mb-4">🔒</div>
+        <h2 className="text-xl font-semibold text-white mb-2">Sign in required</h2>
+        <p className="text-sm text-gray-300 mb-6 text-center">
+          Please sign in to view and manage your trips
+        </p>
+        <Link
+          href="/auth"
+          className="flex items-center gap-2 px-6 py-3 bg-[#1976d2] text-white rounded-none text-sm font-semibold"
+        >
+          <span>Sign In</span>
+        </Link>
+      </div>
     );
   }
 
   return (
-    <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
-      <AppBar position="sticky" elevation={0} sx={{ bgcolor: 'background.paper' }}>
-        <Toolbar sx={{ justifyContent: 'space-between', maxWidth: 'xl', width: '100%', mx: 'auto' }}>
-          <Link href="/trips" style={{ textDecoration: 'none', color: 'inherit' }}>
-            <Typography variant="h5" component="div" sx={{ fontWeight: 500, color: 'text.primary' }}>
-              TripMatrix
-            </Typography>
-          </Link>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1, sm: 2 }, flexWrap: 'wrap' }}>
-            <Button
-              component={Link}
-              href="/trips/public"
-              startIcon={<ExploreIcon />}
-              sx={{ 
-                color: 'text.primary', 
-                textTransform: 'none',
-                display: { xs: 'none', sm: 'flex' },
-              }}
+    <div className="min-h-screen bg-[#424242] flex flex-col">
+      {/* Map Section - Full height */}
+      <div className="relative flex-1" style={{ height: '100vh' }}>
+        <HomeMapView 
+          routes={allRoutes} 
+          places={allPlaces}
+          trips={[]}
+          height="100vh"
+        />
+        
+        {/* Header Overlay */}
+        <div className="absolute top-0 left-0 right-0 pt-3 px-3 pb-2 bg-black/30 z-10">
+          <div className="flex justify-between items-center">
+            <h1 className="text-[9px] font-semibold text-white leading-tight">
+              My Trips
+            </h1>
+            <Link 
+              href="/trips/new" 
+              className="w-8 h-8 bg-[#1976d2] text-white rounded-none flex items-center justify-center"
             >
-              Explore
-            </Button>
-            <Button
-              component={Link}
-              href="/trips/new"
-              variant="contained"
-              startIcon={<AddIcon />}
-              sx={{ textTransform: 'none' }}
-            >
-              <Box component="span" sx={{ display: { xs: 'none', sm: 'inline' } }}>New Trip</Box>
-              <Box component="span" sx={{ display: { xs: 'inline', sm: 'none' } }}>New</Box>
-            </Button>
-            <UserMenu />
-          </Box>
-        </Toolbar>
-      </AppBar>
+              <span className="text-lg leading-none">+</span>
+            </Link>
+          </div>
+        </div>
+      </div>
 
-      <Container maxWidth="xl" sx={{ py: { xs: 3, sm: 4, md: 6 } }}>
-        <Box sx={{ mb: { xs: 3, sm: 4 } }}>
-          <Typography variant="h3" component="h1" sx={{ mb: 1, fontWeight: 400 }}>
-            My Trips
-          </Typography>
-          <Typography variant="body1" color="text.secondary">
-            Your travel stories and adventures
-          </Typography>
-        </Box>
+      {/* Trip Cards Modal - Dark Grey Bottom */}
+      <div className="absolute bottom-0 left-0 right-0 bg-[#424242] border-t border-gray-600" style={{ height: '25vh', minHeight: '200px' }}>
+        {/* Drag Handle */}
+        <div className="flex justify-center py-3">
+          <div className="w-10 h-1 bg-gray-500 rounded-full" />
+        </div>
 
-        {trips.length === 0 ? (
-          <Box sx={{ textAlign: 'center', py: 10 }}>
-            <Box
-              sx={{
-                width: 96,
-                height: 96,
-                mx: 'auto',
-                mb: 3,
-                borderRadius: '50%',
-                bgcolor: 'grey.100',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <AddIcon sx={{ fontSize: 48, color: 'grey.400' }} />
-            </Box>
-            <Typography variant="h6" sx={{ mb: 1 }}>
-              No trips yet
-            </Typography>
-            <Typography color="text.secondary" sx={{ mb: 3 }}>
-              Start your first adventure and create beautiful travel stories
-            </Typography>
-            <Button
-              component={Link}
-              href="/trips/new"
-              variant="contained"
-              size="large"
-              startIcon={<AddIcon />}
-              sx={{ textTransform: 'none' }}
-            >
-              Create Your First Trip
-            </Button>
-          </Box>
+        {trips.length > 0 ? (
+          <div className="overflow-x-auto pb-4 px-4 h-full">
+            <div className="flex gap-3" style={{ width: 'max-content' }}>
+              {trips.map((trip) => (
+                <CompactTripCard 
+                  key={trip.tripId} 
+                  trip={trip} 
+                  onPress={() => handleTripPress(trip.tripId)}
+                />
+              ))}
+            </div>
+          </div>
         ) : (
-          <Box
-            sx={{
-              display: 'grid',
-              gridTemplateColumns: {
-                xs: '1fr',
-                sm: 'repeat(2, 1fr)',
-                md: 'repeat(3, 1fr)',
-              },
-              gap: { xs: 2, sm: 2.5, md: 3 },
-            }}
-          >
-            {trips.map((trip) => (
-              <Box key={trip.tripId}>
-                <Card
-                  component={Link}
-                  href={`/trips/${trip.tripId}`}
-                  sx={{
-                    textDecoration: 'none',
-                    color: 'inherit',
-                    height: '100%',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    transition: 'transform 0.2s, box-shadow 0.2s',
-                    '&:hover': {
-                      transform: { xs: 'none', sm: 'translateY(-4px)' },
-                      boxShadow: { xs: 'none', sm: '0px 4px 12px rgba(0, 0, 0, 0.15)' },
-                    },
-                  }}
-                >
-                  <Box sx={{ position: 'relative', aspectRatio: '4/3', overflow: 'hidden' }}>
-                    {trip.coverImage ? (
-                      <CardMedia
-                        component="img"
-                        image={trip.coverImage}
-                        alt={trip.title}
-                        sx={{
-                          height: '100%',
-                          objectFit: 'cover',
-                          transition: 'transform 0.5s',
-                          '&:hover': {
-                            transform: 'scale(1.05)',
-                          },
-                        }}
-                      />
-                    ) : (
-                      <Box
-                        sx={{
-                          height: '100%',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          bgcolor: 'primary.light',
-                        }}
-                      >
-                        <HomeIcon sx={{ fontSize: 64, color: 'grey.400' }} />
-                      </Box>
-                    )}
-                    <Chip
-                      label={trip.status === 'completed' ? 'Completed' : 'Active'}
-                      size="small"
-                      sx={{
-                        position: 'absolute',
-                        top: 16,
-                        right: 16,
-                        bgcolor: trip.status === 'completed' ? 'success.main' : 'primary.main',
-                        color: 'white',
-                        fontWeight: 500,
-                      }}
-                    />
-                  </Box>
-                  <CardContent sx={{ flexGrow: 1, p: { xs: 2, sm: 2.5 } }}>
-                    <Typography variant="h6" component="h3" sx={{ mb: 1, fontWeight: 500 }}>
-                      {trip.title}
-                    </Typography>
-                    {trip.description && (
-                      <Typography
-                        variant="body2"
-                        color="text.secondary"
-                        sx={{
-                          mb: 1.5,
-                          display: '-webkit-box',
-                          WebkitLineClamp: 2,
-                          WebkitBoxOrient: 'vertical',
-                          overflow: 'hidden',
-                        }}
-                      >
-                        {trip.description}
-                      </Typography>
-                    )}
-                    <Box sx={{ display: 'flex', gap: { xs: 1.5, sm: 2 }, alignItems: 'center', flexWrap: 'wrap' }}>
-                      <Typography variant="caption" color="text.secondary">
-                        {format(toDate(trip.startTime), 'MMM yyyy')}
-                      </Typography>
-                      {trip.totalDistance && (
-                        <Typography variant="caption" color="text.secondary">
-                          {(trip.totalDistance / 1000).toFixed(0)} km
-                        </Typography>
-                      )}
-                    </Box>
-                  </CardContent>
-                </Card>
-              </Box>
-            ))}
-          </Box>
+          <div className="flex flex-col items-center justify-center h-full px-4">
+            <span className="text-4xl mb-3">🗺️</span>
+            <p className="text-[11px] text-gray-300 font-semibold mb-4">No trips yet</p>
+            <p className="text-[10px] text-gray-400 text-center mb-6">
+              Start your first adventure and create beautiful travel stories
+            </p>
+            <Link
+              href="/trips/new"
+              className="flex items-center gap-2 px-6 py-3 bg-[#1976d2] text-white rounded-none text-sm font-semibold"
+            >
+              <span className="text-lg">+</span>
+              <span>Create Your First Trip</span>
+            </Link>
+          </div>
         )}
-      </Container>
-    </Box>
+
+        {/* Bottom Navigation Menu */}
+        <div className="absolute bottom-0 left-0 right-0 bg-[#424242] border-t border-gray-600 z-20">
+          <div className="flex items-center justify-around px-2 py-2.5">
+            <Link 
+              href="/" 
+              className="flex flex-col items-center gap-1 text-white active:opacity-70"
+            >
+              <span className="text-xl">🏠</span>
+              <span className="text-[10px] font-medium">Discover</span>
+            </Link>
+            <Link 
+              href="/trips" 
+              className="flex flex-col items-center gap-1 text-white active:opacity-70"
+            >
+              <span className="text-xl">🗺️</span>
+              <span className="text-[10px] font-medium">My Trips</span>
+            </Link>
+            <div className="flex flex-col items-center gap-1">
+              <UserMenu />
+              <span className="text-[10px] font-medium text-white">Profile</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }

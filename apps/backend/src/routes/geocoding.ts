@@ -45,16 +45,19 @@ router.get('/search', async (req, res) => {
 // Reverse geocoding endpoint to get country from coordinates
 router.get('/reverse', async (req, res) => {
   try {
-    const { lat, lng } = req.query;
+    const { lat, lng, lon } = req.query;
+    
+    // Support both 'lng' and 'lon' parameter names
+    const longitude = lng || lon;
 
-    if (!lat || !lng) {
+    if (!lat || !longitude) {
       return res.status(400).json({
         success: false,
-        error: 'Query parameters "lat" and "lng" are required',
+        error: 'Query parameters "lat" and "lng" (or "lon") are required',
       });
     }
 
-    const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&addressdetails=1`;
+    const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${longitude}&addressdetails=1`;
 
     const response = await fetch(url, {
       headers: {

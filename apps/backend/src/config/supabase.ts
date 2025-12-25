@@ -59,7 +59,7 @@ export async function ensureImagesBucket() {
     if (!imagesBucket) {
       console.log('Creating images bucket...');
       // Try to create the bucket
-      const { data, error: createError } = await supabaseClient.storage.createBucket('images', {
+      const { error: createError } = await supabaseClient.storage.createBucket('images', {
         public: true,
         fileSizeLimit: 10485760, // 10MB
         allowedMimeTypes: ['image/*'],

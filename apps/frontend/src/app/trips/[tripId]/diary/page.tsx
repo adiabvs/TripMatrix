@@ -303,7 +303,7 @@ export default function DiaryPage() {
           justifyContent: 'center',
         }}
       >
-        <Typography>You don't have permission to view this diary</Typography>
+        <Typography>You don&apos;t have permission to view this diary</Typography>
       </Box>
     );
   }

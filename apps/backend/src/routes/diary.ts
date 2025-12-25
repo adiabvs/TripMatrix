@@ -124,7 +124,7 @@ router.post('/generate/:tripId', async (req: AuthenticatedRequest, res) => {
         });
       }
 
-      let tokenData = tokenDoc.data()!;
+      const tokenData = tokenDoc.data()!;
       accessToken = tokenData.accessToken;
 
       // Check if token expired and refresh if needed

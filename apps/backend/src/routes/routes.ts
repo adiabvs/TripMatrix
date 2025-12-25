@@ -15,7 +15,7 @@ router.post('/:tripId/points', async (req: OptionalAuthRequest, res) => {
   try {
     const { tripId } = req.params;
     const { points, modeOfTravel } = req.body;
-    const uid = req.uid!;
+    req.uid!; // User ID for authentication check
 
     if (!points || !Array.isArray(points) || points.length === 0) {
       return res.status(400).json({

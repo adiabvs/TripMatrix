@@ -303,8 +303,8 @@ export default function PlaceForm({ tripId, onSubmit, onCancel, token, previousP
   };
 
   return (
-    <form onSubmit={handleSubmit} className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-      <h3 className="text-2xl font-bold mb-6">{initialData ? 'Edit Step' : 'Add Step'}</h3>
+    <form onSubmit={handleSubmit} className="bg-white p-4 md:p-6 rounded-xl md:rounded-2xl shadow-sm border border-gray-200">
+      <h3 className="text-xl md:text-2xl font-bold mb-4 md:mb-6">{initialData ? 'Edit Step' : 'Add Step'}</h3>
 
       {/* Date/Time Picker */}
       <div className="mb-6">
@@ -438,7 +438,7 @@ export default function PlaceForm({ tripId, onSubmit, onCancel, token, previousP
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={uploadingImages || images.length >= 10}
-              className="w-full px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg text-gray-600 hover:border-gray-400 hover:text-gray-700 transition-colors disabled:opacity-50"
+              className="w-full px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg text-gray-600 hover:border-gray-400 hover:text-gray-700 transition-colors disabled:opacity-50 text-sm md:text-base"
             >
               {uploadingImages ? 'Uploading...' : images.length >= 10 ? `Maximum 10 photos (${images.length}/10)` : `+ Add Photos (${images.length}/10)`}
             </button>
@@ -525,7 +525,7 @@ export default function PlaceForm({ tripId, onSubmit, onCancel, token, previousP
               type="button"
               onClick={handleRewrite}
               disabled={rewriting}
-              className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 text-sm"
+              className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 text-xs md:text-sm"
             >
               {rewriting ? 'Rewriting...' : 'Rewrite with AI'}
             </button>
@@ -578,14 +578,14 @@ export default function PlaceForm({ tripId, onSubmit, onCancel, token, previousP
         <button
           type="submit"
           disabled={loading || !placeName || !coordinates}
-          className="flex-1 bg-black text-white py-3 px-6 rounded-full hover:bg-gray-800 disabled:opacity-50 font-medium transition-colors"
+          className="flex-1 bg-black text-white py-3 px-6 rounded-full hover:bg-gray-800 disabled:opacity-50 text-sm md:text-base font-semibold transition-colors"
         >
           {loading ? (initialData ? 'Saving...' : 'Adding...') : (initialData ? 'Save Changes' : 'Add Step')}
         </button>
         <button
           type="button"
           onClick={onCancel}
-          className="px-6 py-3 border border-gray-300 rounded-full hover:bg-gray-50 transition-colors"
+          className="px-6 py-3 border border-gray-300 rounded-full hover:bg-gray-50 transition-colors text-sm md:text-base font-medium"
         >
           Cancel
         </button>

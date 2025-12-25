@@ -20,14 +20,16 @@ export interface CanvaDesign {
  * Create a travel diary design in Canva
  * This function prepares the design data and returns URLs for the Canva Embed SDK
  */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export async function createTravelDiaryDesign(
-  config: CanvaConfig,
-  trip: {
+  _config: CanvaConfig,
+  _trip: {
     title: string;
     description?: string;
     coverImage?: string;
   },
-  places: Array<{
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _places: Array<{
     name: string;
     comment?: string;
     rewrittenComment?: string;

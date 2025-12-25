@@ -8,12 +8,11 @@
  * 3. Puppeteer to capture page transitions
  */
 
-import { getStorage } from '../config/firebase.js';
-
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export async function generateBookVideo(
-  pdfUrl: string,
-  tripId: string,
-  userId: string
+  _pdfUrl: string,
+  _tripId: string,
+  _userId: string
 ): Promise<string | null> {
   // TODO: Implement video generation
   // This is a complex feature that requires:

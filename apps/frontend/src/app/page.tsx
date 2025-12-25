@@ -2,347 +2,313 @@
 
 import { useAuth } from '@/lib/auth';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
-import { getPublicTrips } from '@/lib/api';
-import type { Trip } from '@tripmatrix/types';
-import { format } from 'date-fns';
-import { toDate } from '@/lib/dateUtils';
+import { useEffect, useState, useRef } from 'react';
+import dynamic from 'next/dynamic';
+import { getPublicTrips, getTripPlaces, getTripRoutes } from '@/lib/api';
+import type { Trip, TripPlace, TripRoute } from '@tripmatrix/types';
 import UserMenu from '@/components/UserMenu';
-import {
-  AppBar,
-  Toolbar,
-  Typography,
-  Container,
-  Box,
-  TextField,
-  InputAdornment,
-  Card,
-  CardMedia,
-  CardContent,
-  Chip,
-  Button,
-  CircularProgress,
-} from '@mui/material';
-import {
-  Search as SearchIcon,
-  Home as HomeIcon,
-  Add as AddIcon,
-  Login as LoginIcon,
-  Explore as ExploreIcon,
-} from '@mui/icons-material';
+import CompactTripCard from '@/components/CompactTripCard';
+import { db } from '@/lib/firebase';
+import { doc, getDoc } from 'firebase/firestore';
+import type { User } from '@tripmatrix/types';
+
+// Dynamically import HomeMapView with SSR disabled since it uses Leaflet
+const HomeMapView = dynamic(() => import('@/components/HomeMapView'), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-full flex items-center justify-center bg-gray-100">
+      <div className="text-sm text-gray-600">Loading map...</div>
+    </div>
+  ),
+});
 
 export default function Home() {
   const { user } = useAuth();
   const [trips, setTrips] = useState<Trip[]>([]);
+  const [allPlaces, setAllPlaces] = useState<TripPlace[]>([]);
+  const [allRoutes, setAllRoutes] = useState<TripRoute[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filteredTrips, setFilteredTrips] = useState<Trip[]>([]);
+  const [selectedTrip, setSelectedTrip] = useState<Trip | null>(null);
+  const [creatorMap, setCreatorMap] = useState<Record<string, User>>({});
+  
+  // Draggable state
+  const [modalHeight, setModalHeight] = useState(25); // Start at 25vh
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStartY = useRef(0);
+  const dragStartHeight = useRef(25);
 
   useEffect(() => {
     loadPublicTrips();
   }, []);
 
-  useEffect(() => {
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
-      const filtered = trips.filter((trip) => {
-        if (trip.title.toLowerCase().includes(query)) return true;
-        if (trip.description?.toLowerCase().includes(query)) return true;
-        return false;
-      });
-      setFilteredTrips(filtered);
-    } else {
-      setFilteredTrips(trips.slice(0, 5));
-    }
-  }, [searchQuery, trips]);
-
   const loadPublicTrips = async () => {
     try {
       const publicTrips = await getPublicTrips();
-      console.log('Loaded public trips:', publicTrips.length);
       const sorted = publicTrips.sort((a, b) => {
         const aTime = new Date(a.createdAt).getTime();
         const bTime = new Date(b.createdAt).getTime();
         return bTime - aTime;
       });
-      setTrips(sorted);
-      setFilteredTrips(sorted.slice(0, 5));
+      
+      // Get start location for each trip from first place
+      const tripsWithLocations = await Promise.all(
+        sorted.map(async (trip) => {
+          try {
+            const places = await getTripPlaces(trip.tripId, null).catch(() => []);
+            if (places.length > 0 && places[0].coordinates) {
+              return {
+                ...trip,
+                startLocationCoords: places[0].coordinates,
+              } as Trip & { startLocationCoords?: { lat: number; lng: number } };
+            }
+          } catch (error) {
+            console.error(`Failed to load places for trip ${trip.tripId}:`, error);
+          }
+          return trip;
+        })
+      );
+      
+      setTrips(tripsWithLocations as Trip[]);
+
+      // Load creator info for all trips
+      const creatorIds = [...new Set(sorted.map(t => t.creatorId))];
+      const creatorPromises = creatorIds.map(async (creatorId) => {
+        try {
+          const creatorDoc = await getDoc(doc(db, 'users', creatorId));
+          if (creatorDoc.exists()) {
+            return { uid: creatorId, user: creatorDoc.data() as User };
+          }
+        } catch (error) {
+          console.error(`Failed to load creator ${creatorId}:`, error);
+        }
+        return null;
+      });
+      
+      const creatorResults = await Promise.all(creatorPromises);
+      const newCreatorMap: Record<string, User> = {};
+      creatorResults.forEach(result => {
+        if (result) {
+          newCreatorMap[result.uid] = result.user;
+        }
+      });
+      setCreatorMap(newCreatorMap);
+
+      // Load places and routes for all trips
+      const placesPromises = sorted.map(trip => 
+        getTripPlaces(trip.tripId, null).catch(() => [])
+      );
+      const routesPromises = sorted.map(trip => 
+        getTripRoutes(trip.tripId, null).catch(() => [])
+      );
+
+      const [placesResults, routesResults] = await Promise.all([
+        Promise.all(placesPromises),
+        Promise.all(routesPromises),
+      ]);
+
+      // Flatten all places and routes
+      const flattenedPlaces = placesResults.flat();
+      const flattenedRoutes = routesResults.flat();
+
+      setAllPlaces(flattenedPlaces);
+      setAllRoutes(flattenedRoutes);
     } catch (error) {
       console.error('Failed to load public trips:', error);
-      alert('Failed to load public trips. Please refresh the page.');
     } finally {
       setLoading(false);
     }
   };
 
+  const handleTripPress = (tripId: string) => {
+    window.location.href = `/trips/${tripId}`;
+  };
+
+  const handleTripMarkerClick = (trip: Trip) => {
+    setSelectedTrip(trip);
+  };
+
+  // Draggable handlers
+  const handleDragStart = (e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+    const clientY = 'touches' in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY;
+    dragStartY.current = clientY;
+    dragStartHeight.current = modalHeight;
+  };
+
+  useEffect(() => {
+    const handleDragMove = (e: MouseEvent | TouchEvent) => {
+      if (!isDragging) return;
+      
+      const clientY = 'touches' in e ? e.touches[0].clientY : (e as MouseEvent).clientY;
+      const deltaY = dragStartY.current - clientY; // Negative when dragging up
+      const screenHeight = window.innerHeight;
+      const deltaVh = (deltaY / screenHeight) * 100;
+      const newHeight = Math.max(25, Math.min(80, dragStartHeight.current + deltaVh));
+      setModalHeight(newHeight);
+    };
+
+    const handleDragEnd = () => {
+      setIsDragging(false);
+    };
+
+    if (isDragging) {
+      document.addEventListener('mousemove', handleDragMove);
+      document.addEventListener('mouseup', handleDragEnd);
+      document.addEventListener('touchmove', handleDragMove, { passive: false });
+      document.addEventListener('touchend', handleDragEnd);
+      return () => {
+        document.removeEventListener('mousemove', handleDragMove);
+        document.removeEventListener('mouseup', handleDragEnd);
+        document.removeEventListener('touchmove', handleDragMove);
+        document.removeEventListener('touchend', handleDragEnd);
+      };
+    }
+  }, [isDragging, modalHeight]);
+
   if (loading) {
     return (
-      <Box
-        sx={{
-          minHeight: '100vh',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        <CircularProgress />
-      </Box>
+      <div className="min-h-screen flex items-center justify-center bg-[#424242]">
+        <div className="text-sm text-white">Loading...</div>
+      </div>
     );
   }
 
+  const mapHeight = `${100 - modalHeight}vh`;
+  const modalHeightVh = `${modalHeight}vh`;
+
   return (
-    <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
-      <AppBar position="sticky" elevation={0} sx={{ bgcolor: 'background.paper' }}>
-        <Toolbar sx={{ justifyContent: 'space-between', maxWidth: 'xl', width: '100%', mx: 'auto' }}>
-          <Link href="/" style={{ textDecoration: 'none', color: 'inherit' }}>
-            <Typography variant="h5" component="div" sx={{ fontWeight: 500, color: 'text.primary' }}>
-              TripMatrix
-            </Typography>
-          </Link>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1, sm: 2 }, flexWrap: 'wrap' }}>
-            {user ? (
-              <>
-                <Button
-                  component={Link}
-                  href="/trips"
-                  startIcon={<HomeIcon />}
-                  sx={{ 
-                    color: 'text.primary', 
-                    textTransform: 'none',
-                    display: { xs: 'none', sm: 'flex' },
-                  }}
+    <div className="min-h-screen bg-[#424242] flex flex-col overflow-hidden">
+      {/* Map Section */}
+      <div className="relative" style={{ height: mapHeight }}>
+        <HomeMapView 
+          routes={allRoutes} 
+          places={allPlaces}
+          trips={trips}
+          onTripMarkerClick={handleTripMarkerClick}
+          height={mapHeight}
+        />
+        
+        {/* Header Overlay */}
+        <div className="absolute top-0 left-0 right-0 pt-3 px-3 pb-2 bg-black/30 z-10">
+          <div className="flex justify-between items-center">
+            <h1 className="text-[6px] font-semibold text-white leading-tight">
+              Explore the world
+            </h1>
+            <div className="flex items-center gap-2">
+              {user ? (
+                <Link 
+                  href="/trips/new" 
+                  className="flex items-center gap-1 px-3 py-1.5 bg-[#1976d2] text-white rounded-none text-[10px] font-semibold leading-tight h-6"
                 >
-                  My Trips
-                </Button>
-                <Button
-                  component={Link}
-                  href="/trips/new"
-                  variant="contained"
-                  startIcon={<AddIcon />}
-                  sx={{ textTransform: 'none' }}
+                  <span className="text-[12px] leading-none">+</span>
+                  <span>Create</span>
+                </Link>
+              ) : (
+                <Link 
+                  href="/auth" 
+                  className="flex items-center gap-1 px-3 py-1.5 bg-[#1976d2] text-white rounded-none text-[10px] font-semibold leading-tight h-6"
                 >
-                  <Box component="span" sx={{ display: { xs: 'none', sm: 'inline' } }}>Create Trip</Box>
-                  <Box component="span" sx={{ display: { xs: 'inline', sm: 'none' } }}>New</Box>
-                </Button>
-              </>
-            ) : (
-              <Button
-                component={Link}
-                href="/auth"
-                startIcon={<LoginIcon />}
-                variant="outlined"
-                sx={{ textTransform: 'none' }}
-              >
-                Sign In
-              </Button>
-            )}
-            <UserMenu />
-          </Box>
-        </Toolbar>
-      </AppBar>
+                  <span>Sign In</span>
+                </Link>
+              )}
+            </div>
+          </div>
+        </div>
 
-      <Container maxWidth="xl" sx={{ py: { xs: 3, sm: 4, md: 6 } }}>
-        <Box sx={{ textAlign: 'center', mb: { xs: 4, sm: 5, md: 6 } }}>
-          <Typography variant="h2" component="h1" sx={{ mb: 1.5, fontWeight: 400 }}>
-            Discover Amazing Trips
-          </Typography>
-          <Typography variant="body1" color="text.secondary" sx={{ mb: { xs: 3, sm: 4 } }}>
-            Explore travel stories from around the world
-          </Typography>
+        {/* Trip Marker Popup */}
+        {selectedTrip && (
+          <div className="absolute top-12 left-0 right-0 flex justify-center z-20 px-4">
+            <div className="bg-white rounded-lg p-2 shadow-lg max-w-xs">
+              <h3 className="text-[11px] font-semibold text-black mb-0.5 leading-tight">{selectedTrip.title}</h3>
+              <p className="text-[10px] text-gray-600 mb-1.5 leading-tight line-clamp-2">{selectedTrip.description || 'No description'}</p>
+              <div className="flex gap-1.5">
+                <button
+                  onClick={() => handleTripPress(selectedTrip.tripId)}
+                  className="flex-1 bg-[#1976d2] text-white px-2 py-1 rounded text-[10px] font-medium leading-tight"
+                >
+                  View Trip
+                </button>
+                <button
+                  onClick={() => setSelectedTrip(null)}
+                  className="px-2 py-1 border border-gray-300 rounded text-[10px] font-medium leading-tight"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
 
-          <Box sx={{ maxWidth: 600, mx: 'auto', px: { xs: 1 } }}>
-            <TextField
-              fullWidth
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by location, user, or trip name..."
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <SearchIcon sx={{ fontSize: { xs: 20, sm: 24 } }} />
-                  </InputAdornment>
-                ),
-              }}
-              sx={{
-                '& .MuiOutlinedInput-root': {
-                  borderRadius: 8,
-                  bgcolor: 'background.paper',
-                },
-              }}
-            />
-          </Box>
-        </Box>
+      {/* Trip Cards Section - Draggable Modal */}
+      <div 
+        className="absolute bottom-0 left-0 right-0 bg-[#424242] border-t border-gray-600 overflow-hidden flex flex-col"
+        style={{ height: modalHeightVh }}
+      >
+        {/* Drag Handle */}
+        <div 
+          className="flex justify-center py-3 cursor-grab active:cursor-grabbing select-none"
+          onMouseDown={handleDragStart}
+          onTouchStart={handleDragStart}
+        >
+          <div className="w-10 h-1 bg-gray-500 rounded-full" />
+        </div>
 
-        <Box sx={{ mb: { xs: 3, sm: 4 } }}>
-          <Typography variant="h5" component="h2" sx={{ mb: { xs: 2, sm: 3 }, fontWeight: 400 }}>
-            {searchQuery ? `Search Results (${filteredTrips.length})` : `Featured Trips (${trips.length} total)`}
-          </Typography>
-
-          {filteredTrips.length === 0 ? (
-            <Box sx={{ textAlign: 'center', py: 10 }}>
-              <Box
-                sx={{
-                  width: 96,
-                  height: 96,
-                  mx: 'auto',
-                  mb: 3,
-                  borderRadius: '50%',
-                  bgcolor: 'grey.100',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <SearchIcon sx={{ fontSize: 48, color: 'grey.400' }} />
-              </Box>
-              <Typography variant="h6" sx={{ mb: 1 }}>
-                No trips found
-              </Typography>
-              <Typography color="text.secondary">Try a different search term</Typography>
-            </Box>
-          ) : (
-            <Box
-              sx={{
-                display: 'grid',
-                gridTemplateColumns: {
-                  xs: '1fr',
-                  sm: 'repeat(2, 1fr)',
-                  md: 'repeat(3, 1fr)',
-                },
-                gap: { xs: 2, sm: 2.5, md: 3 },
-              }}
-            >
-              {filteredTrips.map((trip) => (
-                <Box key={trip.tripId}>
-                  <Card
-                    component={Link}
-                    href={`/trips/${trip.tripId}`}
-                    sx={{
-                      textDecoration: 'none',
-                      color: 'inherit',
-                      height: '100%',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      transition: 'transform 0.2s, box-shadow 0.2s',
-                      '&:hover': {
-                        transform: { xs: 'none', sm: 'translateY(-4px)' },
-                        boxShadow: { xs: 'none', sm: '0px 4px 12px rgba(0, 0, 0, 0.15)' },
-                      },
-                    }}
-                  >
-                    <Box sx={{ position: 'relative', aspectRatio: '4/3', overflow: 'hidden' }}>
-                      {trip.coverImage ? (
-                        <CardMedia
-                          component="img"
-                          image={trip.coverImage}
-                          alt={trip.title}
-                          sx={{
-                            height: '100%',
-                            objectFit: 'cover',
-                            transition: 'transform 0.5s',
-                            '&:hover': {
-                              transform: 'scale(1.05)',
-                            },
-                          }}
-                        />
-                      ) : (
-                        <Box
-                          sx={{
-                            height: '100%',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            bgcolor: 'primary.light',
-                          }}
-                        >
-                          <HomeIcon sx={{ fontSize: 64, color: 'grey.400' }} />
-                        </Box>
-                      )}
-                      <Chip
-                        label={trip.status === 'completed' ? 'Completed' : 'Active'}
-                        size="small"
-                        sx={{
-                          position: 'absolute',
-                          top: 16,
-                          right: 16,
-                          bgcolor: trip.status === 'completed' ? 'success.main' : 'primary.main',
-                          color: 'white',
-                          fontWeight: 500,
-                        }}
-                      />
-                    </Box>
-                    <CardContent sx={{ flexGrow: 1, p: { xs: 2, sm: 2.5 } }}>
-                      <Typography variant="h6" component="h3" sx={{ mb: 1, fontWeight: 500 }}>
-                        {trip.title}
-                      </Typography>
-                      {trip.description && (
-                        <Typography
-                          variant="body2"
-                          color="text.secondary"
-                          sx={{
-                            mb: 1.5,
-                            display: '-webkit-box',
-                            WebkitLineClamp: 2,
-                            WebkitBoxOrient: 'vertical',
-                            overflow: 'hidden',
-                          }}
-                        >
-                          {trip.description}
-                        </Typography>
-                      )}
-                      <Box sx={{ display: 'flex', gap: { xs: 1.5, sm: 2 }, alignItems: 'center', flexWrap: 'wrap' }}>
-                        <Typography variant="caption" color="text.secondary">
-                          {format(toDate(trip.startTime), 'MMM yyyy')}
-                        </Typography>
-                        {trip.totalDistance && (
-                          <Typography variant="caption" color="text.secondary">
-                            {(trip.totalDistance / 1000).toFixed(0)} km
-                          </Typography>
-                        )}
-                      </Box>
-                    </CardContent>
-                  </Card>
-                </Box>
+        {trips.length > 0 ? (
+          <div className="overflow-x-auto pb-16 px-4 flex-1">
+            <div className="flex gap-3" style={{ width: 'max-content' }}>
+              {trips.map((trip) => (
+                <CompactTripCard 
+                  key={trip.tripId} 
+                  trip={trip} 
+                  onPress={() => handleTripPress(trip.tripId)}
+                  creator={creatorMap[trip.creatorId]}
+                />
               ))}
-            </Box>
-          )}
-        </Box>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center py-12 px-4 pb-16">
+            <span className="text-4xl mb-2">🗺️</span>
+            <p className="text-[11px] text-gray-300 font-semibold">No trips available</p>
+          </div>
+        )}
 
-        {!searchQuery && trips.length > 5 && (
-          <Box sx={{ textAlign: 'center', mt: { xs: 4, sm: 5, md: 6 } }}>
-            <Button
-              component={Link}
-              href="/trips/public"
-              endIcon={<ExploreIcon />}
-              sx={{ textTransform: 'none' }}
+        {/* Bottom Navigation Menu */}
+        <div className="absolute bottom-0 left-0 right-0 bg-[#424242] border-t border-gray-600 z-20">
+          <div className="flex items-center justify-around px-2 py-2.5">
+            <Link 
+              href="/" 
+              className="flex flex-col items-center gap-1 text-white active:opacity-70"
             >
-              View All {trips.length} Public Trips
-            </Button>
-          </Box>
-        )}
-
-        {!user && (
-          <Box sx={{ mt: { xs: 5, sm: 6, md: 8 }, textAlign: 'center' }}>
-            <Card sx={{ maxWidth: 600, mx: 'auto', p: { xs: 3, sm: 4 }, bgcolor: 'grey.50' }}>
-              <Typography variant="h5" component="h3" sx={{ mb: 1.5, fontWeight: 500 }}>
-                Start Your Own Journey
-              </Typography>
-              <Typography color="text.secondary" sx={{ mb: { xs: 2.5, sm: 3 } }}>
-                Sign in to create and share your travel stories
-              </Typography>
-              <Button
-                component={Link}
-                href="/auth"
-                variant="contained"
-                size="large"
-                sx={{ textTransform: 'none' }}
+              <span className="text-xl">🏠</span>
+              <span className="text-[10px] font-medium">Discover</span>
+            </Link>
+            <Link 
+              href="/trips" 
+              className="flex flex-col items-center gap-1 text-white active:opacity-70"
+            >
+              <span className="text-xl">🗺️</span>
+              <span className="text-[10px] font-medium">My Trips</span>
+            </Link>
+            {user ? (
+              <div className="flex flex-col items-center gap-1">
+                <UserMenu />
+                <span className="text-[10px] font-medium text-white">Profile</span>
+              </div>
+            ) : (
+              <Link 
+                href="/auth" 
+                className="flex flex-col items-center gap-1 text-white active:opacity-70"
               >
-                Get Started
-              </Button>
-            </Card>
-          </Box>
-        )}
-      </Container>
-    </Box>
+                <span className="text-xl">👤</span>
+                <span className="text-[10px] font-medium">Sign In</span>
+              </Link>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }

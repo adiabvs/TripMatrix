@@ -237,7 +237,7 @@ export default function CanvaOAuthEditor({
             <Box sx={{ mt: 3 }}>
               <Alert severity="info">
                 <Typography variant="body2">
-                  Canva designs cannot be embedded in iframes. Click "View Design" to open in a new tab.
+                  Canva designs cannot be embedded in iframes. Click &quot;View Design&quot; to open in a new tab.
                 </Typography>
               </Alert>
             </Box>

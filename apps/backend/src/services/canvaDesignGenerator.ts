@@ -191,11 +191,10 @@ async function generateDesignWithAutofill(
         // Map image field
         if (fieldNameLower === 'cover_image') {
           // Use place image (first image from place)
-          let imageUrl: string | undefined;
           let assetId: string | undefined;
           
           // Get first image from place
-          imageUrl = placeToUse.imageMetadata?.[0]?.url || placeToUse.images?.[0];
+          const imageUrl = placeToUse.imageMetadata?.[0]?.url || placeToUse.images?.[0];
           if (imageUrl) {
             assetId = imageToAssetMap.get(imageUrl);
           }
@@ -235,7 +234,7 @@ async function generateDesignWithAutofill(
     // Extract design ID from URL
     // URL format: https://www.canva.com/design/{DESIGN-ID}/edit
     const designUrl = completedJob.result.design.url;
-    const designIdMatch = designUrl.match(/\/design\/([^\/]+)\//);
+    const designIdMatch = designUrl.match(/\/design\/([^/]+)\//);
     if (!designIdMatch) {
       throw new Error('Could not extract design ID from autofill result');
     }

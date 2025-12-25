@@ -279,7 +279,7 @@ export default function CanvaEmbeddedEditor({
                   Your design is ready! Click the buttons above to edit or view your design.
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Note: Canva designs cannot be embedded in iframes. Use the "View Design" button to open in a new tab.
+                  Note: Canva designs cannot be embedded in iframes. Use the &quot;View Design&quot; button to open in a new tab.
                 </Typography>
               </Alert>
             </Box>

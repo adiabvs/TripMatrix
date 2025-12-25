@@ -71,9 +71,12 @@ export default function TripMap({
 
     // Add OpenStreetMap tiles
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap contributors',
+      attribution: '',
       maxZoom: 19,
     }).addTo(map);
+
+    // Remove Leaflet attribution control
+    map.attributionControl.remove();
 
     mapRef.current = map;
 
@@ -235,7 +238,7 @@ export default function TripMap({
     <div
       ref={mapContainerRef}
       style={{ height, width: '100%' }}
-      className="rounded-lg border border-gray-300"
+      className="rounded-xl border border-gray-200 overflow-hidden"
     />
   );
 }

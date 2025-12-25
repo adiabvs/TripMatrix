@@ -31,9 +31,8 @@ interface BookGenerationOptions {
 export async function generateTravelDiary({
   trip,
   places,
-  userId,
 }: BookGenerationOptions): Promise<Buffer> {
-  return new Promise(async (resolve, reject) => {
+  return new Promise((resolve, reject) => {
     try {
       const doc = new PDFDocument({
         size: 'A4',
@@ -256,7 +255,7 @@ export async function uploadDiaryToStorage(
   const filePath = `diaries/${userId}/${tripId}/${fileName}`;
   
   // Upload PDF to Supabase Storage (using the same 'images' bucket)
-  const { data, error } = await supabase.storage
+  const { error } = await supabase.storage
     .from('images')
     .upload(filePath, pdfBuffer, {
       contentType: 'application/pdf',

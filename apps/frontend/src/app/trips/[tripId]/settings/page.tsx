@@ -138,39 +138,37 @@ export default function TripSettingsPage() {
   if (!isCreator) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-lg text-gray-700">You don't have permission to access trip settings</div>
+        <div className="text-lg text-gray-700">You don&apos;t have permission to access trip settings</div>
       </div>
     );
   }
 
   return (
     <div className="min-h-screen bg-white">
-      {/* Navigation */}
-      <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-100">
-        <div className="max-w-4xl mx-auto px-6 py-4 flex justify-between items-center">
+      {/* Navigation - Mobile styled */}
+      <nav className="sticky top-0 z-50 bg-white border-b border-gray-200">
+        <div className="max-w-4xl mx-auto px-4 md:px-6 py-3 md:py-4 flex justify-between items-center">
           <Link
             href={`/trips/${tripId}`}
-            className="text-gray-700 hover:text-gray-900 transition-colors text-sm font-medium flex items-center gap-2"
+            className="text-gray-600 hover:text-gray-900 transition-colors text-sm md:text-base font-medium flex items-center gap-2"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-            </svg>
-            Back to Trip
+            <span className="text-base md:text-lg">←</span>
+            <span>Back</span>
           </Link>
         </div>
       </nav>
 
       {/* Main Content */}
-      <div className="max-w-4xl mx-auto px-6 py-12">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Trip Settings</h1>
-          <p className="text-gray-600">{trip.title}</p>
+      <div className="max-w-4xl mx-auto px-4 md:px-6 py-6 md:py-12">
+        <div className="mb-6 md:mb-8">
+          <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">Trip Settings</h1>
+          <p className="text-sm md:text-base text-gray-600">{trip.title}</p>
         </div>
 
         <div className="space-y-6">
           {/* Cover Image */}
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">Cover Image</h2>
+          <div className="bg-white p-4 md:p-6 rounded-xl md:rounded-2xl shadow-sm border border-gray-200">
+            <h2 className="text-lg md:text-xl font-bold text-gray-900 mb-3 md:mb-4">Cover Image</h2>
             
             <div className="space-y-4">
               {coverImage ? (
@@ -183,7 +181,7 @@ export default function TripSettingsPage() {
                   <button
                     type="button"
                     onClick={handleRemoveCoverImage}
-                    className="absolute top-2 right-2 px-3 py-1 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium"
+                    className="absolute top-2 right-2 px-3 py-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-xs md:text-sm font-medium"
                   >
                     Remove
                   </button>
@@ -213,8 +211,8 @@ export default function TripSettingsPage() {
           </div>
 
           {/* Privacy Settings */}
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">Privacy Settings</h2>
+          <div className="bg-white p-4 md:p-6 rounded-xl md:rounded-2xl shadow-sm border border-gray-200">
+            <h2 className="text-lg md:text-xl font-bold text-gray-900 mb-3 md:mb-4">Privacy Settings</h2>
             
             {/* Public/Private Toggle */}
             <div className="mb-6">
@@ -335,8 +333,8 @@ export default function TripSettingsPage() {
           </div>
 
           {/* Danger Zone */}
-          <div className="bg-red-50 p-6 rounded-2xl border border-red-200">
-            <h2 className="text-xl font-bold text-red-900 mb-4">Danger Zone</h2>
+          <div className="bg-red-50 p-4 md:p-6 rounded-xl md:rounded-2xl border border-red-200">
+            <h2 className="text-lg md:text-xl font-bold text-red-900 mb-3 md:mb-4">Danger Zone</h2>
             
             <div className="mb-4">
               <p className="text-sm text-red-800 mb-2">
@@ -353,24 +351,24 @@ export default function TripSettingsPage() {
             <button
               onClick={handleDeleteTrip}
               disabled={deleting}
-              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors font-medium"
+              className="px-4 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors text-sm md:text-base font-medium"
             >
               {deleting ? 'Deleting...' : 'Delete Trip'}
             </button>
           </div>
 
           {/* Action Buttons */}
-          <div className="flex gap-4">
+          <div className="flex flex-col sm:flex-row gap-3 md:gap-4">
             <button
               onClick={handleSave}
               disabled={saving}
-              className="flex-1 bg-black text-white px-6 py-3 rounded-full hover:bg-gray-800 disabled:opacity-50 transition-colors font-semibold"
+              className="flex-1 bg-black text-white px-6 py-3 rounded-full hover:bg-gray-800 disabled:opacity-50 transition-colors text-sm md:text-base font-semibold"
             >
               {saving ? 'Saving...' : 'Save Settings'}
             </button>
             <Link
               href={`/trips/${tripId}`}
-              className="px-6 py-3 rounded-full border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors font-medium"
+              className="flex-1 sm:flex-initial text-center px-6 py-3 rounded-full border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors text-sm md:text-base font-medium"
             >
               Cancel
             </Link>

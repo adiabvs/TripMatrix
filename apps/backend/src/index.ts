@@ -250,7 +250,8 @@ app.get('/return-nav', async (req, res) => {
 app.use('/api/canva', authenticateToken, canvaOAuthRoutes); // Other Canva API routes (authenticated)
 
 // Error handling
-app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+app.use((err: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error('Error:', err);
   res.status(500).json({
     success: false,

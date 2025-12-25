@@ -45,7 +45,10 @@ async function fetchWithAuth(
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ error: 'Unknown error' }));
-    throw new Error(error.error || `HTTP ${response.status}`);
+    const errorMessage = error.error || `HTTP ${response.status}`;
+    const errorObj = new Error(errorMessage);
+    (errorObj as any).status = response.status;
+    throw errorObj;
   }
 
   return response;

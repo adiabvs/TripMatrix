@@ -92,7 +92,7 @@ export default function NewExpensePage() {
   if (!isCreator && !trip.participants.some(p => p.uid === user?.uid)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-lg text-gray-700">You don't have permission to add expenses to this trip</div>
+        <div className="text-lg text-gray-700">You don&apos;t have permission to add expenses to this trip</div>
       </div>
     );
   }

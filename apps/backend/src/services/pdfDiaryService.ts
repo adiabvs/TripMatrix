@@ -7,7 +7,6 @@
 import puppeteer from 'puppeteer';
 import type { Trip, TripPlace } from '@tripmatrix/types';
 import { getSupabase } from '../config/supabase.js';
-import { readFile } from 'fs/promises';
 
 export interface PDFDiaryResult {
   pdfUrl?: string; // Supabase URL if uploaded successfully
@@ -413,7 +412,7 @@ export async function generatePDFDiary(
     const supabase = getSupabase();
     const filePath = `diaries/${userId}/${trip.tripId}/${fileName}`;
     
-    const { data, error } = await supabase.storage
+    const { error } = await supabase.storage
       .from('images')
       .upload(filePath, pdfBuffer, {
         contentType: 'application/pdf',

@@ -2,7 +2,6 @@ import express from 'express';
 import crypto from 'node:crypto';
 import { AuthenticatedRequest } from '../middleware/auth.js';
 import { getFirestore } from '../config/firebase.js';
-import { getAuth } from '../config/firebase.js';
 import {
   getCanvaAuthUrl,
   exchangeCodeForToken,
@@ -312,7 +311,7 @@ router.post('/designs', async (req: AuthenticatedRequest, res) => {
       });
     }
 
-    let tokenData = tokenDoc.data()!;
+    const tokenData = tokenDoc.data()!;
     let accessToken = tokenData.accessToken;
 
     // Check if token expired and refresh if needed

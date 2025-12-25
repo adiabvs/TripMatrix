@@ -1,6 +1,5 @@
 import express from 'express';
 import { getFirestore } from '../config/firebase.js';
-import { AuthenticatedRequest } from '../middleware/auth.js';
 import { OptionalAuthRequest } from '../middleware/optionalAuth.js';
 import type { Trip, TripParticipant, TripPlace } from '@tripmatrix/types';
 
