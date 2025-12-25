@@ -59,11 +59,19 @@ export default function TripDetailPage() {
         let authToken: string | null = null;
         if (user) {
           try {
-            authToken = await getIdToken();
-            setToken(authToken);
+            // Try to get token, force refresh if needed
+            authToken = await getIdToken(false);
+            if (!authToken) {
+              // If token is null, try force refresh once
+              authToken = await getIdToken(true);
+            }
+            if (authToken) {
+              setToken(authToken);
+            }
           } catch (error) {
             console.error('Failed to get auth token:', error);
             // Continue without token - will try to load as public trip
+            // Don't throw to prevent logout
           }
         }
         await loadTripData(authToken);
@@ -78,11 +86,21 @@ export default function TripDetailPage() {
       let token: string | null = authToken ?? null;
       if (!token && user) {
         try {
-          token = await getIdToken();
-          setToken(token);
+          // Try to get token, with fallback to force refresh
+          token = await getIdToken(false);
+          if (!token) {
+            token = await getIdToken(true);
+          }
+          if (token) {
+            setToken(token);
+          } else {
+            // If getting token fails, continue without token (for public trips)
+            console.log('No token available, attempting to load as public trip');
+          }
         } catch (error) {
           // If getting token fails, continue without token (for public trips)
           console.log('No token available, attempting to load as public trip');
+          // Don't throw - allow graceful degradation
         }
       }
       
