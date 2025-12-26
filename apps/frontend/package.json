@@ -24,6 +24,7 @@
     "date-fns": "^3.0.6",
     "firebase": "^10.7.1",
     "leaflet": "^1.9.4",
+    "maplibre-gl": "^5.15.0",
     "next": "^14.2.35",
     "postcss": "^8.4.33",
     "react": "^18.2.0",

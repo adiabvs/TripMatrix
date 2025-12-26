@@ -11,6 +11,8 @@ interface TripGlobeProps {
   height?: string;
   highlightedStepIndex?: number;
   sortedPlaces?: TripPlace[];
+  autoPlay?: boolean; // Enable auto-play animation like mult.dev
+  animationSpeed?: number; // Speed multiplier for animations
 }
 
 // Vehicle type mapping based on mode of travel
@@ -88,7 +90,9 @@ export default function TripGlobe({
   routes, 
   height = '75vh',
   highlightedStepIndex = 0,
-  sortedPlaces = []
+  sortedPlaces = [],
+  autoPlay = false,
+  animationSpeed = 1.0
 }: TripGlobeProps) {
   const globeInstanceRef = useRef<any>(null);
   const globeContainerRef = useRef<HTMLDivElement>(null);
@@ -96,6 +100,9 @@ export default function TripGlobe({
   const currentAnimationProgress = useRef<number>(0);
   const initialViewSet = useRef<boolean>(false);
   const [vehiclePosition, setVehiclePosition] = useState<{ lat: number; lng: number } | null>(null);
+  const [animatedArcProgress, setAnimatedArcProgress] = useState<Record<number, number>>({});
+  const autoPlayStepRef = useRef<number>(0);
+  const autoPlayTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Prepare points data from sorted places - using custom markers
   const points = useMemo(() => {
@@ -312,60 +319,49 @@ export default function TripGlobe({
     };
   }, [highlightedStepIndex, points]);
 
-  // Set initial camera view to show all places with auto-zoom
-  const setInitialView = useCallback(() => {
-    if (!globeInstanceRef.current || points.length === 0 || initialViewSet.current) return;
+  // Calculate initial point of view - focus on starting location (first point)
+  const initialPOV = useMemo(() => {
+    if (points.length === 0) return null;
+    
+    // Get the starting location (first point, excluding vehicle point)
+    const placePoints = points.filter(p => p.index !== -1);
+    if (placePoints.length === 0) return null;
+    
+    // Sort by index to get the first place
+    const sortedPlacePoints = [...placePoints].sort((a, b) => a.index - b.index);
+    const startingPoint = sortedPlacePoints[0];
+    
+    if (!startingPoint) return null;
+    
+    // Focus on the starting location with a close-up view
+    return { 
+      lat: startingPoint.lat, 
+      lng: startingPoint.lng, 
+      altitude: 1.5 // Close-up view for starting location
+    };
+  }, [points]);
+
+  // Set initial camera view to focus on starting location
+  const setInitialView = useCallback((pov: { lat: number; lng: number; altitude: number } | null) => {
+    if (!globeInstanceRef.current || !pov || initialViewSet.current) return;
     
     const globe = globeInstanceRef.current;
     if (!globe || typeof globe.pointOfView !== 'function') return;
     
-    // Calculate bounds of all points (excluding vehicle point)
-    const placePoints = points.filter(p => p.index !== -1);
-    if (placePoints.length === 0) return;
-    
-    const lats = placePoints.map(p => p.lat);
-    const lngs = placePoints.map(p => p.lng);
-    
-    const minLat = Math.min(...lats);
-    const maxLat = Math.max(...lats);
-    const minLng = Math.min(...lngs);
-    const maxLng = Math.max(...lngs);
-    
-    // Calculate center
-    const avgLat = (minLat + maxLat) / 2;
-    const avgLng = (minLng + maxLng) / 2;
-    
-    // Calculate span
-    const latSpan = maxLat - minLat;
-    const lngSpan = maxLng - minLng;
-    const maxSpan = Math.max(latSpan, lngSpan);
-    
-    // Calculate altitude based on span to auto-zoom
-    // Larger span = higher altitude (zoomed out), smaller span = lower altitude (zoomed in)
-    let altitude = 2.5;
-    if (maxSpan > 0) {
-      // Adjust altitude based on span
-      if (maxSpan > 50) altitude = 3.5; // Very large area
-      else if (maxSpan > 20) altitude = 2.8; // Large area
-      else if (maxSpan > 10) altitude = 2.2; // Medium area
-      else if (maxSpan > 5) altitude = 1.8; // Small area
-      else altitude = 1.5; // Very small area
-    }
-    
-    // Set initial view with calculated altitude
+    // Set initial view to focus on starting location
     try {
-      globe.pointOfView({ lat: avgLat, lng: avgLng, altitude }, 0);
+      globe.pointOfView(pov, 0);
       initialViewSet.current = true;
     } catch (error) {
       console.error('Error setting initial view:', error);
     }
-  }, [points]);
+  }, []);
   
   useEffect(() => {
-    if (points.length > 0 && globeInstanceRef.current) {
-      setInitialView();
+    if (initialPOV && globeInstanceRef.current) {
+      setInitialView(initialPOV);
     }
-  }, [points, setInitialView]);
+  }, [initialPOV, setInitialView]);
 
   // Calculate vehicle position using d3-geo along the active path
   useEffect(() => {
@@ -433,41 +429,64 @@ export default function TripGlobe({
     };
   }, [highlightedStepIndex, arcs]);
   
-
-  // Calculate initial point of view based on points
-  const initialPOV = useMemo(() => {
-    if (points.length === 0) return null;
-    
-    const lats = points.map(p => p.lat);
-    const lngs = points.map(p => p.lng);
-    
-    const minLat = Math.min(...lats);
-    const maxLat = Math.max(...lats);
-    const minLng = Math.min(...lngs);
-    const maxLng = Math.max(...lngs);
-    
-    const avgLat = (minLat + maxLat) / 2;
-    const avgLng = (minLng + maxLng) / 2;
-    
-    const latSpan = maxLat - minLat;
-    const lngSpan = maxLng - minLng;
-    const maxSpan = Math.max(latSpan, lngSpan);
-    
-    let altitude = 2.5;
-    if (maxSpan > 0) {
-      if (maxSpan > 50) altitude = 3.5;
-      else if (maxSpan > 20) altitude = 2.8;
-      else if (maxSpan > 10) altitude = 2.2;
-      else if (maxSpan > 5) altitude = 1.8;
-      else altitude = 1.5;
+  // Auto-play animation like mult.dev - automatically progress through the trip
+  useEffect(() => {
+    if (!autoPlay || sortedPlaces.length === 0) {
+      if (autoPlayTimerRef.current) {
+        clearTimeout(autoPlayTimerRef.current);
+        autoPlayTimerRef.current = null;
+      }
+      return;
     }
     
-    return { lat: avgLat, lng: avgLng, altitude };
-  }, [points]);
+    const sorted = sortedPlaces.length > 0 ? sortedPlaces : places;
+    if (autoPlayStepRef.current >= sorted.length) {
+      autoPlayStepRef.current = 0; // Loop back to start
+    }
+    
+    const currentStep = sorted[autoPlayStepRef.current];
+    if (!currentStep) return;
+    
+    // Animate camera to current step
+    if (globeInstanceRef.current && typeof globeInstanceRef.current.pointOfView === 'function') {
+      const globe = globeInstanceRef.current;
+      const coords = currentStep.coordinates;
+      
+      if (coords && coords.lat && coords.lng) {
+        try {
+          // Smooth camera movement
+          globe.pointOfView(
+            { 
+              lat: coords.lat, 
+              lng: coords.lng, 
+              altitude: 1.8 
+            }, 
+            1500 / animationSpeed // Smooth transition
+          );
+        } catch (error) {
+          console.error('Error animating camera:', error);
+        }
+      }
+    }
+    
+    // Move to next step after delay
+    const stepDuration = 3000 / animationSpeed; // 3 seconds per step
+    autoPlayTimerRef.current = setTimeout(() => {
+      autoPlayStepRef.current++;
+      // Force re-render by updating a state
+      setVehiclePosition(prev => prev ? { ...prev } : null);
+    }, stepDuration);
+    
+    return () => {
+      if (autoPlayTimerRef.current) {
+        clearTimeout(autoPlayTimerRef.current);
+      }
+    };
+  }, [autoPlay, sortedPlaces, places, animationSpeed]);
 
   // Access globe instance after mount - react-globe.gl stores it on the canvas element
   useEffect(() => {
-    if (initialViewSet.current || points.length === 0) return;
+    if (initialViewSet.current || !initialPOV) return;
     
     const findGlobe = () => {
       if (initialViewSet.current) return;
@@ -517,10 +536,18 @@ export default function TripGlobe({
           }
         }
         
-        // If we found the globe, set it and initialize view
+        // If we found the globe, set it and initialize view to starting location
         if (globe && typeof globe.pointOfView === 'function') {
           globeInstanceRef.current = globe;
-          setInitialView();
+          // Set initial view to starting location
+          if (initialPOV && !initialViewSet.current) {
+            try {
+              globe.pointOfView(initialPOV, 0);
+              initialViewSet.current = true;
+            } catch (error) {
+              console.error('Error setting initial view:', error);
+            }
+          }
         }
       }
     };
@@ -538,7 +565,7 @@ export default function TripGlobe({
     return () => {
       timers.forEach(timer => clearTimeout(timer));
     };
-  }, [points, setInitialView]);
+  }, [initialPOV]);
 
   return (
     <div ref={globeContainerRef} style={{ width: '100%', height, position: 'relative', background: '#000' }}>
@@ -546,8 +573,20 @@ export default function TripGlobe({
         globeImageUrl="//unpkg.com/three-globe/example/img/earth-blue-marble.jpg"
         backgroundImageUrl="//unpkg.com/three-globe/example/img/night-sky.png"
         pointsData={points}
-        pointColor={(point: any) => point.color || '#1976d2'}
-        pointRadius={(point: any) => point.size || 0.4}
+        pointColor={(point: any) => {
+          // Add glow effect for highlighted points
+          if (point.index === highlightedStepIndex) {
+            return point.color || '#ffc107';
+          }
+          return point.color || '#1976d2';
+        }}
+        pointRadius={(point: any) => {
+          // Larger radius for highlighted points
+          if (point.index === highlightedStepIndex) {
+            return (point.size || 0.4) * 1.5;
+          }
+          return point.size || 0.4;
+        }}
         pointLabel="name"
         pointAltitude={0.01}
         pointResolution={16}
@@ -555,8 +594,16 @@ export default function TripGlobe({
         arcColor="color"
         arcDashLength={0.4}
         arcDashGap={0.2}
-        arcDashAnimateTime={(arc: any) => arc.animateTime || 2000}
-        arcStroke={(arc: any) => arc.stroke || 2}
+        arcDashAnimateTime={(arc: any) => {
+          const baseTime = arc.animateTime || 2000;
+          return baseTime / animationSpeed;
+        }}
+        arcStroke={(arc: any) => {
+          // Thicker stroke for active/highlighted arcs
+          const baseStroke = arc.stroke || 2;
+          const isActive = arc.endIndex === highlightedStepIndex;
+          return isActive ? baseStroke * 1.5 : baseStroke;
+        }}
         showAtmosphere={true}
         atmosphereColor="#3a228a"
         atmosphereAltitude={0.15}

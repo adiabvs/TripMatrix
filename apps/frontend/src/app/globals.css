@@ -504,3 +504,12 @@ code {
   white-space: pre-wrap;
 }
 
+/* Hide MapLibre attribution */
+.maplibregl-ctrl-attrib {
+  display: none !important;
+}
+
+.maplibregl-ctrl-bottom-right {
+  display: none !important;
+}
+

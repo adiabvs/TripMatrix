@@ -27,12 +27,12 @@ import { formatDistance, formatDuration } from '@tripmatrix/utils';
 import { format } from 'date-fns';
 import { toDate } from '@/lib/dateUtils';
 
-// Dynamically import TripGlobe with SSR disabled
-const TripGlobe = dynamic(() => import('@/components/TripGlobe'), {
+// Dynamically import TripMapbox with SSR disabled
+const TripMapbox = dynamic(() => import('@/components/TripMapbox'), {
   ssr: false,
   loading: () => (
     <div className="w-full h-full flex items-center justify-center bg-black">
-      <div className="text-sm text-white">Loading globe...</div>
+      <div className="text-sm text-white">Loading map...</div>
     </div>
   ),
 });
@@ -51,6 +51,7 @@ export default function TripDetailPage() {
   const [loading, setLoading] = useState(true);
   const [token, setToken] = useState<string | null>(null);
   const [visibleStepIndex, setVisibleStepIndex] = useState<number>(0);
+  const [scrollProgress, setScrollProgress] = useState<number>(0);
   const stepsContainerRef = useRef<HTMLDivElement>(null);
   const stepCardRefs = useRef<(HTMLDivElement | null)[]>([]);
 
@@ -340,7 +341,8 @@ export default function TripDetailPage() {
       const deltaY = dragStartY.current - clientY; // Negative when dragging up
       const screenHeight = window.innerHeight;
       const deltaVh = (deltaY / screenHeight) * 100;
-      const newHeight = Math.max(25, Math.min(80, dragStartHeight.current + deltaVh));
+      // Minimum is 50vh (can't drag steps below 50%), maximum is 80vh
+      const newHeight = Math.max(50, Math.min(80, dragStartHeight.current + deltaVh));
       setModalHeight(newHeight);
     };
 
@@ -421,14 +423,17 @@ export default function TripDetailPage() {
         </div>
       </div>
 
-      {/* Globe Section - Dynamic height based on modal */}
+      {/* Map Section - Dynamic height based on modal */}
       <div className="relative" style={{ height: `${100 - modalHeight}vh`, flexShrink: 0 }}>
-        <TripGlobe 
+        <TripMapbox 
           places={places} 
           routes={routes}
           height={`${100 - modalHeight}vh`}
           highlightedStepIndex={visibleStepIndex}
           sortedPlaces={sortedPlaces}
+          autoPlay={false}
+          animationSpeed={1.0}
+          scrollProgress={scrollProgress}
         />
       </div>
 
@@ -502,19 +507,44 @@ export default function TripDetailPage() {
               // Find which step is currently in the center of the viewport
               let closestIndex = 0;
               let closestDistance = Infinity;
+              let currentCardTop = 0;
+              let currentCardHeight = 0;
+              let nextCardTop = 0;
               
               stepCardRefs.current.forEach((ref, index) => {
                 if (!ref) return;
                 const rect = ref.getBoundingClientRect();
                 const containerRect = container.getBoundingClientRect();
-                const cardCenter = rect.top - containerRect.top + rect.height / 2;
+                const cardTop = rect.top - containerRect.top;
+                const cardCenter = cardTop + rect.height / 2;
                 const distance = Math.abs(cardCenter - containerHeight / 2);
                 
                 if (distance < closestDistance) {
                   closestDistance = distance;
                   closestIndex = index;
+                  currentCardTop = cardTop;
+                  currentCardHeight = rect.height;
+                  
+                  // Get next card position for progress calculation
+                  if (index + 1 < stepCardRefs.current.length && stepCardRefs.current[index + 1]) {
+                    const nextRect = stepCardRefs.current[index + 1]!.getBoundingClientRect();
+                    nextCardTop = nextRect.top - containerRect.top;
+                  } else {
+                    nextCardTop = currentCardTop + currentCardHeight;
+                  }
                 }
               });
+              
+              // Calculate scroll progress between current and next step
+              let progress = 0;
+              if (closestIndex < sortedPlaces.length - 1 && nextCardTop > currentCardTop) {
+                const scrollPosition = viewportCenter - containerHeight / 2;
+                const relativePosition = scrollPosition - currentCardTop;
+                const stepHeight = nextCardTop - currentCardTop;
+                progress = Math.max(0, Math.min(1, relativePosition / stepHeight));
+              }
+              
+              setScrollProgress(progress);
               
               if (closestIndex !== visibleStepIndex) {
                 setVisibleStepIndex(closestIndex);
