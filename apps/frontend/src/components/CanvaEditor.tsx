@@ -74,7 +74,7 @@ export default function CanvaEditor({
     }
 
     // Check if SDK is already loaded
-    if (window.Canva && window.Canva.DesignButton && window.Canva.DesignButton.initialize) {
+    if (window.Canva && window.Canva.DesignButton && typeof window.Canva.DesignButton.initialize === 'function') {
       console.log('Canva SDK already loaded');
       setSdkLoaded(true);
       setLoading(false);
@@ -103,7 +103,7 @@ export default function CanvaEditor({
       console.log('Canva SDK script loaded');
       // Wait a bit for the SDK to initialize
       setTimeout(() => {
-        if (window.Canva && window.Canva.DesignButton && window.Canva.DesignButton.initialize) {
+        if (window.Canva && window.Canva.DesignButton && typeof window.Canva.DesignButton.initialize === 'function') {
           console.log('Canva SDK is ready');
           setSdkLoaded(true);
           setLoading(false);
@@ -146,11 +146,11 @@ export default function CanvaEditor({
       return;
     }
 
-    if (!window.Canva || !window.Canva.DesignButton || !window.Canva.DesignButton.initialize) {
+    if (!window.Canva || !window.Canva.DesignButton || typeof window.Canva.DesignButton.initialize !== 'function') {
       console.error('Canva SDK not available:', { 
         Canva: !!window.Canva, 
         DesignButton: !!(window.Canva?.DesignButton),
-        initialize: !!(window.Canva?.DesignButton?.initialize),
+        initialize: typeof window.Canva?.DesignButton?.initialize,
       });
       setInitError('Canva SDK not properly initialized');
       return;
@@ -326,7 +326,7 @@ export default function CanvaEditor({
             initializedRef.current = false;
             setInitError(null);
             // Force re-initialization
-            if (window.Canva && window.Canva.DesignButton && window.Canva.DesignButton.initialize) {
+            if (window.Canva && window.Canva.DesignButton && typeof window.Canva.DesignButton.initialize === 'function') {
               window.Canva.DesignButton.initialize({ apiKey })
                 .then((api) => {
                   console.log('Canva API re-initialized successfully');
