@@ -398,15 +398,17 @@ export default function TripDetailPage() {
                       />
                     </div>
                     
-                    {/* Add Step Button After (between steps) */}
-                    {canEdit && index < sortedPlaces.length - 1 && (
-                      <div className="relative flex items-center justify-center flex-shrink-0" style={{ width: '100px', height: '140px' }}>
+                    {/* Add Step Button After (between steps and after last step) */}
+                    {canEdit && (
+                      <div className="relative flex items-center justify-center flex-shrink-0" style={{ width: index < sortedPlaces.length - 1 ? '100px' : '50px', height: '140px' }}>
                         {/* Dotted line from step to + */}
                         <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[45px] h-0.5 border-t-2 border-dashed border-white" />
-                        {/* Dotted line from + to next step */}
-                        <div className="absolute right-0 top-1/2 -translate-y-1/2 w-[45px] h-0.5 border-t-2 border-dashed border-white" />
+                        {/* Dotted line from + to next step (only if not last step) */}
+                        {index < sortedPlaces.length - 1 && (
+                          <div className="absolute right-0 top-1/2 -translate-y-1/2 w-[45px] h-0.5 border-t-2 border-dashed border-white" />
+                        )}
                         <Link
-                          href={`/trips/${tripId}/steps/new?after=${place.placeId}`}
+                          href={`/trips/${tripId}/steps/new${index < sortedPlaces.length - 1 ? `?after=${place.placeId}` : ''}`}
                           className="relative z-10 w-10 h-10 rounded-full bg-black flex items-center justify-center"
                         >
                           <span className="text-white text-xl">+</span>
