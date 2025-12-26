@@ -27,12 +27,12 @@ import { formatDistance, formatDuration } from '@tripmatrix/utils';
 import { format } from 'date-fns';
 import { toDate } from '@/lib/dateUtils';
 
-// Dynamically import HomeMapView with SSR disabled
-const HomeMapView = dynamic(() => import('@/components/HomeMapView'), {
+// Dynamically import TripGlobe with SSR disabled
+const TripGlobe = dynamic(() => import('@/components/TripGlobe'), {
   ssr: false,
   loading: () => (
-    <div className="w-full h-full flex items-center justify-center bg-gray-100">
-      <div className="text-sm text-gray-600">Loading map...</div>
+    <div className="w-full h-full flex items-center justify-center bg-black">
+      <div className="text-sm text-white">Loading globe...</div>
     </div>
   ),
 });
@@ -55,11 +55,11 @@ export default function TripDetailPage() {
   const stepCardRefs = useRef<(HTMLDivElement | null)[]>([]);
 
   // Draggable state
-  const [modalHeight, setModalHeight] = useState(60); // Start at 60vh
+  const [modalHeight, setModalHeight] = useState(50); // Start at 50vh
   const [isDragging, setIsDragging] = useState(false);
   const [isLongPressing, setIsLongPressing] = useState(false);
   const dragStartY = useRef(0);
-  const dragStartHeight = useRef(60);
+  const dragStartHeight = useRef(50);
   const longPressTimer = useRef<NodeJS.Timeout | null>(null);
 
   const loadTripData = useCallback(async (authToken?: string | null) => {
@@ -340,7 +340,7 @@ export default function TripDetailPage() {
       const deltaY = dragStartY.current - clientY; // Negative when dragging up
       const screenHeight = window.innerHeight;
       const deltaVh = (deltaY / screenHeight) * 100;
-      const newHeight = Math.max(25, Math.min(80, dragStartHeight.current + deltaVh));
+      const newHeight = Math.max(25, Math.min(50, dragStartHeight.current + deltaVh));
       setModalHeight(newHeight);
     };
 
@@ -421,12 +421,11 @@ export default function TripDetailPage() {
         </div>
       </div>
 
-      {/* Map Section - Dynamic height based on modal */}
+      {/* Globe Section - Dynamic height based on modal */}
       <div className="relative" style={{ height: `${100 - modalHeight}vh`, flexShrink: 0 }}>
-        <HomeMapView 
+        <TripGlobe 
           places={places} 
           routes={routes}
-          trips={[]}
           height={`${100 - modalHeight}vh`}
           highlightedStepIndex={visibleStepIndex}
           sortedPlaces={sortedPlaces}

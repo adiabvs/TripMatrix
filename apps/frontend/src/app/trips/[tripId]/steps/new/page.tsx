@@ -435,7 +435,7 @@ export default function NewStepPage() {
       }, token);
       alert('Expense added successfully!');
       setShowExpenseForm(false);
-      router.push(`/trips/${tripId}`);
+      // Don't refresh the page, just close the form
     } catch (error: any) {
       console.error('Failed to add expense:', error);
       alert(`Failed to add expense: ${error.message || 'Unknown error'}`);
