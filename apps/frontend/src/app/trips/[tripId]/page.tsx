@@ -3,7 +3,7 @@
 import { useAuth } from '@/lib/auth';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 import {
       getTrip,
@@ -22,7 +22,6 @@ import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import type { Trip, TripRoute, TripPlace, TripExpense, ExpenseSummary, ModeOfTravel } from '@tripmatrix/types';
 import StepCard from '@/components/StepCard';
 import CompactStepCard from '@/components/CompactStepCard';
-import StepConnector from '@/components/StepConnector';
 import UserMenu from '@/components/UserMenu';
 import { formatDistance, formatDuration } from '@tripmatrix/utils';
 import { format } from 'date-fns';
@@ -53,7 +52,8 @@ export default function TripDetailPage() {
   const [token, setToken] = useState<string | null>(null);
 
   useEffect(() => {
-    if (tripId) {
+    if (tripId && !authLoading) {
+      // Only run when auth loading is complete to prevent premature execution
       // First get token if user is logged in, then load data
       const initializeAndLoad = async () => {
         let authToken: string | null = null;
@@ -78,7 +78,7 @@ export default function TripDetailPage() {
       };
       initializeAndLoad();
     }
-  }, [tripId, user]);
+  }, [tripId, user, authLoading]);
 
   const loadTripData = async (authToken?: string | null) => {
     try {
@@ -110,9 +110,15 @@ export default function TripDetailPage() {
           // If it's a private trip and user is not logged in, redirect to auth
           const status = err.status || 0;
           const message = err.message || '';
-          if ((status === 401 || message.includes('Authentication required') || message.includes('401')) && !user) {
+          // Only redirect if user is definitely not logged in (not just token issue)
+          if ((status === 401 || message.includes('Authentication required') || message.includes('401')) && !user && !authLoading) {
             router.push('/auth');
             throw err;
+          }
+          // If user is logged in but token failed, try again or show error
+          if (user && (status === 401 || message.includes('401'))) {
+            console.warn('Token may have expired, but user is still logged in. Retrying...');
+            // Don't redirect - user is still logged in, just token issue
           }
           throw err;
         }),
@@ -180,10 +186,13 @@ export default function TripDetailPage() {
       };
     } catch (error: any) {
       console.error('Failed to load trip data:', error);
-      // If it's an authentication error and user is not logged in, redirect to auth
-      if ((error.message?.includes('Authentication required') || error.message?.includes('401')) && !user) {
+      // Only redirect if user is definitely not logged in (not just token issue)
+      // Don't redirect if auth is still loading or if user exists but token failed
+      if ((error.message?.includes('Authentication required') || error.message?.includes('401')) && !user && !authLoading) {
         router.push('/auth');
       }
+      // If user exists but we got 401, it's likely a token issue, not a logout
+      // Don't redirect in this case - user is still logged in
       setLoading(false);
     }
   };
@@ -348,73 +357,63 @@ export default function TripDetailPage() {
 
           {/* Steps List - Horizontal Scroll */}
           {sortedPlaces.length > 0 ? (
-            <div className="overflow-x-auto pb-4">
-              <div className="flex gap-3" style={{ width: 'max-content' }}>
-                {canEdit && (
-                  <div className="flex-shrink-0 flex flex-col items-center">
-                    <Link
-                      href={`/trips/${tripId}/steps/new`}
-                      className="w-10 h-10 rounded-full bg-black flex items-center justify-center mb-2"
-                    >
-                      <span className="text-white text-xl">+</span>
-                    </Link>
-                    {sortedPlaces.length > 0 && (
-                      <div className="flex gap-1">
-                        <div className="w-1 h-1 bg-gray-500 rounded-full" />
-                        <div className="w-1 h-1 bg-gray-500 rounded-full" />
-                        <div className="w-1 h-1 bg-gray-500 rounded-full" />
-                      </div>
-                    )}
-                  </div>
-                )}
+            <div 
+              className="overflow-x-auto pb-4 -mx-4 px-4" 
+              style={{ 
+                width: '100%', 
+                WebkitOverflowScrolling: 'touch',
+                scrollBehavior: 'smooth',
+                overflowX: 'auto',
+                overflowY: 'hidden'
+              }}
+            >
+              <div className="flex items-center flex-nowrap" style={{ width: 'max-content' }}>
                 {sortedPlaces.map((place, index) => (
-                  <div key={place.placeId} className="flex-shrink-0 flex flex-col items-center">
-                    <CompactStepCard
-                      place={place}
-                      index={index}
-                      onEdit={(place) => {
-                        router.push(`/trips/${tripId}/steps/${place.placeId}/edit`);
-                      }}
-                      onDelete={handleDeletePlace}
-                      isCreator={canEdit}
-                      tripId={tripId}
-                    />
-                    {index < sortedPlaces.length - 1 && (
-                      <div className="flex items-center my-2">
-                        <StepConnector
-                          fromPlace={place}
-                          toPlace={sortedPlaces[index + 1]}
-                          isCreator={canEdit}
-                          onUpdateMode={async (placeId, modeOfTravel, distance, time) => {
-                            if (!token) {
-                              alert('Authentication token is missing. Please log in again.');
-                              return;
-                            }
-                            try {
-                              await updatePlace(
-                                placeId,
-                                {
-                                  modeOfTravel: modeOfTravel || undefined,
-                                  distanceFromPrevious: distance,
-                                  timeFromPrevious: time || undefined,
-                                },
-                                token
-                              );
-                              await loadTripData();
-                            } catch (error: any) {
-                              console.error('Failed to update mode of travel:', error);
-                              throw error;
-                            }
-                          }}
-                          onAddStep={(previousPlace) => {
-                            sessionStorage.setItem('previousPlaceForNewStep', JSON.stringify(previousPlace));
-                            router.push(`/trips/${tripId}/steps/new?after=${previousPlace.placeId}`);
-                          }}
-                          token={token}
-                        />
+                  <React.Fragment key={place.placeId}>
+                    {/* Add Step Button Before (only show before first step) */}
+                    {canEdit && index === 0 && (
+                      <div className="relative flex items-center justify-center flex-shrink-0" style={{ width: '50px', height: '140px' }}>
+                        {/* Dotted line from + to first step */}
+                        <div className="absolute left-1/2 top-1/2 -translate-y-1/2 w-[25px] h-0.5 border-t-2 border-dashed border-white" style={{ transform: 'translate(-50%, -50%) translateX(25px)' }} />
+                        <Link
+                          href={`/trips/${tripId}/steps/new`}
+                          className="relative z-10 w-10 h-10 rounded-full bg-black flex items-center justify-center"
+                        >
+                          <span className="text-white text-xl">+</span>
+                        </Link>
                       </div>
                     )}
-                  </div>
+                    
+                    {/* Step Card */}
+                    <div className="flex-shrink-0">
+                      <CompactStepCard
+                        place={place}
+                        index={index}
+                        onEdit={(place) => {
+                          router.push(`/trips/${tripId}/steps/${place.placeId}/edit`);
+                        }}
+                        onDelete={handleDeletePlace}
+                        isCreator={canEdit}
+                        tripId={tripId}
+                      />
+                    </div>
+                    
+                    {/* Add Step Button After (between steps) */}
+                    {canEdit && index < sortedPlaces.length - 1 && (
+                      <div className="relative flex items-center justify-center flex-shrink-0" style={{ width: '100px', height: '140px' }}>
+                        {/* Dotted line from step to + */}
+                        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[45px] h-0.5 border-t-2 border-dashed border-white" />
+                        {/* Dotted line from + to next step */}
+                        <div className="absolute right-0 top-1/2 -translate-y-1/2 w-[45px] h-0.5 border-t-2 border-dashed border-white" />
+                        <Link
+                          href={`/trips/${tripId}/steps/new?after=${place.placeId}`}
+                          className="relative z-10 w-10 h-10 rounded-full bg-black flex items-center justify-center"
+                        >
+                          <span className="text-white text-xl">+</span>
+                        </Link>
+                      </div>
+                    )}
+                  </React.Fragment>
                 ))}
               </div>
             </div>

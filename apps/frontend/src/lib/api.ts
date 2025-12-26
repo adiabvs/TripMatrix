@@ -158,6 +158,40 @@ export async function getPublicTrips(search?: string): Promise<Trip[]> {
   return result.data;
 }
 
+export async function getPublicTripsWithData(limit: number = 50): Promise<{
+  trips: Trip[];
+  placesByTrip: Record<string, TripPlace[]>;
+  routesByTrip: Record<string, TripRoute[]>;
+  creators: Record<string, User>;
+}> {
+  const url = new URL(`${API_URL}/api/trips/public/list/with-data`);
+  url.searchParams.append('limit', limit.toString());
+  
+  const response = await fetch(url.toString(), {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
+  
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+    throw new Error(error.error || 'Failed to fetch public trips with data');
+  }
+  
+  const result: ApiResponse<{
+    trips: Trip[];
+    placesByTrip: Record<string, TripPlace[]>;
+    routesByTrip: Record<string, TripRoute[]>;
+    creators: Record<string, User>;
+  }> = await response.json();
+  
+  if (!result.success || !result.data) {
+    throw new Error(result.error || 'Failed to fetch public trips with data');
+  }
+  return result.data;
+}
+
 // Place APIs
 export async function addPlace(
   placeData: Partial<TripPlace>,

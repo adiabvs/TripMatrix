@@ -529,5 +529,110 @@ router.get('/public/list', async (req, res) => {
   }
 });
 
+// Get public trips with essential data (places, routes, creators) - optimized endpoint
+router.get('/public/list/with-data', async (req, res) => {
+  try {
+    const { limit = '50' } = req.query;
+    const db = getDb();
+    
+    // Get public trips with limit
+    const snapshot = await db.collection('trips')
+      .where('isPublic', '==', true)
+      .limit(Number(limit))
+      .get();
+
+    const trips = snapshot.docs.map((doc) => ({
+      tripId: doc.id,
+      ...doc.data(),
+    })) as Trip[];
+
+    // Sort by createdAt
+    trips.sort((a, b) => {
+      const aTime = new Date(a.createdAt).getTime();
+      const bTime = new Date(b.createdAt).getTime();
+      return bTime - aTime;
+    });
+
+    const tripIds = trips.map(t => t.tripId);
+    
+    // Batch fetch all places for all trips
+    const placesPromises = tripIds.map(async (tripId) => {
+      const placesSnapshot = await db.collection('tripPlaces')
+        .where('tripId', '==', tripId)
+        .get();
+      return placesSnapshot.docs.map(doc => ({
+        placeId: doc.id,
+        ...doc.data(),
+      }));
+    });
+
+    // Batch fetch all routes for all trips
+    const routesPromises = tripIds.map(async (tripId) => {
+      const routesSnapshot = await db.collection('tripRoutes')
+        .where('tripId', '==', tripId)
+        .get();
+      return routesSnapshot.docs.map(doc => ({
+        routeId: doc.id,
+        ...doc.data(),
+      }));
+    });
+
+    // Fetch all in parallel
+    const [placesResults, routesResults] = await Promise.all([
+      Promise.all(placesPromises),
+      Promise.all(routesPromises),
+    ]);
+
+    // Organize places and routes by tripId
+    const placesByTrip: Record<string, any[]> = {};
+    const routesByTrip: Record<string, any[]> = {};
+    
+    tripIds.forEach((tripId, index) => {
+      placesByTrip[tripId] = placesResults[index] || [];
+      routesByTrip[tripId] = routesResults[index] || [];
+    });
+
+    // Get unique creator IDs
+    const creatorIds = [...new Set(trips.map(t => t.creatorId))];
+    
+    // Batch fetch creator info
+    const creatorPromises = creatorIds.map(async (creatorId) => {
+      try {
+        const creatorDoc = await db.collection('users').doc(creatorId).get();
+        if (creatorDoc.exists) {
+          return { uid: creatorId, user: creatorDoc.data() };
+        }
+      } catch (error) {
+        console.error(`Failed to load creator ${creatorId}:`, error);
+      }
+      return null;
+    });
+
+    const creatorResults = await Promise.all(creatorPromises);
+    const creatorMap: Record<string, any> = {};
+    creatorResults.forEach(result => {
+      if (result) {
+        creatorMap[result.uid] = result.user;
+      }
+    });
+
+    // Build response with trips, places, routes, and creators
+    res.json({
+      success: true,
+      data: {
+        trips,
+        placesByTrip,
+        routesByTrip,
+        creators: creatorMap,
+      },
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
 export default router;
 

@@ -4,20 +4,28 @@ import { useAuth } from '@/lib/auth';
 import Link from 'next/link';
 import { useEffect, useState, useRef } from 'react';
 import dynamic from 'next/dynamic';
-import { getPublicTrips, getTripPlaces, getTripRoutes } from '@/lib/api';
+import { getPublicTripsWithData } from '@/lib/api';
 import type { Trip, TripPlace, TripRoute } from '@tripmatrix/types';
-import UserMenu from '@/components/UserMenu';
 import CompactTripCard from '@/components/CompactTripCard';
-import { db } from '@/lib/firebase';
-import { doc, getDoc } from 'firebase/firestore';
 import type { User } from '@tripmatrix/types';
 
-// Dynamically import HomeMapView with SSR disabled since it uses Leaflet
+// Dynamically import heavy components to reduce initial bundle size
 const HomeMapView = dynamic(() => import('@/components/HomeMapView'), {
   ssr: false,
   loading: () => (
     <div className="w-full h-full flex items-center justify-center bg-gray-100">
       <div className="text-sm text-gray-600">Loading map...</div>
+    </div>
+  ),
+});
+
+// Dynamically import UserMenu since it uses Material-UI (heavy)
+const UserMenu = dynamic(() => import('@/components/UserMenu'), {
+  ssr: false,
+  loading: () => (
+    <div className="flex flex-col items-center gap-1">
+      <div className="w-6 h-6 rounded-full bg-gray-400 animate-pulse" />
+      <span className="text-[10px] font-medium text-white">Profile</span>
     </div>
   ),
 });
@@ -38,77 +46,37 @@ export default function Home() {
   const dragStartHeight = useRef(25);
 
   useEffect(() => {
-    loadPublicTrips();
+    // Load data after initial render to improve perceived performance
+    const timer = setTimeout(() => {
+      loadPublicTrips();
+    }, 0);
+    
+    return () => clearTimeout(timer);
   }, []);
 
   const loadPublicTrips = async () => {
     try {
-      const publicTrips = await getPublicTrips();
-      const sorted = publicTrips.sort((a, b) => {
-        const aTime = new Date(a.createdAt).getTime();
-        const bTime = new Date(b.createdAt).getTime();
-        return bTime - aTime;
-      });
+      // Use optimized endpoint that returns trips with places, routes, and creators in one call
+      const { trips, placesByTrip, routesByTrip, creators } = await getPublicTripsWithData(50);
       
-      // Get start location for each trip from first place
-      const tripsWithLocations = await Promise.all(
-        sorted.map(async (trip) => {
-          try {
-            const places = await getTripPlaces(trip.tripId, null).catch(() => []);
-            if (places.length > 0 && places[0].coordinates) {
-              return {
-                ...trip,
-                startLocationCoords: places[0].coordinates,
-              } as Trip & { startLocationCoords?: { lat: number; lng: number } };
-            }
-          } catch (error) {
-            console.error(`Failed to load places for trip ${trip.tripId}:`, error);
-          }
-          return trip;
-        })
-      );
+      // Add start location coordinates to trips from first place
+      const tripsWithLocations = trips.map((trip) => {
+        const places = placesByTrip[trip.tripId] || [];
+        if (places.length > 0 && places[0].coordinates) {
+          return {
+            ...trip,
+            startLocationCoords: places[0].coordinates,
+          } as Trip & { startLocationCoords?: { lat: number; lng: number } };
+        }
+        return trip;
+      });
       
       setTrips(tripsWithLocations as Trip[]);
+      setCreatorMap(creators);
 
-      // Load creator info for all trips
-      const creatorIds = [...new Set(sorted.map(t => t.creatorId))];
-      const creatorPromises = creatorIds.map(async (creatorId) => {
-        try {
-          const creatorDoc = await getDoc(doc(db, 'users', creatorId));
-          if (creatorDoc.exists()) {
-            return { uid: creatorId, user: creatorDoc.data() as User };
-          }
-        } catch (error) {
-          console.error(`Failed to load creator ${creatorId}:`, error);
-        }
-        return null;
-      });
-      
-      const creatorResults = await Promise.all(creatorPromises);
-      const newCreatorMap: Record<string, User> = {};
-      creatorResults.forEach(result => {
-        if (result) {
-          newCreatorMap[result.uid] = result.user;
-        }
-      });
-      setCreatorMap(newCreatorMap);
-
-      // Load places and routes for all trips
-      const placesPromises = sorted.map(trip => 
-        getTripPlaces(trip.tripId, null).catch(() => [])
-      );
-      const routesPromises = sorted.map(trip => 
-        getTripRoutes(trip.tripId, null).catch(() => [])
-      );
-
-      const [placesResults, routesResults] = await Promise.all([
-        Promise.all(placesPromises),
-        Promise.all(routesPromises),
-      ]);
-
-      // Flatten all places and routes
-      const flattenedPlaces = placesResults.flat();
-      const flattenedRoutes = routesResults.flat();
+      // Flatten all places and routes for the map
+      const flattenedPlaces = Object.values(placesByTrip).flat();
+      const flattenedRoutes = Object.values(routesByTrip).flat();
 
       setAllPlaces(flattenedPlaces);
       setAllRoutes(flattenedRoutes);
