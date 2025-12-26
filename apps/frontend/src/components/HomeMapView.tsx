@@ -30,7 +30,7 @@ export default function HomeMapView({
     
     import('leaflet').then((leafletModule) => {
       const L = leafletModule.default;
-      import('leaflet/dist/leaflet.css');
+      // CSS is loaded via Next.js CSS handling, no need to dynamically import
       
       // Fix for default marker icons in Next.js
       delete (L.Icon.Default.prototype as any)._getIconUrl;
