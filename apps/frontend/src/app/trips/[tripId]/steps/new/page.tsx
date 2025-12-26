@@ -5,11 +5,12 @@ import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useEffect, useState, useRef } from 'react';
 import dynamic from 'next/dynamic';
-import { getTrip, addPlace, getTripPlaces } from '@/lib/api';
+import { getTrip, addPlace, getTripPlaces, createExpense } from '@/lib/api';
 import type { Trip, TripPlace, ModeOfTravel } from '@tripmatrix/types';
 import { toDate } from '@/lib/dateUtils';
 import { format } from 'date-fns';
 import type L from 'leaflet';
+import ExpenseForm from '@/components/ExpenseForm';
 
 // Dynamically import PlaceMapSelector with SSR disabled
 const PlaceMapSelector = dynamic(() => import('@/components/PlaceMapSelector'), {
@@ -44,6 +45,9 @@ export default function NewStepPage() {
   const [images, setImages] = useState<Array<{ url: string; isPublic: boolean }>>([]);
   const [uploadingImages, setUploadingImages] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [showExpenseForm, setShowExpenseForm] = useState(false);
+  const [placeCountry, setPlaceCountry] = useState<string | undefined>(undefined);
+  const [newPlaceId, setNewPlaceId] = useState<string | null>(null);
   
   // Map search state
   const [searchQuery, setSearchQuery] = useState('');
@@ -116,6 +120,26 @@ export default function NewStepPage() {
 
   const handleLocationSelect = async (coords: { lat: number; lng: number }, name?: string) => {
     setCoordinates(coords);
+    
+    // Get country from coordinates
+    try {
+      const rawUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+      const apiUrl = rawUrl.startsWith('https://') ? rawUrl.replace(/:\d+$/, '') : rawUrl;
+      const response = await fetch(
+        `${apiUrl}/api/geocoding/reverse?lat=${coords.lat}&lon=${coords.lng}`
+      );
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success && result.data) {
+          const data = result.data;
+          if (data.address?.country_code) {
+            setPlaceCountry(data.address.country_code.toUpperCase());
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Failed to get country from coordinates:', error);
+    }
     
     // Always try to reverse geocode to get place name using backend API
     let placeName = name;
@@ -396,7 +420,32 @@ export default function NewStepPage() {
     setImages(images.filter((_, i) => i !== index));
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+
+  const handleAddExpense = async (expenseData: Partial<any>) => {
+    if (!token) {
+      alert('Authentication token is missing. Please log in again.');
+      return;
+    }
+    if (!newPlaceId) {
+      alert('Please save the step first before adding an expense.');
+      return;
+    }
+    try {
+      await createExpense({
+        ...expenseData,
+        tripId,
+        placeId: newPlaceId,
+      }, token);
+      alert('Expense added successfully!');
+      setShowExpenseForm(false);
+      router.push(`/trips/${tripId}`);
+    } catch (error: any) {
+      console.error('Failed to add expense:', error);
+      alert(`Failed to add expense: ${error.message || 'Unknown error'}`);
+    }
+  };
+
+  const handleSubmitWithExpense = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!placeName.trim()) {
@@ -412,7 +461,7 @@ export default function NewStepPage() {
     setSubmitting(true);
     try {
       const { addPlace } = await import('@/lib/api');
-      await addPlace({
+      const newPlace = await addPlace({
         tripId,
         name: placeName.trim(),
         coordinates: coordinates || { lat: 0, lng: 0 },
@@ -422,6 +471,17 @@ export default function NewStepPage() {
         modeOfTravel: previousPlace && modeOfTravel ? modeOfTravel : undefined,
         imageMetadata: images.length > 0 ? images : undefined,
       }, token);
+      
+      // Store the new place ID for expense creation
+      if (newPlace && newPlace.placeId) {
+        setNewPlaceId(newPlace.placeId);
+      }
+      
+      // If expense form is shown, don't redirect yet - let user add expense
+      if (showExpenseForm) {
+        alert('Step saved! You can now add an expense below.');
+        return;
+      }
       
       router.push(`/trips/${tripId}`);
     } catch (error: any) {
@@ -580,7 +640,7 @@ export default function NewStepPage() {
 
       {/* Form Section - Bottom 60% */}
       <div className="flex-1 overflow-y-auto" style={{ height: '60vh' }}>
-        <form onSubmit={handleSubmit} className="px-4 py-4 space-y-6">
+        <form onSubmit={handleSubmitWithExpense} className="px-4 py-4 space-y-6">
           {/* Date & Time */}
           <div>
             <label className="block text-[12px] font-semibold text-[#bdbdbd] mb-2">
@@ -707,6 +767,37 @@ export default function NewStepPage() {
               className="w-full bg-transparent px-0 py-3 text-[14px] text-white border-0 border-b border-[#9e9e9e] focus:outline-none focus:border-[#1976d2] rounded-none min-h-[100px]"
             />
           </div>
+
+          {/* Expense Section */}
+          {trip.participants && trip.participants.length > 0 && (
+            <div className="pt-4 border-t border-[#616161]">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-[14px] font-semibold text-white mb-1">Expenses</h3>
+                  <p className="text-[10px] text-[#9e9e9e]">Add expenses for this step</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowExpenseForm(!showExpenseForm)}
+                  className="px-4 py-2 bg-[#1976d2] text-white rounded-lg hover:bg-[#1565c0] transition-colors text-[12px] font-semibold"
+                >
+                  {showExpenseForm ? 'Cancel' : '+ Add Expense'}
+                </button>
+              </div>
+
+              {showExpenseForm && (
+                <div className="mt-4 bg-[#616161] rounded-lg p-4">
+                  <ExpenseForm
+                    tripId={tripId}
+                    participants={trip.participants}
+                    onSubmit={handleAddExpense}
+                    onCancel={() => setShowExpenseForm(false)}
+                    placeCountry={placeCountry}
+                  />
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Submit Button */}
           <div className="flex gap-3 pb-4">

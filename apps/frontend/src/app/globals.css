@@ -170,9 +170,16 @@ body {
     user-select: text;
   }
   
-  /* Prevent zoom on double tap */
+  /* Prevent zoom on double tap - but allow horizontal scrolling in scrollable containers */
   * {
     touch-action: pan-y;
+  }
+  
+  /* Allow horizontal scrolling in containers with overflow-x-scroll or overflow-x-auto */
+  [class*="overflow-x-scroll"],
+  [class*="overflow-x-auto"],
+  .horizontal-scroll {
+    touch-action: pan-x pinch-zoom !important;
   }
   
   input,

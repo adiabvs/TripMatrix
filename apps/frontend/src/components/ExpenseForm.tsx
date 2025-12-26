@@ -169,17 +169,17 @@ export default function ExpenseForm({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="bg-white p-6 rounded-lg shadow-md">
-      <h3 className="text-xl font-semibold mb-4">{initialData ? 'Edit Expense' : 'Add Expense'}</h3>
+    <form onSubmit={handleSubmit} className="bg-transparent p-0">
+      <h3 className="text-[14px] font-semibold mb-4 text-white">{initialData ? 'Edit Expense' : 'Add Expense'}</h3>
 
       <div className="mb-4">
-        <label className="block text-sm font-medium text-gray-700 mb-2">
+        <label className="block text-[12px] font-semibold text-[#bdbdbd] mb-2">
           Currency *
         </label>
         <select
           value={currency}
           onChange={(e) => setCurrency(e.target.value)}
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent"
+          className="w-full px-4 py-2 bg-[#424242] border border-[#616161] rounded-lg text-white focus:ring-2 focus:ring-[#1976d2] focus:border-transparent text-[14px]"
           required
         >
           {/* Option 1: Default Currency (always first, selected by default) */}
@@ -206,17 +206,17 @@ export default function ExpenseForm({
       </div>
 
       <div className="mb-4">
-        <label className="block text-sm font-medium text-gray-700 mb-2">
+        <label className="block text-[12px] font-semibold text-[#bdbdbd] mb-2">
           Amount *
         </label>
         <div className="flex items-center gap-2">
-          <span className="text-gray-600">{formatCurrency(0, currency).replace('0.00', '')}</span>
+          <span className="text-[#9e9e9e] text-[14px]">{formatCurrency(0, currency).replace('0.00', '')}</span>
           <input
             type="number"
             step="0.01"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
-            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+            className="flex-1 px-4 py-2 bg-[#424242] border border-[#616161] rounded-lg text-white focus:ring-2 focus:ring-[#1976d2] text-[14px]"
             placeholder="0.00"
             required
           />
@@ -224,13 +224,13 @@ export default function ExpenseForm({
       </div>
 
       <div className="mb-4">
-        <label className="block text-sm font-medium text-gray-700 mb-2">
+        <label className="block text-[12px] font-semibold text-[#bdbdbd] mb-2">
           Paid By *
         </label>
         <select
           value={paidBy}
           onChange={(e) => setPaidBy(e.target.value)}
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+          className="w-full px-4 py-2 bg-[#424242] border border-[#616161] rounded-lg text-white focus:ring-2 focus:ring-[#1976d2] text-[14px]"
           required
         >
           <option value="">Select person</option>
@@ -243,11 +243,11 @@ export default function ExpenseForm({
       </div>
 
       <div className="mb-4">
-        <label className="block text-sm font-medium text-gray-700 mb-2">
+        <label className="block text-[12px] font-semibold text-[#bdbdbd] mb-2">
           Split Mode *
         </label>
         <div className="space-y-2 mb-3">
-          <label className="flex items-center">
+          <label className="flex items-center text-white text-[14px]">
             <input
               type="radio"
               name="splitMode"
@@ -258,7 +258,7 @@ export default function ExpenseForm({
             />
             <span>Equal - Select people to split with</span>
           </label>
-          <label className="flex items-center">
+          <label className="flex items-center text-white text-[14px]">
             <input
               type="radio"
               name="splitMode"
@@ -269,7 +269,7 @@ export default function ExpenseForm({
             />
             <span>Everyone - All trip participants (fixed)</span>
           </label>
-          <label className="flex items-center">
+          <label className="flex items-center text-white text-[14px]">
             <input
               type="radio"
               name="splitMode"
@@ -283,12 +283,12 @@ export default function ExpenseForm({
         </div>
         
         {(splitMode === 'equal' || splitMode === 'people') && (
-          <div className="space-y-2 border-t pt-3 mt-3">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+          <div className="space-y-2 border-t border-[#616161] pt-3 mt-3">
+            <label className="block text-[12px] font-semibold text-[#bdbdbd] mb-2">
               {splitMode === 'equal' ? 'Select People to Split With (Equal Split)' : 'Select People to Split With *'}
             </label>
             {participantOptions.map((p) => (
-              <label key={p.id} className="flex items-center">
+              <label key={p.id} className="flex items-center text-white text-[14px]">
                 <input
                   type="checkbox"
                   checked={splitBetween.has(p.id)}
@@ -302,8 +302,8 @@ export default function ExpenseForm({
         )}
         
         {splitMode === 'everyone' && (
-          <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
-            <p className="text-sm text-blue-800">
+          <div className="mt-3 p-3 bg-[#1976d2]/20 rounded-lg border border-[#1976d2]/50">
+            <p className="text-[12px] text-[#90caf9]">
               This expense will be split equally among all {participants.length} trip participants.
             </p>
           </div>
@@ -311,14 +311,14 @@ export default function ExpenseForm({
       </div>
 
       <div className="mb-4">
-        <label className="block text-sm font-medium text-gray-700 mb-2">
+        <label className="block text-[12px] font-semibold text-[#bdbdbd] mb-2">
           Description
         </label>
         <input
           type="text"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+          className="w-full px-4 py-2 bg-[#424242] border border-[#616161] rounded-lg text-white focus:ring-2 focus:ring-[#1976d2] text-[14px]"
           placeholder="What was this expense for?"
         />
       </div>
@@ -327,14 +327,14 @@ export default function ExpenseForm({
         <button
           type="submit"
           disabled={loading}
-          className="flex-1 bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+          className="flex-1 bg-[#1976d2] text-white py-2 px-4 rounded-lg hover:bg-[#1565c0] disabled:opacity-50 text-[14px] font-semibold"
         >
           {loading ? (initialData ? 'Updating...' : 'Adding...') : (initialData ? 'Update Expense' : 'Add Expense')}
         </button>
         <button
           type="button"
           onClick={onCancel}
-          className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+          className="px-4 py-2 border border-[#616161] rounded-lg hover:bg-[#616161] text-white text-[14px]"
         >
           Cancel
         </button>

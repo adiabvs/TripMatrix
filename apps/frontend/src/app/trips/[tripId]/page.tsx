@@ -3,7 +3,7 @@
 import { useAuth } from '@/lib/auth';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import {
       getTrip,
@@ -51,36 +51,7 @@ export default function TripDetailPage() {
   const [loading, setLoading] = useState(true);
   const [token, setToken] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (tripId && !authLoading) {
-      // Only run when auth loading is complete to prevent premature execution
-      // First get token if user is logged in, then load data
-      const initializeAndLoad = async () => {
-        let authToken: string | null = null;
-        if (user) {
-          try {
-            // Try to get token, force refresh if needed
-            authToken = await getIdToken(false);
-            if (!authToken) {
-              // If token is null, try force refresh once
-              authToken = await getIdToken(true);
-            }
-            if (authToken) {
-              setToken(authToken);
-            }
-          } catch (error) {
-            console.error('Failed to get auth token:', error);
-            // Continue without token - will try to load as public trip
-            // Don't throw to prevent logout
-          }
-        }
-        await loadTripData(authToken);
-      };
-      initializeAndLoad();
-    }
-  }, [tripId, user, authLoading]);
-
-  const loadTripData = async (authToken?: string | null) => {
+  const loadTripData = useCallback(async (authToken?: string | null) => {
     try {
       // Use provided token or try to get one if user is logged in
       let token: string | null = authToken ?? null;
@@ -160,30 +131,7 @@ export default function TripDetailPage() {
         }
       }
 
-      // Subscribe to places updates (only if user is authenticated)
-      let unsubscribe: (() => void) | undefined;
-      if (user) {
-        try {
-          const placesQuery = query(
-            collection(db, 'tripPlaces'),
-            where('tripId', '==', tripId)
-          );
-          unsubscribe = onSnapshot(placesQuery, (snapshot) => {
-            const placesData = snapshot.docs.map((doc) => ({
-              placeId: doc.id,
-              ...doc.data(),
-            })) as TripPlace[];
-            setPlaces(placesData);
-          });
-        } catch (error) {
-          console.error('Failed to subscribe to places updates:', error);
-        }
-      }
-
       setLoading(false);
-      return () => {
-        if (unsubscribe) unsubscribe();
-      };
     } catch (error: any) {
       console.error('Failed to load trip data:', error);
       // Only redirect if user is definitely not logged in (not just token issue)
@@ -195,7 +143,62 @@ export default function TripDetailPage() {
       // Don't redirect in this case - user is still logged in
       setLoading(false);
     }
-  };
+  }, [tripId, user, getIdToken, router]);
+
+  useEffect(() => {
+    if (tripId && !authLoading) {
+      // Only run when auth loading is complete to prevent premature execution
+      // First get token if user is logged in, then load data
+      const initializeAndLoad = async () => {
+        let authToken: string | null = null;
+        if (user) {
+          try {
+            // Try to get token, force refresh if needed
+            authToken = await getIdToken(false);
+            if (!authToken) {
+              // If token is null, try force refresh once
+              authToken = await getIdToken(true);
+            }
+            if (authToken) {
+              setToken(authToken);
+            }
+          } catch (error) {
+            console.error('Failed to get auth token:', error);
+            // Continue without token - will try to load as public trip
+            // Don't throw to prevent logout
+          }
+        }
+        await loadTripData(authToken);
+      };
+      initializeAndLoad();
+    }
+  }, [tripId, user, authLoading, getIdToken, loadTripData]);
+
+  // Subscribe to places updates
+  useEffect(() => {
+    if (!user || !tripId) return;
+
+    let unsubscribe: (() => void) | undefined;
+    try {
+      const placesQuery = query(
+        collection(db, 'tripPlaces'),
+        where('tripId', '==', tripId)
+      );
+      unsubscribe = onSnapshot(placesQuery, (snapshot) => {
+        const placesData = snapshot.docs.map((doc) => ({
+          placeId: doc.id,
+          ...doc.data(),
+        })) as TripPlace[];
+        setPlaces(placesData);
+      });
+    } catch (error) {
+      console.error('Failed to subscribe to places updates:', error);
+    }
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, [user, tripId]);
 
   const handleEndTrip = async () => {
     if (!trip || !confirm('Are you sure you want to end this trip?')) return;
@@ -269,6 +272,17 @@ export default function TripDetailPage() {
     }
   };
 
+  // Calculate derived values (before early returns)
+  const isCreator = trip ? user?.uid === trip.creatorId : false;
+  const isParticipant = trip ? trip.participants?.some(p => p.uid === user?.uid) || false : false;
+  const canEdit = isCreator || isParticipant;
+  const statusColor = trip?.status === 'completed' ? '#4caf50' : '#ffc107';
+
+  // Sort places chronologically
+  const sortedPlaces = [...places].sort((a, b) => {
+    return toDate(a.visitedAt).getTime() - toDate(b.visitedAt).getTime();
+  });
+
   if (authLoading || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#424242]">
@@ -284,16 +298,6 @@ export default function TripDetailPage() {
       </div>
     );
   }
-
-  const isCreator = user?.uid === trip.creatorId;
-  const isParticipant = trip.participants?.some(p => p.uid === user?.uid) || false;
-  const canEdit = isCreator || isParticipant;
-  const statusColor = trip.status === 'completed' ? '#4caf50' : '#ffc107';
-
-  // Sort places chronologically
-  const sortedPlaces = [...places].sort((a, b) => {
-    return toDate(a.visitedAt).getTime() - toDate(b.visitedAt).getTime();
-  });
 
   return (
     <div className="min-h-screen bg-[#424242] flex flex-col">
@@ -328,46 +332,47 @@ export default function TripDetailPage() {
       </div>
 
       {/* Steps Section - Bottom 40% */}
-      <div className="flex-1 overflow-y-auto bg-[#424242]" style={{ height: '40vh' }}>
-        <div className="px-4 py-4">
-          {/* Trip Info */}
-          <div className="mb-4">
-            <h2 className="text-[14px] font-semibold text-white mb-2">{trip.title}</h2>
-            <div className="flex items-center gap-2 mb-2">
-              <div 
-                className="w-2 h-2 rounded-full border border-white"
-                style={{ backgroundColor: statusColor }}
-              />
-              <span className="text-[11px] text-white">
-                {trip.status === 'completed' ? 'Completed' : 'Active'}
-              </span>
-              {trip.startTime && (
-                <>
-                  <span className="text-[11px] text-gray-400">•</span>
-                  <span className="text-[11px] text-gray-400">
-                    {format(toDate(trip.startTime), 'MMM dd, yyyy')}
-                  </span>
-                </>
-              )}
-            </div>
-            {trip.description && (
-              <p className="text-[12px] text-gray-300">{trip.description}</p>
+      <div className="flex-1 bg-[#424242] flex flex-col overflow-hidden" style={{ height: '40vh' }}>
+        {/* Trip Info */}
+        <div className="px-4 pt-4 pb-2 flex-shrink-0">
+          <h2 className="text-[14px] font-semibold text-white mb-2">{trip.title}</h2>
+          <div className="flex items-center gap-2 mb-2">
+            <div 
+              className="w-2 h-2 rounded-full border border-white"
+              style={{ backgroundColor: statusColor }}
+            />
+            <span className="text-[11px] text-white">
+              {trip.status === 'completed' ? 'Completed' : 'Active'}
+            </span>
+            {trip.startTime && (
+              <>
+                <span className="text-[11px] text-gray-400">•</span>
+                <span className="text-[11px] text-gray-400">
+                  {format(toDate(trip.startTime), 'MMM dd, yyyy')}
+                </span>
+              </>
             )}
           </div>
+          {trip.description && (
+            <p className="text-[12px] text-gray-300">{trip.description}</p>
+          )}
+        </div>
 
-          {/* Steps List - Horizontal Scroll */}
-          {sortedPlaces.length > 0 ? (
-            <div 
-              className="overflow-x-auto pb-4 -mx-4 px-4" 
-              style={{ 
-                width: '100%', 
-                WebkitOverflowScrolling: 'touch',
-                scrollBehavior: 'smooth',
-                overflowX: 'auto',
-                overflowY: 'hidden'
-              }}
-            >
-              <div className="flex items-center flex-nowrap" style={{ width: 'max-content' }}>
+        {/* Steps List - Horizontal Scroll */}
+        {sortedPlaces.length > 0 ? (
+          <div 
+            className="overflow-x-scroll pb-4 px-4 flex-1 horizontal-scroll"
+            style={{
+              WebkitOverflowScrolling: 'touch',
+              scrollBehavior: 'smooth',
+              touchAction: 'pan-x pinch-zoom',
+              overscrollBehaviorX: 'contain',
+              overflowX: 'scroll',
+              overflowY: 'hidden',
+              minWidth: 0
+            }}
+          >
+            <div className="flex gap-3" style={{ width: 'max-content' }}>
                 {sortedPlaces.map((place, index) => (
                   <React.Fragment key={place.placeId}>
                     {/* Add Step Button Before (only show before first step) */}
@@ -385,18 +390,16 @@ export default function TripDetailPage() {
                     )}
                     
                     {/* Step Card */}
-                    <div className="flex-shrink-0">
-                      <CompactStepCard
-                        place={place}
-                        index={index}
-                        onEdit={(place) => {
-                          router.push(`/trips/${tripId}/steps/${place.placeId}/edit`);
-                        }}
-                        onDelete={handleDeletePlace}
-                        isCreator={canEdit}
-                        tripId={tripId}
-                      />
-                    </div>
+                    <CompactStepCard
+                      place={place}
+                      index={index}
+                      onEdit={(place) => {
+                        router.push(`/trips/${tripId}/steps/${place.placeId}/edit`);
+                      }}
+                      onDelete={handleDeletePlace}
+                      isCreator={canEdit}
+                      tripId={tripId}
+                    />
                     
                     {/* Add Step Button After (between steps and after last step) */}
                     {canEdit && (
@@ -417,27 +420,28 @@ export default function TripDetailPage() {
                     )}
                   </React.Fragment>
                 ))}
-              </div>
             </div>
-          ) : (
-            <div className="text-center py-10">
-              <div className="text-5xl mb-2">📍</div>
-              <p className="text-[12px] font-semibold text-white mb-1">No steps yet</p>
-              <p className="text-[10px] text-gray-400">Add your first step to start your journey</p>
-              {canEdit && (
-                <Link
-                  href={`/trips/${tripId}/steps/new`}
-                  className="inline-block mt-4 px-4 py-2 bg-[#1976d2] text-white rounded-lg text-[12px] font-semibold"
-                >
-                  + Add Step
-                </Link>
-              )}
-            </div>
-          )}
+          </div>
+        ) : (
+          <div className="flex-1 flex flex-col items-center justify-center px-4">
+            <div className="text-5xl mb-2">📍</div>
+            <p className="text-[12px] font-semibold text-white mb-1">No steps yet</p>
+            <p className="text-[10px] text-gray-400">Add your first step to start your journey</p>
+            {canEdit && (
+              <Link
+                href={`/trips/${tripId}/steps/new`}
+                className="inline-block mt-4 px-4 py-2 bg-[#1976d2] text-white rounded-lg text-[12px] font-semibold"
+              >
+                + Add Step
+              </Link>
+            )}
+          </div>
+        )}
 
-          {/* Expense Summary */}
-          {trip.status === 'completed' && expenseSummary && (
-            <div className="bg-[#616161] rounded-lg p-4 mt-4">
+        {/* Expense Summary */}
+        {trip.status === 'completed' && expenseSummary && (
+          <div className="px-4 pb-4 flex-shrink-0">
+            <div className="bg-[#616161] rounded-lg p-4">
               <h3 className="text-[13px] font-bold text-white mb-2">Expense Summary</h3>
               <p className="text-2xl font-bold text-white mb-3">
                 ${expenseSummary.totalSpent.toFixed(2)}
@@ -454,8 +458,8 @@ export default function TripDetailPage() {
                 </div>
               )}
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );

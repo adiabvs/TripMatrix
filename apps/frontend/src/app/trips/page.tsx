@@ -3,7 +3,7 @@
 import { useAuth } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { getUserTrips, getTripPlaces, getTripRoutes } from '@/lib/api';
 import type { Trip, TripPlace, TripRoute } from '@tripmatrix/types';
@@ -27,6 +27,12 @@ export default function TripsPage() {
   const [allPlaces, setAllPlaces] = useState<TripPlace[]>([]);
   const [allRoutes, setAllRoutes] = useState<TripRoute[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  // Draggable state
+  const [modalHeight, setModalHeight] = useState(50); // Start at 50vh
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStartY = useRef(0);
+  const dragStartHeight = useRef(50);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -84,6 +90,45 @@ export default function TripsPage() {
     window.location.href = `/trips/${tripId}`;
   };
 
+  // Draggable handlers
+  const handleDragStart = (e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+    const clientY = 'touches' in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY;
+    dragStartY.current = clientY;
+    dragStartHeight.current = modalHeight;
+  };
+
+  useEffect(() => {
+    const handleDragMove = (e: MouseEvent | TouchEvent) => {
+      if (!isDragging) return;
+      
+      const clientY = 'touches' in e ? e.touches[0].clientY : (e as MouseEvent).clientY;
+      const deltaY = dragStartY.current - clientY; // Negative when dragging up
+      const screenHeight = window.innerHeight;
+      const deltaVh = (deltaY / screenHeight) * 100;
+      const newHeight = Math.max(25, Math.min(80, dragStartHeight.current + deltaVh));
+      setModalHeight(newHeight);
+    };
+
+    const handleDragEnd = () => {
+      setIsDragging(false);
+    };
+
+    if (isDragging) {
+      document.addEventListener('mousemove', handleDragMove);
+      document.addEventListener('mouseup', handleDragEnd);
+      document.addEventListener('touchmove', handleDragMove, { passive: false });
+      document.addEventListener('touchend', handleDragEnd);
+      return () => {
+        document.removeEventListener('mousemove', handleDragMove);
+        document.removeEventListener('mouseup', handleDragEnd);
+        document.removeEventListener('touchmove', handleDragMove);
+        document.removeEventListener('touchend', handleDragEnd);
+      };
+    }
+  }, [isDragging, modalHeight]);
+
   if (authLoading || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#424242]">
@@ -110,15 +155,18 @@ export default function TripsPage() {
     );
   }
 
+  const mapHeight = `${100 - modalHeight}vh`;
+  const modalHeightVh = `${modalHeight}vh`;
+
   return (
-    <div className="min-h-screen bg-[#424242] flex flex-col">
-      {/* Map Section - Full height */}
-      <div className="relative flex-1" style={{ height: '100vh' }}>
+    <div className="min-h-screen bg-[#424242] flex flex-col overflow-hidden">
+      {/* Map Section */}
+      <div className="relative" style={{ height: mapHeight }}>
         <HomeMapView 
           routes={allRoutes} 
           places={allPlaces}
           trips={[]}
-          height="100vh"
+          height={mapHeight}
         />
         
         {/* Header Overlay */}
@@ -137,15 +185,33 @@ export default function TripsPage() {
         </div>
       </div>
 
-      {/* Trip Cards Modal - Dark Grey Bottom */}
-      <div className="absolute bottom-0 left-0 right-0 bg-[#424242] border-t border-gray-600" style={{ height: '25vh', minHeight: '200px' }}>
+      {/* Trip Cards Modal - Draggable */}
+      <div 
+        className="absolute bottom-0 left-0 right-0 bg-[#424242] border-t border-gray-600 flex flex-col"
+        style={{ height: modalHeightVh, overflow: 'hidden' }}
+      >
         {/* Drag Handle */}
-        <div className="flex justify-center py-3">
+        <div 
+          className="flex justify-center py-3 cursor-grab active:cursor-grabbing select-none"
+          onMouseDown={handleDragStart}
+          onTouchStart={handleDragStart}
+        >
           <div className="w-10 h-1 bg-gray-500 rounded-full" />
         </div>
 
         {trips.length > 0 ? (
-          <div className="overflow-x-auto pb-4 px-4 h-full">
+          <div 
+            className="overflow-x-scroll pb-16 px-4 flex-1 horizontal-scroll"
+            style={{
+              WebkitOverflowScrolling: 'touch',
+              scrollBehavior: 'smooth',
+              touchAction: 'pan-x pinch-zoom',
+              overscrollBehaviorX: 'contain',
+              overflowX: 'scroll',
+              overflowY: 'hidden',
+              minWidth: 0
+            }}
+          >
             <div className="flex gap-3" style={{ width: 'max-content' }}>
               {trips.map((trip) => (
                 <CompactTripCard 
@@ -157,7 +223,7 @@ export default function TripsPage() {
             </div>
           </div>
         ) : (
-          <div className="flex flex-col items-center justify-center h-full px-4">
+          <div className="flex flex-col items-center justify-center py-12 px-4 pb-16 flex-1">
             <span className="text-4xl mb-3">🗺️</span>
             <p className="text-[11px] text-gray-300 font-semibold mb-4">No trips yet</p>
             <p className="text-[10px] text-gray-400 text-center mb-6">

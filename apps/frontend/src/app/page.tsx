@@ -40,10 +40,10 @@ export default function Home() {
   const [creatorMap, setCreatorMap] = useState<Record<string, User>>({});
   
   // Draggable state
-  const [modalHeight, setModalHeight] = useState(25); // Start at 25vh
+  const [modalHeight, setModalHeight] = useState(50); // Start at 50vh
   const [isDragging, setIsDragging] = useState(false);
   const dragStartY = useRef(0);
-  const dragStartHeight = useRef(25);
+  const dragStartHeight = useRef(50);
 
   useEffect(() => {
     // Load data after initial render to improve perceived performance
@@ -211,8 +211,8 @@ export default function Home() {
 
       {/* Trip Cards Section - Draggable Modal */}
       <div 
-        className="absolute bottom-0 left-0 right-0 bg-[#424242] border-t border-gray-600 overflow-hidden flex flex-col"
-        style={{ height: modalHeightVh }}
+        className="absolute bottom-0 left-0 right-0 bg-[#424242] border-t border-gray-600 flex flex-col"
+        style={{ height: modalHeightVh, overflow: 'hidden' }}
       >
         {/* Drag Handle */}
         <div 
@@ -224,7 +224,18 @@ export default function Home() {
         </div>
 
         {trips.length > 0 ? (
-          <div className="overflow-x-auto pb-16 px-4 flex-1">
+          <div 
+            className="overflow-x-scroll pb-16 px-4 flex-1 horizontal-scroll"
+            style={{
+              WebkitOverflowScrolling: 'touch',
+              scrollBehavior: 'smooth',
+              touchAction: 'pan-x pinch-zoom',
+              overscrollBehaviorX: 'contain',
+              overflowX: 'scroll',
+              overflowY: 'hidden',
+              minWidth: 0
+            }}
+          >
             <div className="flex gap-3" style={{ width: 'max-content' }}>
               {trips.map((trip) => (
                 <CompactTripCard 
