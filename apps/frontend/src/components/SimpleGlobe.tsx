@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, useMemo } from 'react';
+import { useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import type { Trip, TripPlace, TripRoute } from '@tripmatrix/types';
 
@@ -13,8 +13,13 @@ interface SimpleGlobeProps {
 }
 
 // Dynamically import Globe component
-const Globe = dynamic(() => import('react-globe.gl').then((mod) => ({ default: mod.default || mod.Globe || mod })), {
+const Globe = dynamic(() => import('react-globe.gl'), {
   ssr: false,
+  loading: () => (
+    <div className="w-full h-full flex items-center justify-center bg-black">
+      <div className="text-white text-sm">Loading globe...</div>
+    </div>
+  ),
 });
 
 export default function SimpleGlobe({ 
@@ -24,8 +29,6 @@ export default function SimpleGlobe({
   onTripMarkerClick, 
   height = '75vh' 
 }: SimpleGlobeProps) {
-  const [globeLoaded, setGlobeLoaded] = useState(false);
-
   // Prepare points data
   const points = useMemo(() => {
     const placePoints = places
@@ -76,20 +79,6 @@ export default function SimpleGlobe({
     });
     return arcData;
   }, [routes]);
-
-  useEffect(() => {
-    setGlobeLoaded(true);
-  }, []);
-
-  if (!globeLoaded) {
-    return (
-      <div 
-        style={{ width: '100%', height, position: 'relative', background: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-      >
-        <div className="text-white text-sm">Loading globe...</div>
-      </div>
-    );
-  }
 
   return (
     <div style={{ width: '100%', height, position: 'relative', background: '#000' }}>

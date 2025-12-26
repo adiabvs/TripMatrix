@@ -7,7 +7,7 @@ import { useEffect, useState, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { getTrip, addPlace, getTripPlaces, createExpense } from '@/lib/api';
 import type { Trip, TripPlace, ModeOfTravel } from '@tripmatrix/types';
-import { toDate } from '@/lib/dateUtils';
+import { toDate, formatDateTimeLocalForInput, parseDateTimeLocalToUTC } from '@/lib/dateUtils';
 import { format } from 'date-fns';
 import type L from 'leaflet';
 import ExpenseForm from '@/components/ExpenseForm';

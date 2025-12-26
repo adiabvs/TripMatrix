@@ -15,9 +15,13 @@ export function toDate(value: any): Date {
   else if (value && typeof value.toDate === 'function') {
     date = value.toDate();
   }
-  // If it's a timestamp object with seconds/nanoseconds
+  // If it's a timestamp object with seconds/nanoseconds (Firestore format)
   else if (value && typeof value.seconds === 'number') {
     date = new Date(value.seconds * 1000);
+  }
+  // If it's a Firestore timestamp with _seconds and _nanoseconds (serialized format)
+  else if (value && typeof value._seconds === 'number') {
+    date = new Date(value._seconds * 1000 + (value._nanoseconds || 0) / 1000000);
   }
   // If it's a string or number, try to parse it
   else {
