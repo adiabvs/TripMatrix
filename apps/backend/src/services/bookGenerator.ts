@@ -32,7 +32,7 @@ export async function generateTravelDiary({
   trip,
   places,
 }: BookGenerationOptions): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
     try {
       const doc = new PDFDocument({
         size: 'A4',

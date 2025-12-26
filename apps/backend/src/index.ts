@@ -159,7 +159,7 @@ app.use('/oauth', canvaOAuthRoutes); // OAuth redirect endpoint (public - Canva 
 app.get('/return-nav', async (req, res) => {
   try {
     const { correlation_jwt, correlation_state } = req.query;
-    const { jose } = await import('jose');
+    const { decodeJwt } = await import('jose');
     const frontendUrl = process.env.FRONTEND_URL || 'http://127.0.0.1:3000';
 
     // Canva sends correlation_jwt (JWT token) or correlation_state (base64 encoded)
@@ -181,7 +181,7 @@ app.get('/return-nav', async (req, res) => {
     try {
       if (correlation_jwt) {
         // Decode JWT token (Canva sends correlation_jwt)
-        const decoded = await jose.decodeJwt(correlationToken);
+        const decoded = await decodeJwt(correlationToken);
         console.log('Decoded correlation JWT payload:', decoded);
         
         // Extract correlation_state from JWT payload

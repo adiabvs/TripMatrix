@@ -58,7 +58,7 @@ export async function uploadImageToCanva(
       throw new Error(`Failed to create upload job: ${uploadJobResponse.status} ${error}`);
     }
 
-    const uploadResponse = await uploadJobResponse.json();
+    const uploadResponse = await uploadJobResponse.json() as any;
     console.log('Asset upload response:', JSON.stringify(uploadResponse, null, 2));
 
     // Check if response includes asset_id directly (synchronous upload)
@@ -135,7 +135,7 @@ export async function uploadImageToCanva(
         continue; // Try again
       }
 
-      const statusData = await statusResponse.json();
+      const statusData = await statusResponse.json() as any;
       console.log(`Asset upload status response (attempt ${attempts + 1}):`, JSON.stringify(statusData, null, 2));
       
       // Handle nested job object: { job: { status: "...", asset_id: "..." } }

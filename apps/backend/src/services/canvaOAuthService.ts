@@ -5,6 +5,7 @@
  */
 
 import crypto from 'node:crypto';
+import { createClient } from '@hey-api/client-fetch';
 
 export interface CanvaOAuthConfig {
   clientId: string;
@@ -272,7 +273,7 @@ export async function createCanvaDesign(
     throw new Error(`Failed to create design: ${response.status} ${error}`);
   }
 
-  const data = await response.json();
+  const data = await response.json() as any;
   console.log('Canva API response:', JSON.stringify(data, null, 2));
   
   // Canva API returns nested structure: { design: { id: "...", urls: { edit_url: "...", view_url: "..." } } }
