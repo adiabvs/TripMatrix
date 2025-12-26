@@ -196,6 +196,19 @@ export default function TripMapbox({
     return sortedPlaces.length > 0 ? sortedPlaces : places;
   }, [places, sortedPlaces]);
 
+  // Calculate distance between two coordinates (Haversine formula) in kilometers
+  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+    const R = 6371; // Earth's radius in kilometers
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = 
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  };
+
   // Calculate bounds from all places for initial view
   const allPlacesBounds = useMemo(() => {
     const validPlaces = sortedPlacesData.filter(p => p.coordinates && p.coordinates.lat && p.coordinates.lng);
@@ -215,6 +228,24 @@ export default function TripMapbox({
       }
     });
 
+    // Calculate maximum distance between any two points
+    let maxDistance = 0;
+    for (let i = 0; i < validPlaces.length; i++) {
+      for (let j = i + 1; j < validPlaces.length; j++) {
+        const p1 = validPlaces[i];
+        const p2 = validPlaces[j];
+        if (p1.coordinates && p2.coordinates) {
+          const dist = calculateDistance(
+            p1.coordinates.lat,
+            p1.coordinates.lng,
+            p2.coordinates.lat,
+            p2.coordinates.lng
+          );
+          maxDistance = Math.max(maxDistance, dist);
+        }
+      }
+    }
+
     // Add padding to bounds
     const latPadding = (maxLat - minLat) * 0.1 || 0.01;
     const lngPadding = (maxLng - minLng) * 0.1 || 0.01;
@@ -222,6 +253,7 @@ export default function TripMapbox({
     return {
       sw: [minLng - lngPadding, minLat - latPadding] as [number, number],
       ne: [maxLng + lngPadding, maxLat + latPadding] as [number, number],
+      maxDistance, // Store max distance for zoom calculation
     };
   }, [sortedPlacesData]);
 
@@ -233,9 +265,30 @@ export default function TripMapbox({
     try {
       // Use MapLibre's fitBounds with proper bounds format
       const bounds = new maplibregl.LngLatBounds(allPlacesBounds.sw, allPlacesBounds.ne);
+      
+      // Calculate zoom limits based on distance
+      // Small distance (< 10km) = zoom in more (maxZoom: 15)
+      // Medium distance (10-100km) = moderate zoom (maxZoom: 12)
+      // Large distance (100-1000km) = zoom out (maxZoom: 8)
+      // Very large distance (> 1000km) = zoom out more (maxZoom: 5)
+      let maxZoom = 12;
+      let minZoom = 2;
+      
+      if (allPlacesBounds.maxDistance < 10) {
+        maxZoom = 15; // Very close points, zoom in
+      } else if (allPlacesBounds.maxDistance < 100) {
+        maxZoom = 12; // Medium distance
+      } else if (allPlacesBounds.maxDistance < 1000) {
+        maxZoom = 8; // Large distance, zoom out
+      } else {
+        maxZoom = 5; // Very large distance, zoom out more
+      }
+      
       mapRef.current.fitBounds(bounds, {
         padding: { top: 50, bottom: 50, left: 50, right: 50 },
         duration: 0, // No animation for initial bounds
+        maxZoom, // Limit zoom based on distance
+        minZoom, // Minimum zoom level
       });
       initialBoundsSet.current = true;
     } catch (error) {
