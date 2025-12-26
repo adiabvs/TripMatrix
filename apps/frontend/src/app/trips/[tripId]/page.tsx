@@ -50,6 +50,9 @@ export default function TripDetailPage() {
   const [expenseSummary, setExpenseSummary] = useState<ExpenseSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [token, setToken] = useState<string | null>(null);
+  const [visibleStepIndex, setVisibleStepIndex] = useState<number>(0);
+  const stepsContainerRef = useRef<HTMLDivElement>(null);
+  const stepCardRefs = useRef<(HTMLDivElement | null)[]>([]);
 
   // Draggable state
   const [modalHeight, setModalHeight] = useState(60); // Start at 60vh
@@ -425,6 +428,8 @@ export default function TripDetailPage() {
           routes={routes}
           trips={[]}
           height={`${100 - modalHeight}vh`}
+          highlightedStepIndex={visibleStepIndex}
+          sortedPlaces={sortedPlaces}
         />
       </div>
 
@@ -478,6 +483,7 @@ export default function TripDetailPage() {
         {/* Steps List - Vertical Scroll */}
         {sortedPlaces.length > 0 ? (
           <div 
+            ref={stepsContainerRef}
             className="overflow-y-auto overflow-x-hidden flex-1"
             style={{
               WebkitOverflowScrolling: 'touch',
@@ -485,6 +491,35 @@ export default function TripDetailPage() {
               paddingBottom: '16px',
               paddingLeft: '16px',
               paddingRight: '16px'
+            }}
+            onScroll={() => {
+              if (!stepsContainerRef.current) return;
+              
+              const container = stepsContainerRef.current;
+              const containerTop = container.scrollTop;
+              const containerHeight = container.clientHeight;
+              const viewportCenter = containerTop + containerHeight / 2;
+              
+              // Find which step is currently in the center of the viewport
+              let closestIndex = 0;
+              let closestDistance = Infinity;
+              
+              stepCardRefs.current.forEach((ref, index) => {
+                if (!ref) return;
+                const rect = ref.getBoundingClientRect();
+                const containerRect = container.getBoundingClientRect();
+                const cardCenter = rect.top - containerRect.top + rect.height / 2;
+                const distance = Math.abs(cardCenter - containerHeight / 2);
+                
+                if (distance < closestDistance) {
+                  closestDistance = distance;
+                  closestIndex = index;
+                }
+              });
+              
+              if (closestIndex !== visibleStepIndex) {
+                setVisibleStepIndex(closestIndex);
+              }
             }}
           >
             <div className="flex flex-col items-center">
@@ -505,7 +540,12 @@ export default function TripDetailPage() {
                   )}
                   
                   {/* Step Card */}
-                  <div className="w-full">
+                  <div 
+                    ref={(el) => {
+                      stepCardRefs.current[index] = el;
+                    }}
+                    className="w-full"
+                  >
                     <CompactStepCard
                       place={place}
                       index={index}

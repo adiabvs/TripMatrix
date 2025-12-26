@@ -88,38 +88,9 @@ export default function PlaceMapSelector({
       if (markerRef.current) {
         markerRef.current.setLatLng([lat, lng]);
       } else {
-        // Create custom icon for person/location marker
-        const personIcon = L.divIcon({
-          className: 'custom-person-marker',
-          html: `
-            <div style="
-              width: 32px;
-              height: 32px;
-              background-color: #1976d2;
-              border: 3px solid white;
-              border-radius: 50% 50% 50% 0;
-              transform: rotate(-45deg);
-              box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-            ">
-              <div style="
-                width: 12px;
-                height: 12px;
-                background-color: white;
-                border-radius: 50%;
-                position: absolute;
-                top: 6px;
-                left: 6px;
-                transform: rotate(45deg);
-              "></div>
-            </div>
-          `,
-          iconSize: [32, 32],
-          iconAnchor: [16, 32],
-        });
-        
+        // Use default Leaflet marker
         markerRef.current = L.marker([lat, lng], { 
-          draggable: true,
-          icon: personIcon
+          draggable: true
         }).addTo(map);
         markerRef.current.on('dragend', async (e) => {
           const marker = e.target;
@@ -152,38 +123,9 @@ export default function PlaceMapSelector({
 
     // Add initial marker if coordinates provided
     if (initialCoords) {
-      // Create custom icon for person/location marker
-      const personIcon = L.divIcon({
-        className: 'custom-person-marker',
-        html: `
-          <div style="
-            width: 32px;
-            height: 32px;
-            background-color: #1976d2;
-            border: 3px solid white;
-            border-radius: 50% 50% 50% 0;
-            transform: rotate(-45deg);
-            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-          ">
-            <div style="
-              width: 12px;
-              height: 12px;
-              background-color: white;
-              border-radius: 50%;
-              position: absolute;
-              top: 6px;
-              left: 6px;
-              transform: rotate(45deg);
-            "></div>
-          </div>
-        `,
-        iconSize: [32, 32],
-        iconAnchor: [16, 32],
-      });
-      
+      // Use default Leaflet marker
       markerRef.current = L.marker([initialCoords.lat, initialCoords.lng], { 
-        draggable: true,
-        icon: personIcon
+        draggable: true
       })
         .addTo(map)
         .bindPopup('Selected Location')

@@ -9,6 +9,8 @@ interface HomeMapViewProps {
   trips?: Trip[];
   onTripMarkerClick?: (trip: Trip, coords: { lat: number; lng: number }) => void;
   height?: string;
+  highlightedStepIndex?: number;
+  sortedPlaces?: TripPlace[];
 }
 
 export default function HomeMapView({ 
@@ -16,11 +18,14 @@ export default function HomeMapView({
   routes, 
   trips = [], 
   onTripMarkerClick, 
-  height = '75vh' 
+  height = '75vh',
+  highlightedStepIndex,
+  sortedPlaces = []
 }: HomeMapViewProps) {
   const mapRef = useRef<any>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const layersRef = useRef<any[]>([]);
+  const animationLayerRef = useRef<any>(null);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [leafletLoaded, setLeafletLoaded] = useState(false);
 
@@ -114,23 +119,10 @@ export default function HomeMapView({
     });
     layersRef.current = [];
 
-    // Add place markers (blue pin style)
+    // Add place markers (using default Leaflet marker)
     places.forEach((place) => {
       if (place.coordinates && place.coordinates.lat && place.coordinates.lng) {
-        const marker = L.marker([place.coordinates.lat, place.coordinates.lng], {
-          icon: L.divIcon({
-            className: 'place-marker',
-            html: `<div style="position: relative; cursor: pointer; transform: translate(-50%, -100%);">
-              <svg width="30" height="42" viewBox="0 0 30 42" fill="none" style="filter: drop-shadow(0 2px 6px rgba(0,0,0,0.4));">
-                <path d="M15 0C9.48 0 5 4.48 5 10c0 7 10 20 10 20s10-13 10-20c0-5.52-4.48-10-10-10z" fill="#1976d2"/>
-                <path d="M15 6c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4z" fill="white"/>
-                <path d="M15 30L10 42h10l-5-12z" fill="#1976d2"/>
-              </svg>
-            </div>`,
-            iconSize: [30, 42],
-            iconAnchor: [15, 42],
-          }),
-        })
+        const marker = L.marker([place.coordinates.lat, place.coordinates.lng])
           .addTo(map)
           .bindPopup(place.name || 'Place');
         layersRef.current.push(marker);
@@ -138,28 +130,23 @@ export default function HomeMapView({
       }
     });
 
-    // Add trip start location markers (red pin with star icon)
+    // Add trip start location markers (using default Leaflet marker with red color)
     trips.forEach((trip) => {
       const tripWithCoords = trip as Trip & { startLocationCoords?: { lat: number; lng: number } };
       if (tripWithCoords.startLocationCoords && 
           tripWithCoords.startLocationCoords.lat !== 0 && 
           tripWithCoords.startLocationCoords.lng !== 0) {
         const coords = tripWithCoords.startLocationCoords;
-        const marker = L.marker([coords.lat, coords.lng], {
-          icon: L.divIcon({
-            className: 'trip-marker',
-            html: `<div style="position: relative; cursor: pointer; transform: translate(-50%, -100%);">
-              <svg width="34" height="46" viewBox="0 0 34 46" fill="none" style="filter: drop-shadow(0 3px 8px rgba(0,0,0,0.5));">
-                <path d="M17 0C11.48 0 7 4.48 7 10c0 7 10 20 10 20s10-13 10-20c0-5.52-4.48-10-10-10z" fill="#d32f2f"/>
-                <path d="M17 7c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z" fill="white"/>
-                <path d="M17 10.5l1.5 3 3.5 0.5-2.5 2.5 0.5 3.5-3-1.5-3 1.5 0.5-3.5-2.5-2.5 3.5-0.5z" fill="#ffc107"/>
-                <path d="M17 32L12 46h10l-5-14z" fill="#d32f2f"/>
-              </svg>
-            </div>`,
-            iconSize: [34, 46],
-            iconAnchor: [17, 46],
-          }),
-        })
+        // Create red marker icon
+        const redIcon = new L.Icon({
+          iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png',
+          shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
+          iconSize: [25, 41],
+          iconAnchor: [12, 41],
+          popupAnchor: [1, -34],
+          shadowSize: [41, 41]
+        });
+        const marker = L.marker([coords.lat, coords.lng], { icon: redIcon })
           .addTo(map)
           .bindPopup(trip.title || 'Trip')
           .on('click', () => {
@@ -195,6 +182,99 @@ export default function HomeMapView({
       }
     });
 
+    // Draw lines between consecutive places based on mode of travel
+    if (sortedPlaces.length > 0) {
+      for (let i = 0; i < sortedPlaces.length - 1; i++) {
+        const currentPlace = sortedPlaces[i];
+        const nextPlace = sortedPlaces[i + 1];
+        
+        if (currentPlace.coordinates && nextPlace.coordinates && nextPlace.modeOfTravel) {
+          const color = nextPlace.modeOfTravel === 'walk' ? '#22c55e' :
+                       nextPlace.modeOfTravel === 'bike' ? '#3b82f6' :
+                       nextPlace.modeOfTravel === 'car' ? '#ef4444' :
+                       nextPlace.modeOfTravel === 'train' ? '#8b5cf6' :
+                       nextPlace.modeOfTravel === 'bus' ? '#f59e0b' :
+                       nextPlace.modeOfTravel === 'flight' ? '#ec4899' : '#3b82f6';
+          
+          const isHighlighted = highlightedStepIndex !== undefined && i === highlightedStepIndex;
+          
+          const polyline = L.polyline(
+            [
+              [currentPlace.coordinates.lat, currentPlace.coordinates.lng],
+              [nextPlace.coordinates.lat, nextPlace.coordinates.lng]
+            ] as [number, number][],
+            {
+              color,
+              weight: isHighlighted ? 6 : 3,
+              opacity: isHighlighted ? 1 : 0.5,
+              dashArray: nextPlace.modeOfTravel === 'flight' ? '10, 10' : undefined,
+            }
+          ).addTo(map);
+          layersRef.current.push(polyline);
+          
+          // Add animated icon for highlighted route
+          if (isHighlighted) {
+            const midLat = (currentPlace.coordinates.lat + nextPlace.coordinates.lat) / 2;
+            const midLng = (currentPlace.coordinates.lng + nextPlace.coordinates.lng) / 2;
+            
+            const modeIcons: Record<string, string> = {
+              walk: '🚶',
+              bike: '🚴',
+              car: '🚗',
+              train: '🚂',
+              bus: '🚌',
+              flight: '✈️',
+            };
+            
+            const icon = modeIcons[nextPlace.modeOfTravel] || '📍';
+            
+            // Remove previous animation layer
+            if (animationLayerRef.current) {
+              map.removeLayer(animationLayerRef.current);
+            }
+            
+            const animatedIcon = L.divIcon({
+              className: 'animated-mode-icon',
+              html: `<div style="
+                background: white;
+                border: 3px solid ${color};
+                border-radius: 50%;
+                width: 40px;
+                height: 40px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 20px;
+                box-shadow: 0 4px 8px rgba(0,0,0,0.4);
+                animation: pulse 2s infinite;
+              ">${icon}</div>
+              <style>
+                @keyframes pulse {
+                  0%, 100% { transform: scale(1); opacity: 1; }
+                  50% { transform: scale(1.2); opacity: 0.8; }
+                }
+              </style>`,
+              iconSize: [40, 40],
+              iconAnchor: [20, 20],
+            });
+            
+            animationLayerRef.current = L.marker([midLat, midLng], { icon: animatedIcon })
+              .addTo(map);
+            
+            // Animate map to show current and next step
+            const currentBounds = L.latLngBounds([
+              [currentPlace.coordinates.lat, currentPlace.coordinates.lng],
+              [nextPlace.coordinates.lat, nextPlace.coordinates.lng]
+            ]);
+            map.flyToBounds(currentBounds, {
+              padding: [100, 100],
+              duration: 1,
+            });
+          }
+        }
+      }
+    }
+
     // Fit bounds to show all markers
     if (bounds.isValid() && (places.length > 0 || trips.length > 0)) {
       map.fitBounds(bounds, { padding: [50, 50] });
@@ -209,7 +289,7 @@ export default function HomeMapView({
     map.scrollWheelZoom.disable();
     map.boxZoom.disable();
     map.keyboard.disable();
-  }, [places, routes, trips, onTripMarkerClick, leafletLoaded]);
+  }, [places, routes, trips, onTripMarkerClick, leafletLoaded, highlightedStepIndex, sortedPlaces]);
 
   if (!userLocation || !leafletLoaded) {
     return (

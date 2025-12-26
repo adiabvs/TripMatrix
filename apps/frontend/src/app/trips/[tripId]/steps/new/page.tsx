@@ -339,38 +339,35 @@ export default function NewStepPage() {
           markerRef.current.setLatLng([latitude, longitude]);
         } else {
           const L = await import('leaflet');
-          // Create custom icon for person/location marker
-          const personIcon = L.divIcon({
-            className: 'custom-person-marker',
+          // Create custom pin-style icon for location marker
+          const locationIcon = L.divIcon({
+            className: 'custom-location-marker',
             html: `
               <div style="
-                width: 32px;
-                height: 32px;
-                background-color: #1976d2;
-                border: 3px solid white;
-                border-radius: 50% 50% 50% 0;
-                transform: rotate(-45deg);
-                box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+                position: relative;
+                width: 40px;
+                height: 50px;
+                cursor: move;
               ">
-                <div style="
-                  width: 12px;
-                  height: 12px;
-                  background-color: white;
-                  border-radius: 50%;
-                  position: absolute;
-                  top: 6px;
-                  left: 6px;
-                  transform: rotate(45deg);
-                "></div>
+                <svg width="40" height="50" viewBox="0 0 40 50" style="filter: drop-shadow(0 3px 6px rgba(0,0,0,0.4));">
+                  <!-- Pin shadow -->
+                  <ellipse cx="20" cy="45" rx="8" ry="3" fill="rgba(0,0,0,0.2)"/>
+                  <!-- Pin body -->
+                  <path d="M20 0 C12 0 6 6 6 14 C6 22 20 40 20 40 C20 40 34 22 34 14 C34 6 28 0 20 0 Z" 
+                        fill="#1976d2" stroke="white" stroke-width="2"/>
+                  <!-- Inner circle -->
+                  <circle cx="20" cy="14" r="6" fill="white"/>
+                  <circle cx="20" cy="14" r="4" fill="#1976d2"/>
+                </svg>
               </div>
             `,
-            iconSize: [32, 32],
-            iconAnchor: [16, 32],
+            iconSize: [40, 50],
+            iconAnchor: [20, 50],
           });
           
           markerRef.current = L.marker([latitude, longitude], { 
             draggable: true,
-            icon: personIcon
+            icon: locationIcon
           }).addTo(map);
           markerRef.current.on('dragend', async (e: any) => {
             const marker = e.target;
@@ -461,11 +458,12 @@ export default function NewStepPage() {
     setSubmitting(true);
     try {
       const { addPlace } = await import('@/lib/api');
+      // visitedDateTime is already a Date object, send it directly (backend will store as UTC)
       const newPlace = await addPlace({
         tripId,
         name: placeName.trim(),
         coordinates: coordinates || { lat: 0, lng: 0 },
-        visitedAt: visitedDateTime,
+        visitedAt: visitedDateTime.toISOString(),
         rating: rating > 0 ? rating : undefined,
         comment: comment || undefined,
         modeOfTravel: previousPlace && modeOfTravel ? modeOfTravel : undefined,
@@ -646,10 +644,18 @@ export default function NewStepPage() {
             <label className="block text-[12px] font-semibold text-[#bdbdbd] mb-2">
               Date & Time *
             </label>
-            <p className="text-[14px] text-white mb-1">
-              {format(visitedDateTime, 'MMM dd, yyyy HH:mm')}
-            </p>
-            <p className="text-[10px] text-[#9e9e9e]">Using current date/time</p>
+            <input
+              type="datetime-local"
+              value={formatDateTimeLocalForInput(visitedDateTime)}
+              onChange={(e) => {
+                const utcDate = parseDateTimeLocalToUTC(e.target.value);
+                if (!isNaN(utcDate.getTime())) {
+                  setVisitedDateTime(utcDate);
+                }
+              }}
+              className="w-full bg-transparent px-0 py-3 text-[14px] text-white border-0 border-b border-[#9e9e9e] focus:outline-none focus:border-[#1976d2] rounded-none"
+              required
+            />
           </div>
 
           {/* Place Name */}
@@ -771,18 +777,19 @@ export default function NewStepPage() {
           {/* Expense Section */}
           {trip.participants && trip.participants.length > 0 && (
             <div className="pt-4 border-t border-[#616161]">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h3 className="text-[14px] font-semibold text-white mb-1">Expenses</h3>
-                  <p className="text-[10px] text-[#9e9e9e]">Add expenses for this step</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setShowExpenseForm(!showExpenseForm)}
-                  className="px-4 py-2 bg-[#1976d2] text-white rounded-lg hover:bg-[#1565c0] transition-colors text-[12px] font-semibold"
-                >
-                  {showExpenseForm ? 'Cancel' : '+ Add Expense'}
-                </button>
+              <div className="mb-4">
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={showExpenseForm}
+                    onChange={(e) => setShowExpenseForm(e.target.checked)}
+                    className="w-5 h-5 rounded border-gray-300 text-[#1976d2] focus:ring-[#1976d2] focus:ring-2"
+                  />
+                  <div>
+                    <h3 className="text-[14px] font-semibold text-white mb-1">Add Expense (Optional)</h3>
+                    <p className="text-[10px] text-[#9e9e9e]">Add expenses for this step</p>
+                  </div>
+                </label>
               </div>
 
               {showExpenseForm && (

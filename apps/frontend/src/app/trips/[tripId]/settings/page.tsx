@@ -120,16 +120,16 @@ export default function TripSettingsPage() {
 
   if (authLoading || loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-lg text-gray-700">Loading...</div>
+      <div className="min-h-screen flex items-center justify-center bg-[#424242]">
+        <div className="text-sm text-white">Loading...</div>
       </div>
     );
   }
 
   if (!trip) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-lg text-gray-700">Trip not found</div>
+      <div className="min-h-screen flex items-center justify-center bg-[#424242]">
+        <div className="text-sm text-white">Trip not found</div>
       </div>
     );
   }
@@ -137,38 +137,34 @@ export default function TripSettingsPage() {
   const isCreator = user?.uid === trip.creatorId;
   if (!isCreator) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-lg text-gray-700">You don&apos;t have permission to access trip settings</div>
+      <div className="min-h-screen flex items-center justify-center bg-[#424242]">
+        <div className="text-sm text-white">You don&apos;t have permission to access trip settings</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-white">
-      {/* Navigation - Mobile styled */}
-      <nav className="sticky top-0 z-50 bg-white border-b border-gray-200">
-        <div className="max-w-4xl mx-auto px-4 md:px-6 py-3 md:py-4 flex justify-between items-center">
-          <Link
-            href={`/trips/${tripId}`}
-            className="text-gray-600 hover:text-gray-900 transition-colors text-sm md:text-base font-medium flex items-center gap-2"
-          >
-            <span className="text-base md:text-lg">←</span>
-            <span>Back</span>
-          </Link>
-        </div>
-      </nav>
+    <div className="min-h-screen bg-[#424242] flex flex-col">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-600">
+        <Link href={`/trips/${tripId}`} className="w-10 h-10 flex items-center justify-center">
+          <span className="text-white text-xl">←</span>
+        </Link>
+        <h1 className="text-[11px] font-semibold text-white">Trip Settings</h1>
+        <div className="w-10" /> {/* Spacer for centering */}
+      </div>
 
       {/* Main Content */}
-      <div className="max-w-4xl mx-auto px-4 md:px-6 py-6 md:py-12">
-        <div className="mb-6 md:mb-8">
-          <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">Trip Settings</h1>
-          <p className="text-sm md:text-base text-gray-600">{trip.title}</p>
+      <div className="flex-1 overflow-y-auto px-4 py-4">
+        <div className="mb-6">
+          <h2 className="text-[14px] font-semibold text-white mb-1">{trip.title}</h2>
+          <p className="text-[12px] text-gray-300">Manage your trip settings</p>
         </div>
 
         <div className="space-y-6">
           {/* Cover Image */}
-          <div className="bg-white p-4 md:p-6 rounded-xl md:rounded-2xl shadow-sm border border-gray-200">
-            <h2 className="text-lg md:text-xl font-bold text-gray-900 mb-3 md:mb-4">Cover Image</h2>
+          <div className="bg-[#616161] p-4 rounded-lg">
+            <h2 className="text-[14px] font-semibold text-white mb-4">Cover Image</h2>
             
             <div className="space-y-4">
               {coverImage ? (
@@ -176,24 +172,24 @@ export default function TripSettingsPage() {
                   <img
                     src={coverImage}
                     alt="Cover"
-                    className="w-full h-64 object-cover rounded-lg"
+                    className="w-full h-48 object-cover rounded-lg"
                   />
                   <button
                     type="button"
                     onClick={handleRemoveCoverImage}
-                    className="absolute top-2 right-2 px-3 py-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-xs md:text-sm font-medium"
+                    className="absolute top-2 right-2 px-3 py-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-[12px] font-medium"
                   >
                     Remove
                   </button>
                 </div>
               ) : (
-                <div className="w-full h-64 bg-gray-100 rounded-lg flex items-center justify-center">
-                  <p className="text-gray-500">No cover image</p>
+                <div className="w-full h-48 bg-[#757575] rounded-lg flex items-center justify-center">
+                  <p className="text-[12px] text-gray-300">No cover image</p>
                 </div>
               )}
               
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-[12px] font-semibold text-[#bdbdbd] mb-2">
                   {coverImage ? 'Change Cover Image' : 'Upload Cover Image'}
                 </label>
                 <input
@@ -201,25 +197,25 @@ export default function TripSettingsPage() {
                   accept="image/*"
                   onChange={handleCoverImageChange}
                   disabled={uploadingCover}
-                  className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-black file:text-white hover:file:bg-gray-800 file:cursor-pointer disabled:opacity-50"
+                  className="block w-full text-[12px] text-gray-300 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-[12px] file:font-semibold file:bg-[#1976d2] file:text-white hover:file:bg-[#1565c0] file:cursor-pointer disabled:opacity-50"
                 />
                 {uploadingCover && (
-                  <p className="text-sm text-gray-500 mt-2">Uploading...</p>
+                  <p className="text-[12px] text-gray-400 mt-2">Uploading...</p>
                 )}
               </div>
             </div>
           </div>
 
           {/* Privacy Settings */}
-          <div className="bg-white p-4 md:p-6 rounded-xl md:rounded-2xl shadow-sm border border-gray-200">
-            <h2 className="text-lg md:text-xl font-bold text-gray-900 mb-3 md:mb-4">Privacy Settings</h2>
+          <div className="bg-[#616161] p-4 rounded-lg">
+            <h2 className="text-[14px] font-semibold text-white mb-4">Privacy Settings</h2>
             
             {/* Public/Private Toggle */}
             <div className="mb-6">
               <label className="flex items-center justify-between cursor-pointer">
                 <div>
-                  <p className="text-sm font-medium text-gray-900">Make Trip Public</p>
-                  <p className="text-xs text-gray-500 mt-1">
+                  <p className="text-[14px] font-semibold text-white">Make Trip Public</p>
+                  <p className="text-[12px] text-gray-300 mt-1">
                     {settings.isPublic 
                       ? 'Anyone can view this trip' 
                       : 'Only trip members can view this trip'}
@@ -229,7 +225,7 @@ export default function TripSettingsPage() {
                   type="button"
                   onClick={() => setSettings({ ...settings, isPublic: !settings.isPublic })}
                   className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                    settings.isPublic ? 'bg-blue-600' : 'bg-gray-300'
+                    settings.isPublic ? 'bg-[#1976d2]' : 'bg-[#757575]'
                   }`}
                 >
                   <span
@@ -243,104 +239,104 @@ export default function TripSettingsPage() {
 
             {/* Default Photo Sharing */}
             <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-900 mb-2">
+              <label className="block text-[12px] font-semibold text-[#bdbdbd] mb-2">
                 Default Photo Sharing
               </label>
-              <p className="text-xs text-gray-500 mb-3">
+              <p className="text-[12px] text-gray-300 mb-3">
                 Who can see photos by default when you add them to steps
               </p>
-              <div className="space-y-2">
-                <label className="flex items-center">
+              <div className="space-y-3">
+                <label className="flex items-center cursor-pointer">
                   <input
                     type="radio"
                     name="photoSharing"
                     value="everyone"
                     checked={settings.defaultPhotoSharing === 'everyone'}
                     onChange={(e) => setSettings({ ...settings, defaultPhotoSharing: e.target.value as PhotoSharingPrivacy })}
-                    className="mr-2"
+                    className="mr-3 w-4 h-4 text-[#1976d2]"
                   />
-                  <span className="text-sm text-gray-700">Everyone (public)</span>
+                  <span className="text-[14px] text-white">Everyone (public)</span>
                 </label>
-                <label className="flex items-center">
+                <label className="flex items-center cursor-pointer">
                   <input
                     type="radio"
                     name="photoSharing"
                     value="members"
                     checked={settings.defaultPhotoSharing === 'members'}
                     onChange={(e) => setSettings({ ...settings, defaultPhotoSharing: e.target.value as PhotoSharingPrivacy })}
-                    className="mr-2"
+                    className="mr-3 w-4 h-4 text-[#1976d2]"
                   />
-                  <span className="text-sm text-gray-700">Only Trip Members</span>
+                  <span className="text-[14px] text-white">Only Trip Members</span>
                 </label>
-                <label className="flex items-center">
+                <label className="flex items-center cursor-pointer">
                   <input
                     type="radio"
                     name="photoSharing"
                     value="creator"
                     checked={settings.defaultPhotoSharing === 'creator'}
                     onChange={(e) => setSettings({ ...settings, defaultPhotoSharing: e.target.value as PhotoSharingPrivacy })}
-                    className="mr-2"
+                    className="mr-3 w-4 h-4 text-[#1976d2]"
                   />
-                  <span className="text-sm text-gray-700">Only Creator (You)</span>
+                  <span className="text-[14px] text-white">Only Creator (You)</span>
                 </label>
               </div>
             </div>
 
             {/* Expense Visibility */}
             <div>
-              <label className="block text-sm font-medium text-gray-900 mb-2">
+              <label className="block text-[12px] font-semibold text-[#bdbdbd] mb-2">
                 Expense Visibility
               </label>
-              <p className="text-xs text-gray-500 mb-3">
+              <p className="text-[12px] text-gray-300 mb-3">
                 Who can view expenses for this trip
               </p>
-              <div className="space-y-2">
-                <label className="flex items-center">
+              <div className="space-y-3">
+                <label className="flex items-center cursor-pointer">
                   <input
                     type="radio"
                     name="expenseVisibility"
                     value="everyone"
                     checked={settings.expenseVisibility === 'everyone'}
                     onChange={(e) => setSettings({ ...settings, expenseVisibility: e.target.value as ExpenseVisibility })}
-                    className="mr-2"
+                    className="mr-3 w-4 h-4 text-[#1976d2]"
                   />
-                  <span className="text-sm text-gray-700">Everyone (public)</span>
+                  <span className="text-[14px] text-white">Everyone (public)</span>
                 </label>
-                <label className="flex items-center">
+                <label className="flex items-center cursor-pointer">
                   <input
                     type="radio"
                     name="expenseVisibility"
                     value="members"
                     checked={settings.expenseVisibility === 'members'}
                     onChange={(e) => setSettings({ ...settings, expenseVisibility: e.target.value as ExpenseVisibility })}
-                    className="mr-2"
+                    className="mr-3 w-4 h-4 text-[#1976d2]"
                   />
-                  <span className="text-sm text-gray-700">Only Trip Members</span>
+                  <span className="text-[14px] text-white">Only Trip Members</span>
                 </label>
-                <label className="flex items-center">
+                <label className="flex items-center cursor-pointer">
                   <input
                     type="radio"
                     name="expenseVisibility"
                     value="creator"
                     checked={settings.expenseVisibility === 'creator'}
                     onChange={(e) => setSettings({ ...settings, expenseVisibility: e.target.value as ExpenseVisibility })}
-                    className="mr-2"
+                    className="mr-3 w-4 h-4 text-[#1976d2]"
                   />
-                  <span className="text-sm text-gray-700">Only Creator (You)</span>
+                  <span className="text-[14px] text-white">Only Creator (You)</span>
                 </label>
               </div>
             </div>
           </div>
 
           {/* Danger Zone */}
-          <div className="bg-red-50 p-4 md:p-6 rounded-xl md:rounded-2xl border border-red-200">
-            <h2 className="text-lg md:text-xl font-bold text-red-900 mb-3 md:mb-4">Danger Zone</h2>
+          <div className="bg-[#616161] p-4 rounded-lg border border-red-600">
+            <h2 className="text-[14px] font-semibold text-red-400 mb-4">Danger Zone</h2>
             
             <div className="mb-4">
-              <p className="text-sm text-red-800 mb-2">
+              <p className="text-[12px] text-red-300 mb-2">
                 Deleting this trip will permanently remove:
               </p>
-              <ul className="text-sm text-red-700 list-disc list-inside space-y-1">
+              <ul className="text-[12px] text-red-200 list-disc list-inside space-y-1">
                 <li>The trip and all its data</li>
                 <li>All steps and places</li>
                 <li>All expenses</li>
@@ -351,24 +347,24 @@ export default function TripSettingsPage() {
             <button
               onClick={handleDeleteTrip}
               disabled={deleting}
-              className="px-4 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors text-sm md:text-base font-medium"
+              className="px-4 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors text-[12px] font-medium"
             >
               {deleting ? 'Deleting...' : 'Delete Trip'}
             </button>
           </div>
 
           {/* Action Buttons */}
-          <div className="flex flex-col sm:flex-row gap-3 md:gap-4">
+          <div className="flex flex-col gap-3 pb-4">
             <button
               onClick={handleSave}
               disabled={saving}
-              className="flex-1 bg-black text-white px-6 py-3 rounded-full hover:bg-gray-800 disabled:opacity-50 transition-colors text-sm md:text-base font-semibold"
+              className="w-full bg-[#1976d2] text-white py-3 px-4 rounded-lg text-[14px] font-semibold disabled:opacity-50 hover:bg-[#1565c0] transition-colors"
             >
               {saving ? 'Saving...' : 'Save Settings'}
             </button>
             <Link
               href={`/trips/${tripId}`}
-              className="flex-1 sm:flex-initial text-center px-6 py-3 rounded-full border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors text-sm md:text-base font-medium"
+              className="w-full text-center px-4 py-3 bg-[#616161] text-white rounded-lg hover:bg-[#757575] transition-colors text-[14px] font-medium"
             >
               Cancel
             </Link>

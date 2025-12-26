@@ -10,12 +10,12 @@ import type { Trip, TripPlace, TripRoute } from '@tripmatrix/types';
 import CompactTripCard from '@/components/CompactTripCard';
 import UserMenu from '@/components/UserMenu';
 
-// Dynamically import HomeMapView with SSR disabled
-const HomeMapView = dynamic(() => import('@/components/HomeMapView'), {
+// Dynamically import SimpleGlobe with SSR disabled
+const SimpleGlobe = dynamic(() => import('@/components/SimpleGlobe'), {
   ssr: false,
   loading: () => (
     <div className="w-full h-full flex items-center justify-center bg-gray-100">
-      <div className="text-sm text-gray-600">Loading map...</div>
+      <div className="text-sm text-gray-600">Loading globe...</div>
     </div>
   ),
 });
@@ -212,9 +212,9 @@ export default function TripsPage() {
 
   return (
     <div className="min-h-screen bg-[#424242] flex flex-col" style={{ overflow: 'hidden' }}>
-      {/* Map Section */}
+      {/* Globe Section */}
       <div className="relative" style={{ height: mapHeight }}>
-        <HomeMapView 
+        <SimpleGlobe 
           routes={allRoutes} 
           places={allPlaces}
           trips={[]}
@@ -274,12 +274,13 @@ export default function TripsPage() {
               className="grid grid-cols-1 gap-3"
               style={{ width: '100%' }}
             >
-              {trips.map((trip) => (
-                <CompactTripCard 
-                  key={trip.tripId}
-                  trip={trip} 
-                  onPress={() => handleTripPress(trip.tripId)}
-                />
+              {trips.map((trip, index) => (
+                <div key={trip.tripId} className={index === trips.length - 1 ? 'mb-4' : ''}>
+                  <CompactTripCard 
+                    trip={trip} 
+                    onPress={() => handleTripPress(trip.tripId)}
+                  />
+                </div>
               ))}
             </div>
           </div>

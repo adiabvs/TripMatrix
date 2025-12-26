@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react';
 import { createTrip, uploadImage } from '@/lib/api';
 import type { Trip, TripParticipant } from '@tripmatrix/types';
 import ParticipantSelector from '@/components/ParticipantSelector';
+import { parseDateTimeLocalToUTC } from '@/lib/dateUtils';
 
 export default function NewTripPage() {
   const { user, loading: authLoading, getIdToken } = useAuth();
@@ -59,11 +60,15 @@ export default function NewTripPage() {
     setLoading(true);
     try {
       const token = await getIdToken();
+      // Convert local datetime to UTC for storage
+      const startTimeUTC = parseDateTimeLocalToUTC(formData.startTime);
+      const endTimeUTC = formData.endTime ? parseDateTimeLocalToUTC(formData.endTime) : undefined;
+      
       const trip = await createTrip(
         {
           ...formData,
-          startTime: new Date(formData.startTime),
-          endTime: formData.endTime ? new Date(formData.endTime) : undefined,
+          startTime: startTimeUTC.toISOString(),
+          endTime: endTimeUTC?.toISOString(),
           status: formData.isCompleted ? 'completed' : 'in_progress',
           participants,
           coverImage: coverImage || undefined,
