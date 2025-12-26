@@ -1,8 +1,9 @@
 'use client';
 
-import { useMemo, useEffect, useRef } from 'react';
+import { useMemo, useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import type { TripPlace, TripRoute, ModeOfTravel } from '@tripmatrix/types';
+import { geoInterpolate } from 'd3-geo';
 
 interface TripGlobeProps {
   places: TripPlace[];
@@ -94,11 +95,12 @@ export default function TripGlobe({
   const animationFrameRef = useRef<number | null>(null);
   const currentAnimationProgress = useRef<number>(0);
   const initialViewSet = useRef<boolean>(false);
+  const [vehiclePosition, setVehiclePosition] = useState<{ lat: number; lng: number } | null>(null);
 
   // Prepare points data from sorted places - using custom markers
   const points = useMemo(() => {
     const sorted = sortedPlaces.length > 0 ? sortedPlaces : places;
-    return sorted
+    const placePoints = sorted
       .filter(p => p.coordinates && p.coordinates.lat && p.coordinates.lng)
       .map((p, index) => {
         const isHighlighted = index === highlightedStepIndex;
@@ -115,9 +117,32 @@ export default function TripGlobe({
           marker: true,
         };
       });
-  }, [places, sortedPlaces, highlightedStepIndex]);
+    
+    // Add vehicle point if it's moving
+    if (vehiclePosition) {
+      // Get mode of travel from the previous place (the one we're traveling from)
+      const sorted = sortedPlaces.length > 0 ? sortedPlaces : places;
+      const prevIndex = highlightedStepIndex > 0 ? highlightedStepIndex - 1 : 0;
+      const prevPlace = sorted[prevIndex];
+      const mode = prevPlace?.modeOfTravel;
+      
+      placePoints.push({
+        lat: vehiclePosition.lat,
+        lng: vehiclePosition.lng,
+        size: 0.5,
+        color: getModeColor(mode),
+        name: `Vehicle (${mode || 'travel'})`,
+        index: -1, // Special index for vehicle
+        modeOfTravel: mode,
+        marker: true,
+        isVehicle: true,
+      });
+    }
+    
+    return placePoints;
+  }, [places, sortedPlaces, highlightedStepIndex, vehiclePosition]);
 
-  // Prepare arcs data for paths between steps - use route points if available
+  // Prepare arcs data for paths between steps - use d3-geo for great circle paths
   const arcs = useMemo(() => {
     const sorted = sortedPlaces.length > 0 ? sortedPlaces : places;
     const arcData: any[] = [];
@@ -125,11 +150,10 @@ export default function TripGlobe({
     // First, use routes if available (they have actual path points)
     routes.forEach((route) => {
       if (route.points && route.points.length > 1) {
-        // Create arcs for each segment of the route
+        // Create arcs for each segment of the route using d3-geo for great circle paths
         for (let i = 0; i < route.points.length - 1; i++) {
           const start = route.points[i];
           const end = route.points[i + 1];
-          const isActive = false; // Routes are detailed paths, highlight separately if needed
           
           arcData.push({
             startLat: start.lat,
@@ -145,8 +169,7 @@ export default function TripGlobe({
       }
     });
     
-    // If no routes available, create arcs between consecutive places
-    // This provides fallback visualization
+    // If no routes available, create great circle arcs between consecutive places using d3-geo
     if (arcData.length === 0) {
       for (let i = 0; i < sorted.length - 1; i++) {
         const current = sorted[i];
@@ -163,6 +186,13 @@ export default function TripGlobe({
           const mode = current.modeOfTravel || next.modeOfTravel;
           const isActive = i === highlightedStepIndex - 1 || (highlightedStepIndex === 0 && i === 0);
           
+          // Use d3-geo to create great circle path interpolator
+          // d3-geo uses [longitude, latitude] format
+          const interpolate = geoInterpolate(
+            [current.coordinates.lng, current.coordinates.lat],
+            [next.coordinates.lng, next.coordinates.lat]
+          );
+          
           arcData.push({
             startLat: current.coordinates.lat,
             startLng: current.coordinates.lng,
@@ -174,12 +204,12 @@ export default function TripGlobe({
             endIndex: i + 1,
             stroke: isActive ? 3 : 2,
             animateTime: getAnimationDuration(mode),
+            interpolate, // Store interpolator for vehicle movement along great circle
           });
         }
       }
     } else {
-      // If we have routes, highlight the active segment
-      // Find which route corresponds to the highlighted step
+      // If we have routes, highlight the active segment and add interpolators
       const sorted = sortedPlaces.length > 0 ? sortedPlaces : places;
       if (highlightedStepIndex > 0 && highlightedStepIndex < sorted.length) {
         const prevPlace = sorted[highlightedStepIndex - 1];
@@ -187,7 +217,6 @@ export default function TripGlobe({
         
         // Find and highlight the corresponding route segment
         arcData.forEach((arc, idx) => {
-          // Check if this arc is part of the active route
           const isPartOfActiveRoute = routes.some(route => {
             if (!route.points || route.points.length === 0) return false;
             const routeStart = route.points[0];
@@ -203,6 +232,13 @@ export default function TripGlobe({
           if (isPartOfActiveRoute) {
             arc.color = '#ffc107';
             arc.stroke = 3;
+            // Add interpolator for this route
+            if (arc.startLat && arc.startLng && arc.endLat && arc.endLng) {
+              arc.interpolate = geoInterpolate(
+                [arc.startLng, arc.startLat],
+                [arc.endLng, arc.endLat]
+              );
+            }
           }
         });
       }
@@ -321,40 +357,72 @@ export default function TripGlobe({
     }
   }, [points]);
 
-  // Calculate animation progress for vehicle movement
+  // Calculate vehicle position using d3-geo along the active path
   useEffect(() => {
-    if (arcs.length === 0 || highlightedStepIndex < 0) return;
+    // Use setTimeout to ensure setState doesn't happen during render
+    let mounted = true;
     
-    // Find the arc that should be animated (the one ending at highlighted step)
-    const activeArc = arcs.find(arc => arc.endIndex === highlightedStepIndex);
-    if (!activeArc) {
-      currentAnimationProgress.current = 0;
-      return;
-    }
-    
-    // Animate vehicle along the path
-    let progress = 0;
-    const duration = 2000; // 2 seconds to travel along path
-    const startTime = Date.now();
-    
-    const animate = () => {
-      const elapsed = Date.now() - startTime;
-      progress = Math.min(elapsed / duration, 1);
-      currentAnimationProgress.current = progress;
+    const updateVehicle = () => {
+      if (!mounted) return;
       
-      if (progress < 1) {
-        animationFrameRef.current = requestAnimationFrame(animate);
+      if (arcs.length === 0 || highlightedStepIndex < 0) {
+        setVehiclePosition(null);
+        return;
       }
+      
+      // Find the arc that should be animated (the one ending at highlighted step)
+      const activeArc = arcs.find(arc => arc.endIndex === highlightedStepIndex);
+      if (!activeArc || !activeArc.interpolate) {
+        setVehiclePosition(null);
+        currentAnimationProgress.current = 0;
+        return;
+      }
+      
+      // Animate vehicle along the great circle path using d3-geo
+      let progress = 0;
+      const duration = getAnimationDuration(activeArc.modeOfTravel);
+      const startTime = Date.now();
+      
+      const animate = () => {
+        if (!mounted) return;
+        
+        const elapsed = Date.now() - startTime;
+        progress = Math.min(elapsed / duration, 1);
+        currentAnimationProgress.current = progress;
+        
+        // Use d3-geo interpolator to get position along great circle path
+        if (activeArc.interpolate && mounted) {
+          const [lng, lat] = activeArc.interpolate(progress);
+          setVehiclePosition({ lat, lng });
+        }
+        
+        if (progress < 1 && mounted) {
+          animationFrameRef.current = requestAnimationFrame(animate);
+        } else if (mounted) {
+          // Vehicle reached destination
+          setVehiclePosition({
+            lat: activeArc.endLat,
+            lng: activeArc.endLng
+          });
+        }
+      };
+      
+      // Start animation on next frame to avoid setState during render
+      requestAnimationFrame(animate);
     };
     
-    animate();
+    // Delay initial update to avoid setState during render
+    const timeoutId = setTimeout(updateVehicle, 0);
     
     return () => {
+      mounted = false;
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
       }
+      clearTimeout(timeoutId);
     };
   }, [highlightedStepIndex, arcs]);
+  
 
   // Calculate initial point of view based on points
   const initialPOV = useMemo(() => {
