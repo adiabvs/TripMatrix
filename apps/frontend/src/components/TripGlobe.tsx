@@ -453,7 +453,6 @@ export default function TripGlobe({
         pointLabel="name"
         pointAltitude={0.01}
         pointResolution={16}
-        pointLabelSize={1.2}
         arcsData={arcs}
         arcColor="color"
         arcDashLength={0.4}
