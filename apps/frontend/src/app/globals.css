@@ -64,11 +64,22 @@ body {
   position: relative;
 }
 
+/* Exception: allow horizontal scrolling in specific containers */
+#__next .horizontal-scroll {
+  overflow-x: auto !important;
+}
+
 /* Ensure containers don't overflow */
 #__next,
 [data-nextjs-scroll-focus-boundary] {
   width: 100%;
   overflow-x: hidden;
+}
+
+/* Exception: allow horizontal scrolling */
+#__next .horizontal-scroll,
+[data-nextjs-scroll-focus-boundary] .horizontal-scroll {
+  overflow-x: auto !important;
 }
 
 /* Leaflet map styles - Mobile optimized */
@@ -179,7 +190,50 @@ body {
   [class*="overflow-x-scroll"],
   [class*="overflow-x-auto"],
   .horizontal-scroll {
-    touch-action: pan-x pinch-zoom !important;
+    touch-action: pan-x !important;
+    -webkit-overflow-scrolling: touch !important;
+    overflow-x: scroll !important;
+    overflow-y: hidden !important;
+    -ms-overflow-style: -ms-autohiding-scrollbar;
+    scrollbar-width: thin;
+    white-space: nowrap !important;
+    width: 100% !important;
+  }
+  
+  /* Safari-specific fixes for horizontal scrolling */
+  @supports (-webkit-touch-callout: none) {
+    .horizontal-scroll {
+      display: block !important;
+      -webkit-overflow-scrolling: touch !important;
+      overflow-x: scroll !important;
+      overflow-y: hidden !important;
+    }
+    
+    .horizontal-scroll > div {
+      display: flex !important;
+      flex-direction: row !important;
+      flex-wrap: nowrap !important;
+    }
+  }
+  
+  /* Ensure horizontal scroll containers can actually scroll */
+  .horizontal-scroll,
+  .horizontal-scroll * {
+    max-width: none !important;
+  }
+  
+  .horizontal-scroll > *,
+  .horizontal-scroll > div > * {
+    flex-shrink: 0 !important;
+    min-width: 0 !important;
+    white-space: normal !important;
+  }
+  
+  /* Force horizontal scrolling to work */
+  .horizontal-scroll {
+    will-change: scroll-position !important;
+    -webkit-transform: translateZ(0) !important;
+    transform: translateZ(0) !important;
   }
   
   input,
@@ -381,12 +435,19 @@ h6 {
   hyphens: auto;
 }
 
-/* Ensure flex containers don't overflow */
-.flex,
-[class*="flex"] {
-  min-width: 0;
-  max-width: 100%;
-}
+  /* Ensure flex containers don't overflow */
+  .flex,
+  [class*="flex"] {
+    min-width: 0;
+    max-width: 100%;
+  }
+  
+  /* Exception for horizontal scroll containers */
+  .horizontal-scroll .flex,
+  .horizontal-scroll [class*="flex"] {
+    min-width: max-content !important;
+    max-width: none !important;
+  }
 
 /* Ensure grid items don't overflow */
 .grid > *,

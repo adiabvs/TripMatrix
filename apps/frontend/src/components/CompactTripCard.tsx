@@ -84,14 +84,14 @@ export default function CompactTripCard({ trip, onPress, creator }: CompactTripC
 
   if (onPress) {
     return (
-      <div onClick={onPress} className="flex-shrink-0 w-[75vw] md:w-[400px] mr-3">
+      <div onClick={onPress} className="w-full">
         {cardContent}
       </div>
     );
   }
 
   return (
-    <Link href={`/trips/${trip.tripId}`} className="flex-shrink-0 w-[75vw] md:w-[400px] mr-3">
+    <Link href={`/trips/${trip.tripId}`} className="w-full">
       {cardContent}
     </Link>
   );

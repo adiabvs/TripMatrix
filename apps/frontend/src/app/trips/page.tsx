@@ -29,10 +29,12 @@ export default function TripsPage() {
   const [loading, setLoading] = useState(true);
   
   // Draggable state
-  const [modalHeight, setModalHeight] = useState(50); // Start at 50vh
+  const [modalHeight, setModalHeight] = useState(60); // Start at 60vh
   const [isDragging, setIsDragging] = useState(false);
+  const [isLongPressing, setIsLongPressing] = useState(false);
   const dragStartY = useRef(0);
-  const dragStartHeight = useRef(50);
+  const dragStartHeight = useRef(60);
+  const longPressTimer = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -90,18 +92,58 @@ export default function TripsPage() {
     window.location.href = `/trips/${tripId}`;
   };
 
+  // Long press handler
+  const handleLongPressStart = (e: React.MouseEvent | React.TouchEvent) => {
+    // Only preventDefault for mouse events (touch events are passive)
+    if (!('touches' in e)) {
+      e.preventDefault();
+    }
+    
+    // Store the initial touch position
+    const initialClientY = 'touches' in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY;
+    
+    // Start long press timer
+    longPressTimer.current = setTimeout(() => {
+      setIsLongPressing(true);
+      setIsDragging(true);
+      dragStartY.current = initialClientY;
+      dragStartHeight.current = modalHeight;
+    }, 300); // 300ms for long press
+  };
+
+  const handleLongPressEnd = () => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+    if (!isDragging) {
+      setIsLongPressing(false);
+    }
+  };
+
   // Draggable handlers
   const handleDragStart = (e: React.MouseEvent | React.TouchEvent) => {
-    e.preventDefault();
-    setIsDragging(true);
-    const clientY = 'touches' in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY;
-    dragStartY.current = clientY;
-    dragStartHeight.current = modalHeight;
+    // Only preventDefault for mouse events (touch events are passive)
+    if (!('touches' in e)) {
+      e.preventDefault();
+    }
+    // For mouse, start dragging immediately
+    if (!('touches' in e)) {
+      setIsDragging(true);
+      const clientY = (e as React.MouseEvent).clientY;
+      dragStartY.current = clientY;
+      dragStartHeight.current = modalHeight;
+    }
   };
 
   useEffect(() => {
     const handleDragMove = (e: MouseEvent | TouchEvent) => {
       if (!isDragging) return;
+      
+      // Prevent default for touch events to prevent scrolling
+      if ('touches' in e) {
+        e.preventDefault();
+      }
       
       const clientY = 'touches' in e ? e.touches[0].clientY : (e as MouseEvent).clientY;
       const deltaY = dragStartY.current - clientY; // Negative when dragging up
@@ -113,6 +155,7 @@ export default function TripsPage() {
 
     const handleDragEnd = () => {
       setIsDragging(false);
+      setIsLongPressing(false);
     };
 
     if (isDragging) {
@@ -128,6 +171,15 @@ export default function TripsPage() {
       };
     }
   }, [isDragging, modalHeight]);
+
+  // Cleanup long press timer on unmount
+  useEffect(() => {
+    return () => {
+      if (longPressTimer.current) {
+        clearTimeout(longPressTimer.current);
+      }
+    };
+  }, []);
 
   if (authLoading || loading) {
     return (
@@ -159,7 +211,7 @@ export default function TripsPage() {
   const modalHeightVh = `${modalHeight}vh`;
 
   return (
-    <div className="min-h-screen bg-[#424242] flex flex-col overflow-hidden">
+    <div className="min-h-screen bg-[#424242] flex flex-col" style={{ overflow: 'hidden' }}>
       {/* Map Section */}
       <div className="relative" style={{ height: mapHeight }}>
         <HomeMapView 
@@ -194,28 +246,37 @@ export default function TripsPage() {
         <div 
           className="flex justify-center py-3 cursor-grab active:cursor-grabbing select-none"
           onMouseDown={handleDragStart}
-          onTouchStart={handleDragStart}
+          onTouchStart={handleLongPressStart}
+          onTouchEnd={handleLongPressEnd}
+          onTouchCancel={handleLongPressEnd}
+          onMouseUp={handleLongPressEnd}
+          onMouseLeave={handleLongPressEnd}
         >
-          <div className="w-10 h-1 bg-gray-500 rounded-full" />
+          <div 
+            className={`w-10 h-1 rounded-full transition-colors duration-200 ${
+              isLongPressing ? 'bg-green-500' : 'bg-gray-500'
+            }`} 
+          />
         </div>
 
         {trips.length > 0 ? (
           <div 
-            className="overflow-x-scroll pb-16 px-4 flex-1 horizontal-scroll"
+            className="overflow-y-auto overflow-x-hidden flex-1"
             style={{
               WebkitOverflowScrolling: 'touch',
               scrollBehavior: 'smooth',
-              touchAction: 'pan-x pinch-zoom',
-              overscrollBehaviorX: 'contain',
-              overflowX: 'scroll',
-              overflowY: 'hidden',
-              minWidth: 0
+              paddingBottom: '64px',
+              paddingLeft: '16px',
+              paddingRight: '16px'
             }}
           >
-            <div className="flex gap-3" style={{ width: 'max-content' }}>
+            <div 
+              className="grid grid-cols-1 gap-3"
+              style={{ width: '100%' }}
+            >
               {trips.map((trip) => (
                 <CompactTripCard 
-                  key={trip.tripId} 
+                  key={trip.tripId}
                   trip={trip} 
                   onPress={() => handleTripPress(trip.tripId)}
                 />
