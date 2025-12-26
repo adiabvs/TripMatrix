@@ -109,7 +109,7 @@ export default function CompactStepCard({
   );
 
   return (
-    <div className="flex-shrink-0 w-[75vw] md:w-[400px]">
+    <div className="w-full">
       <Link 
         href={`/trips/${tripId}/steps/${place.placeId}/edit`}
         className="block"

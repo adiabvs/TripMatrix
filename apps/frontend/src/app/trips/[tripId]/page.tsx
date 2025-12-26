@@ -51,6 +51,14 @@ export default function TripDetailPage() {
   const [loading, setLoading] = useState(true);
   const [token, setToken] = useState<string | null>(null);
 
+  // Draggable state
+  const [modalHeight, setModalHeight] = useState(60); // Start at 60vh
+  const [isDragging, setIsDragging] = useState(false);
+  const [isLongPressing, setIsLongPressing] = useState(false);
+  const dragStartY = useRef(0);
+  const dragStartHeight = useRef(60);
+  const longPressTimer = useRef<NodeJS.Timeout | null>(null);
+
   const loadTripData = useCallback(async (authToken?: string | null) => {
     try {
       // Use provided token or try to get one if user is logged in
@@ -272,6 +280,95 @@ export default function TripDetailPage() {
     }
   };
 
+  // Long press handler
+  const handleLongPressStart = (e: React.MouseEvent | React.TouchEvent) => {
+    // Only preventDefault for mouse events (touch events are passive)
+    if (!('touches' in e)) {
+      e.preventDefault();
+    }
+    
+    // Store the initial touch position
+    const initialClientY = 'touches' in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY;
+    
+    // Start long press timer
+    longPressTimer.current = setTimeout(() => {
+      setIsLongPressing(true);
+      setIsDragging(true);
+      dragStartY.current = initialClientY;
+      dragStartHeight.current = modalHeight;
+    }, 300); // 300ms for long press
+  };
+
+  const handleLongPressEnd = () => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+    if (!isDragging) {
+      setIsLongPressing(false);
+    }
+  };
+
+  // Draggable handlers
+  const handleDragStart = (e: React.MouseEvent | React.TouchEvent) => {
+    // Only preventDefault for mouse events (touch events are passive)
+    if (!('touches' in e)) {
+      e.preventDefault();
+    }
+    // For mouse, start dragging immediately
+    if (!('touches' in e)) {
+      setIsDragging(true);
+      const clientY = (e as React.MouseEvent).clientY;
+      dragStartY.current = clientY;
+      dragStartHeight.current = modalHeight;
+    }
+  };
+
+  useEffect(() => {
+    const handleDragMove = (e: MouseEvent | TouchEvent) => {
+      if (!isDragging) return;
+      
+      // Prevent default for touch events to prevent scrolling
+      if ('touches' in e) {
+        e.preventDefault();
+      }
+      
+      const clientY = 'touches' in e ? e.touches[0].clientY : (e as MouseEvent).clientY;
+      const deltaY = dragStartY.current - clientY; // Negative when dragging up
+      const screenHeight = window.innerHeight;
+      const deltaVh = (deltaY / screenHeight) * 100;
+      const newHeight = Math.max(25, Math.min(80, dragStartHeight.current + deltaVh));
+      setModalHeight(newHeight);
+    };
+
+    const handleDragEnd = () => {
+      setIsDragging(false);
+      setIsLongPressing(false);
+    };
+
+    if (isDragging) {
+      document.addEventListener('mousemove', handleDragMove);
+      document.addEventListener('mouseup', handleDragEnd);
+      document.addEventListener('touchmove', handleDragMove, { passive: false });
+      document.addEventListener('touchend', handleDragEnd);
+      return () => {
+        document.removeEventListener('mousemove', handleDragMove);
+        document.removeEventListener('mouseup', handleDragEnd);
+        document.removeEventListener('touchmove', handleDragMove);
+        document.removeEventListener('touchend', handleDragEnd);
+      };
+    }
+  }, [isDragging, modalHeight]);
+
+  // Cleanup long press timer on unmount
+  useEffect(() => {
+    return () => {
+      if (longPressTimer.current) {
+        clearTimeout(longPressTimer.current);
+      }
+    };
+  }, []);
+
   // Calculate derived values (before early returns)
   const isCreator = trip ? user?.uid === trip.creatorId : false;
   const isParticipant = trip ? trip.participants?.some(p => p.uid === user?.uid) || false : false;
@@ -321,18 +418,38 @@ export default function TripDetailPage() {
         </div>
       </div>
 
-      {/* Map Section - Top 60% */}
-      <div className="relative" style={{ height: '60vh', flexShrink: 0 }}>
+      {/* Map Section - Dynamic height based on modal */}
+      <div className="relative" style={{ height: `${100 - modalHeight}vh`, flexShrink: 0 }}>
         <HomeMapView 
           places={places} 
           routes={routes}
           trips={[]}
-          height="60vh"
+          height={`${100 - modalHeight}vh`}
         />
       </div>
 
-      {/* Steps Section - Bottom 40% */}
-      <div className="flex-1 bg-[#424242] flex flex-col overflow-hidden" style={{ height: '40vh' }}>
+      {/* Steps Section - Draggable Modal */}
+      <div 
+        className="absolute bottom-0 left-0 right-0 bg-[#424242] border-t border-gray-600 flex flex-col"
+        style={{ height: `${modalHeight}vh`, overflow: 'hidden' }}
+      >
+        {/* Drag Handle */}
+        <div 
+          className="flex justify-center py-3 cursor-grab active:cursor-grabbing select-none"
+          onMouseDown={handleDragStart}
+          onTouchStart={handleLongPressStart}
+          onTouchEnd={handleLongPressEnd}
+          onTouchCancel={handleLongPressEnd}
+          onMouseUp={handleLongPressEnd}
+          onMouseLeave={handleLongPressEnd}
+        >
+          <div 
+            className={`w-10 h-1 rounded-full transition-colors duration-200 ${
+              isLongPressing ? 'bg-green-500' : 'bg-gray-500'
+            }`} 
+          />
+        </div>
+
         {/* Trip Info */}
         <div className="px-4 pt-4 pb-2 flex-shrink-0">
           <h2 className="text-[14px] font-semibold text-white mb-2">{trip.title}</h2>
@@ -358,38 +475,37 @@ export default function TripDetailPage() {
           )}
         </div>
 
-        {/* Steps List - Horizontal Scroll */}
+        {/* Steps List - Vertical Scroll */}
         {sortedPlaces.length > 0 ? (
           <div 
-            className="overflow-x-scroll pb-4 px-4 flex-1 horizontal-scroll"
+            className="overflow-y-auto overflow-x-hidden flex-1"
             style={{
               WebkitOverflowScrolling: 'touch',
               scrollBehavior: 'smooth',
-              touchAction: 'pan-x pinch-zoom',
-              overscrollBehaviorX: 'contain',
-              overflowX: 'scroll',
-              overflowY: 'hidden',
-              minWidth: 0
+              paddingBottom: '16px',
+              paddingLeft: '16px',
+              paddingRight: '16px'
             }}
           >
-            <div className="flex gap-3" style={{ width: 'max-content' }}>
-                {sortedPlaces.map((place, index) => (
-                  <React.Fragment key={place.placeId}>
-                    {/* Add Step Button Before (only show before first step) */}
-                    {canEdit && index === 0 && (
-                      <div className="relative flex items-center justify-center flex-shrink-0" style={{ width: '50px', height: '140px' }}>
-                        {/* Dotted line from + to first step */}
-                        <div className="absolute left-1/2 top-1/2 -translate-y-1/2 w-[25px] h-0.5 border-t-2 border-dashed border-white" style={{ transform: 'translate(-50%, -50%) translateX(25px)' }} />
-                        <Link
-                          href={`/trips/${tripId}/steps/new`}
-                          className="relative z-10 w-10 h-10 rounded-full bg-black flex items-center justify-center"
-                        >
-                          <span className="text-white text-xl">+</span>
-                        </Link>
-                      </div>
-                    )}
-                    
-                    {/* Step Card */}
+            <div className="flex flex-col items-center">
+              {sortedPlaces.map((place, index) => (
+                <React.Fragment key={place.placeId}>
+                  {/* Add Step Button Before (only show before first step) */}
+                  {canEdit && index === 0 && (
+                    <div className="relative flex flex-col items-center justify-center flex-shrink-0 w-full mb-6" style={{ minHeight: '80px' }}>
+                      {/* Dotted line from + to first step */}
+                      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 h-[50px] w-0.5 border-l-2 border-dashed border-white" style={{ transform: 'translate(-50%, -50%) translateY(50px)' }} />
+                      <Link
+                        href={`/trips/${tripId}/steps/new`}
+                        className="relative z-10 w-10 h-10 rounded-full bg-black flex items-center justify-center"
+                      >
+                        <span className="text-white text-xl">+</span>
+                      </Link>
+                    </div>
+                  )}
+                  
+                  {/* Step Card */}
+                  <div className="w-full">
                     <CompactStepCard
                       place={place}
                       index={index}
@@ -400,26 +516,27 @@ export default function TripDetailPage() {
                       isCreator={canEdit}
                       tripId={tripId}
                     />
-                    
-                    {/* Add Step Button After (between steps and after last step) */}
-                    {canEdit && (
-                      <div className="relative flex items-center justify-center flex-shrink-0" style={{ width: index < sortedPlaces.length - 1 ? '100px' : '50px', height: '140px' }}>
-                        {/* Dotted line from step to + */}
-                        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[45px] h-0.5 border-t-2 border-dashed border-white" />
-                        {/* Dotted line from + to next step (only if not last step) */}
-                        {index < sortedPlaces.length - 1 && (
-                          <div className="absolute right-0 top-1/2 -translate-y-1/2 w-[45px] h-0.5 border-t-2 border-dashed border-white" />
-                        )}
-                        <Link
-                          href={`/trips/${tripId}/steps/new${index < sortedPlaces.length - 1 ? `?after=${place.placeId}` : ''}`}
-                          className="relative z-10 w-10 h-10 rounded-full bg-black flex items-center justify-center"
-                        >
-                          <span className="text-white text-xl">+</span>
-                        </Link>
-                      </div>
-                    )}
-                  </React.Fragment>
-                ))}
+                  </div>
+                  
+                  {/* Add Step Button After (between steps and after last step) */}
+                  {canEdit && (
+                    <div className="relative flex flex-col items-center justify-center flex-shrink-0 w-full mt-6 mb-6" style={{ minHeight: index < sortedPlaces.length - 1 ? '120px' : '80px' }}>
+                      {/* Dotted line from step to + */}
+                      <div className="absolute top-0 left-1/2 -translate-x-1/2 h-[60px] w-0.5 border-l-2 border-dashed border-white" />
+                      {/* Dotted line from + to next step (only if not last step) */}
+                      {index < sortedPlaces.length - 1 && (
+                        <div className="absolute bottom-0 left-1/2 -translate-x-1/2 h-[60px] w-0.5 border-l-2 border-dashed border-white" />
+                      )}
+                      <Link
+                        href={`/trips/${tripId}/steps/new${index < sortedPlaces.length - 1 ? `?after=${place.placeId}` : ''}`}
+                        className="relative z-10 w-10 h-10 rounded-full bg-black flex items-center justify-center"
+                      >
+                        <span className="text-white text-xl">+</span>
+                      </Link>
+                    </div>
+                  )}
+                </React.Fragment>
+              ))}
             </div>
           </div>
         ) : (
