@@ -340,7 +340,7 @@ export default function TripDetailPage() {
       const deltaY = dragStartY.current - clientY; // Negative when dragging up
       const screenHeight = window.innerHeight;
       const deltaVh = (deltaY / screenHeight) * 100;
-      const newHeight = Math.max(25, Math.min(50, dragStartHeight.current + deltaVh));
+      const newHeight = Math.max(25, Math.min(80, dragStartHeight.current + deltaVh));
       setModalHeight(newHeight);
     };
 

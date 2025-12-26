@@ -92,6 +92,22 @@ body {
   overflow: hidden;
 }
 
+/* Remove marker shadows and lines */
+.leaflet-marker-shadow {
+  display: none !important;
+}
+
+.leaflet-marker-icon {
+  border: none !important;
+  background: transparent !important;
+}
+
+.custom-person-marker,
+.custom-location-marker {
+  background: transparent !important;
+  border: none !important;
+}
+
 @media (max-width: 768px) {
   .leaflet-container {
     border-radius: 16px;

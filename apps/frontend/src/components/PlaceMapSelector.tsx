@@ -35,6 +35,15 @@ export default function PlaceMapSelector({
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [currentLocation, setCurrentLocation] = useState<{ lat: number; lng: number } | null>(null);
+  // Use refs to store callbacks to prevent map re-initialization
+  const onLocationSelectRef = useRef(onLocationSelect);
+  const onMapReadyRef = useRef(onMapReady);
+  
+  // Update refs when callbacks change
+  useEffect(() => {
+    onLocationSelectRef.current = onLocationSelect;
+    onMapReadyRef.current = onMapReady;
+  }, [onLocationSelect, onMapReady]);
 
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
@@ -88,9 +97,18 @@ export default function PlaceMapSelector({
       if (markerRef.current) {
         markerRef.current.setLatLng([lat, lng]);
       } else {
-        // Use default Leaflet marker
+        // Use default Leaflet marker without shadow
+        const icon = L.icon({
+          iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
+          iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png',
+          shadowUrl: '', // Remove shadow
+          iconSize: [25, 41],
+          iconAnchor: [12, 41],
+          popupAnchor: [1, -34],
+        });
         markerRef.current = L.marker([lat, lng], { 
-          draggable: true
+          draggable: true,
+          icon: icon
         }).addTo(map);
         markerRef.current.on('dragend', async (e) => {
           const marker = e.target;
@@ -112,20 +130,29 @@ export default function PlaceMapSelector({
           } catch (error) {
             // Silently fail
           }
-          onLocationSelect({ lat: position.lat, lng: position.lng }, dragPlaceName);
+          onLocationSelectRef.current({ lat: position.lat, lng: position.lng }, dragPlaceName);
         });
       }
       
       const popupText = placeName ? placeName.split(',')[0].trim() : `Selected: ${lat.toFixed(4)}, ${lng.toFixed(4)}`;
       markerRef.current.bindPopup(popupText).openPopup();
-      onLocationSelect({ lat, lng }, placeName);
+      onLocationSelectRef.current({ lat, lng }, placeName);
     });
 
     // Add initial marker if coordinates provided
     if (initialCoords) {
-      // Use default Leaflet marker
+      // Use default Leaflet marker without shadow
+      const icon = L.icon({
+        iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
+        iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png',
+        shadowUrl: '', // Remove shadow
+        iconSize: [25, 41],
+        iconAnchor: [12, 41],
+        popupAnchor: [1, -34],
+      });
       markerRef.current = L.marker([initialCoords.lat, initialCoords.lng], { 
-        draggable: true
+        draggable: true,
+        icon: icon
       })
         .addTo(map)
         .bindPopup('Selected Location')
@@ -151,22 +178,22 @@ export default function PlaceMapSelector({
         } catch (error) {
           // Silently fail
         }
-        onLocationSelect({ lat: position.lat, lng: position.lng }, placeName);
+        onLocationSelectRef.current({ lat: position.lat, lng: position.lng }, placeName);
       });
     }
 
     mapRef.current = map;
     
     // Notify parent that map is ready
-    if (onMapReady) {
-      onMapReady(map);
+    if (onMapReadyRef.current) {
+      onMapReadyRef.current(map);
     }
 
     return () => {
       map.remove();
       mapRef.current = null;
     };
-  }, [onMapReady]);
+  }, [initialCoords]); // Only re-initialize if initialCoords changes
 
   // Search function using backend proxy (avoids CORS issues)
   const performSearch = async () => {
@@ -209,12 +236,12 @@ export default function PlaceMapSelector({
         markerRef.current.on('dragend', (e) => {
           const marker = e.target;
           const position = marker.getLatLng();
-          onLocationSelect({ lat: position.lat, lng: position.lng });
+          onLocationSelectRef.current({ lat: position.lat, lng: position.lng });
         });
       }
       
       markerRef.current.bindPopup(result.display_name).openPopup();
-      onLocationSelect({ lat, lng }, result.display_name);
+      onLocationSelectRef.current({ lat, lng }, result.display_name);
     } catch (error) {
       console.error('Search error:', error);
       alert('Search failed. Please try again.');
@@ -246,7 +273,7 @@ export default function PlaceMapSelector({
             markerRef.current.on('dragend', (e) => {
               const marker = e.target;
               const position = marker.getLatLng();
-              onLocationSelect({ lat: position.lat, lng: position.lng });
+              onLocationSelectRef.current({ lat: position.lat, lng: position.lng });
             });
           }
           
@@ -254,7 +281,7 @@ export default function PlaceMapSelector({
             .bindPopup('Your Current Location')
             .openPopup();
           
-          onLocationSelect({ lat: latitude, lng: longitude }, 'Current Location');
+          onLocationSelectRef.current({ lat: latitude, lng: longitude }, 'Current Location');
         }
         setIsSearching(false);
       },

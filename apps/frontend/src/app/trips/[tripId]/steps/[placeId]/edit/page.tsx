@@ -159,10 +159,18 @@ export default function EditStepPage() {
           if (data.address?.country_code) {
             setPlaceCountry(data.address.country_code.toUpperCase());
           }
+          // Always update place name when location changes
           if (data.display_name) {
             const parts = data.display_name.split(',');
             const mainName = parts[0].trim();
-            if (mainName && mainName.length > 0 && !placeName) {
+            if (mainName && mainName.length > 0) {
+              setPlaceName(mainName);
+            }
+          } else if (name) {
+            // Use provided name if available
+            const parts = name.split(',');
+            const mainName = parts[0].trim();
+            if (mainName && mainName.length > 0) {
               setPlaceName(mainName);
             }
           }
@@ -173,48 +181,56 @@ export default function EditStepPage() {
     }
     
     // Update marker if map is ready
-    if (mapRef.current) {
-      if (markerRef.current) {
-        markerRef.current.setLatLng([coords.lat, coords.lng]);
-      } else {
-        const L = await import('leaflet');
-        const personIcon = L.divIcon({
-          className: 'custom-person-marker',
-          html: `
-            <div style="
-              width: 32px;
-              height: 32px;
-              background-color: #1976d2;
-              border: 3px solid white;
-              border-radius: 50% 50% 50% 0;
-              transform: rotate(-45deg);
-              box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-            ">
+    if (mapRef.current && mapRef.current.getContainer()) {
+      try {
+        if (markerRef.current) {
+          markerRef.current.setLatLng([coords.lat, coords.lng]);
+        } else {
+          const L = await import('leaflet');
+          const personIcon = L.divIcon({
+            className: 'custom-person-marker',
+            html: `
               <div style="
-                width: 12px;
-                height: 12px;
-                background-color: white;
-                border-radius: 50%;
-                position: absolute;
-                top: 6px;
-                left: 6px;
-                transform: rotate(45deg);
-              "></div>
-            </div>
-          `,
-          iconSize: [32, 32],
-          iconAnchor: [16, 32],
-        });
-        
-        markerRef.current = L.marker([coords.lat, coords.lng], { 
-          draggable: true,
-          icon: personIcon
-        }).addTo(mapRef.current);
-        markerRef.current.on('dragend', async (e: any) => {
-          const marker = e.target;
-          const position = marker.getLatLng();
-          await handleLocationSelect({ lat: position.lat, lng: position.lng });
-        });
+                width: 32px;
+                height: 32px;
+                background-color: #1976d2;
+                border: 3px solid white;
+                border-radius: 50% 50% 50% 0;
+                transform: rotate(-45deg);
+                box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+                position: relative;
+                margin: 0;
+                padding: 0;
+              ">
+                <div style="
+                  width: 12px;
+                  height: 12px;
+                  background-color: white;
+                  border-radius: 50%;
+                  position: absolute;
+                  top: 6px;
+                  left: 6px;
+                  transform: rotate(45deg);
+                "></div>
+              </div>
+            `,
+            iconSize: [32, 32],
+            iconAnchor: [16, 32],
+          });
+          
+          markerRef.current = L.marker([coords.lat, coords.lng], { 
+            draggable: true,
+            icon: personIcon,
+            riseOnHover: false
+          }).addTo(mapRef.current);
+          markerRef.current.on('dragend', async (e: any) => {
+            const marker = e.target;
+            const position = marker.getLatLng();
+            await handleLocationSelect({ lat: position.lat, lng: position.lng });
+          });
+        }
+      } catch (error) {
+        console.error('Error updating marker:', error);
       }
     }
   };
@@ -409,47 +425,55 @@ export default function EditStepPage() {
           hideUI={true}
           onMapReady={(map) => {
             mapRef.current = map;
-            // Set up marker when map is ready
+            // Set up marker when map is ready - use setTimeout to ensure map container is fully ready
             if (coordinates) {
-              import('leaflet').then(async (L) => {
-                if (!markerRef.current) {
-                  // Create custom pin-style icon for location marker
-                  const locationIcon = L.divIcon({
-                    className: 'custom-location-marker',
-                    html: `
-                      <div style="
-                        position: relative;
-                        width: 40px;
-                        height: 50px;
-                        cursor: move;
-                      ">
-                        <svg width="40" height="50" viewBox="0 0 40 50" style="filter: drop-shadow(0 3px 6px rgba(0,0,0,0.4));">
-                          <!-- Pin shadow -->
-                          <ellipse cx="20" cy="45" rx="8" ry="3" fill="rgba(0,0,0,0.2)"/>
-                          <!-- Pin body -->
-                          <path d="M20 0 C12 0 6 6 6 14 C6 22 20 40 20 40 C20 40 34 22 34 14 C34 6 28 0 20 0 Z" 
-                                fill="#1976d2" stroke="white" stroke-width="2"/>
-                          <!-- Inner circle -->
-                          <circle cx="20" cy="14" r="6" fill="white"/>
-                          <circle cx="20" cy="14" r="4" fill="#1976d2"/>
-                        </svg>
-                      </div>
-                    `,
-                    iconSize: [40, 50],
-                    iconAnchor: [20, 50],
-                  });
-                  
-                  markerRef.current = L.marker([coordinates.lat, coordinates.lng], { 
-                    draggable: true,
-                    icon: locationIcon
-                  }).addTo(map);
-                  markerRef.current.on('dragend', async (e: any) => {
-                    const marker = e.target;
-                    const position = marker.getLatLng();
-                    await handleLocationSelect({ lat: position.lat, lng: position.lng });
-                  });
-                }
-              });
+              setTimeout(() => {
+                import('leaflet').then(async (L) => {
+                  if (!markerRef.current && mapRef.current) {
+                    try {
+                      // Create custom pin-style icon for location marker
+                      const locationIcon = L.divIcon({
+                        className: 'custom-location-marker',
+                        html: `
+                          <div style="
+                            position: relative;
+                            width: 40px;
+                            height: 50px;
+                            cursor: move;
+                          ">
+                            <svg width="40" height="50" viewBox="0 0 40 50" style="filter: drop-shadow(0 3px 6px rgba(0,0,0,0.4));">
+                              <!-- Pin shadow -->
+                              <ellipse cx="20" cy="45" rx="8" ry="3" fill="rgba(0,0,0,0.2)"/>
+                              <!-- Pin body -->
+                              <path d="M20 0 C12 0 6 6 6 14 C6 22 20 40 20 40 C20 40 34 22 34 14 C34 6 28 0 20 0 Z" 
+                                    fill="#1976d2" stroke="white" stroke-width="2"/>
+                              <!-- Inner circle -->
+                              <circle cx="20" cy="14" r="6" fill="white"/>
+                              <circle cx="20" cy="14" r="4" fill="#1976d2"/>
+                            </svg>
+                          </div>
+                        `,
+                        iconSize: [40, 50],
+                        iconAnchor: [20, 50],
+                      });
+                      
+                      if (mapRef.current && mapRef.current.getContainer()) {
+                        markerRef.current = L.marker([coordinates.lat, coordinates.lng], { 
+                          draggable: true,
+                          icon: locationIcon
+                        }).addTo(mapRef.current);
+                        markerRef.current.on('dragend', async (e: any) => {
+                          const marker = e.target;
+                          const position = marker.getLatLng();
+                          await handleLocationSelect({ lat: position.lat, lng: position.lng });
+                        });
+                      }
+                    } catch (error) {
+                      console.error('Error adding marker to map:', error);
+                    }
+                  }
+                });
+              }, 100);
             }
           }}
         />

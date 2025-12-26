@@ -3,7 +3,7 @@
 import { useAuth } from '@/lib/auth';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import { getTrip, addPlace, getTripPlaces, createExpense } from '@/lib/api';
 import type { Trip, TripPlace, ModeOfTravel } from '@tripmatrix/types';
@@ -118,7 +118,7 @@ export default function NewStepPage() {
     }
   };
 
-  const handleLocationSelect = async (coords: { lat: number; lng: number }, name?: string) => {
+  const handleLocationSelect = useCallback(async (coords: { lat: number; lng: number }, name?: string) => {
     setCoordinates(coords);
     
     // Get country from coordinates
@@ -187,7 +187,7 @@ export default function NewStepPage() {
         markerRef.current.setLatLng([coords.lat, coords.lng]);
       } else {
         const L = await import('leaflet');
-        // Create custom icon for person/location marker
+        // Create custom icon for person/location marker - no shadow, no line
         const personIcon = L.divIcon({
           className: 'custom-person-marker',
           html: `
@@ -199,6 +199,9 @@ export default function NewStepPage() {
               border-radius: 50% 50% 50% 0;
               transform: rotate(-45deg);
               box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+              position: relative;
+              margin: 0;
+              padding: 0;
             ">
               <div style="
                 width: 12px;
@@ -218,7 +221,8 @@ export default function NewStepPage() {
         
         markerRef.current = L.marker([coords.lat, coords.lng], { 
           draggable: true,
-          icon: personIcon
+          icon: personIcon,
+          riseOnHover: false
         }).addTo(mapRef.current);
         markerRef.current.on('dragend', async (e: any) => {
           const marker = e.target;
@@ -229,7 +233,7 @@ export default function NewStepPage() {
         });
       }
     }
-  };
+  }, []);
 
   const handleSearch = async () => {
     if (!searchQuery.trim() || !mapRef.current) return;
@@ -267,7 +271,7 @@ export default function NewStepPage() {
         markerRef.current.setLatLng([lat, lng]);
       } else {
         const L = await import('leaflet');
-        // Create custom icon for person/location marker
+        // Create custom icon for person/location marker - no shadow, no line
         const personIcon = L.divIcon({
           className: 'custom-person-marker',
           html: `
@@ -279,6 +283,9 @@ export default function NewStepPage() {
               border-radius: 50% 50% 50% 0;
               transform: rotate(-45deg);
               box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+              position: relative;
+              margin: 0;
+              padding: 0;
             ">
               <div style="
                 width: 12px;
@@ -298,7 +305,8 @@ export default function NewStepPage() {
         
         markerRef.current = L.marker([lat, lng], { 
           draggable: true,
-          icon: personIcon
+          icon: personIcon,
+          riseOnHover: false
         }).addTo(map);
         markerRef.current.on('dragend', async (e: any) => {
           const marker = e.target;
@@ -539,7 +547,7 @@ export default function NewStepPage() {
             if (coordinates) {
               import('leaflet').then(async (L) => {
                 if (!markerRef.current) {
-                  // Create custom icon for person/location marker
+                  // Create custom icon for person/location marker - no shadow, no line
                   const personIcon = L.divIcon({
                     className: 'custom-person-marker',
                     html: `
@@ -551,6 +559,9 @@ export default function NewStepPage() {
                         border-radius: 50% 50% 50% 0;
                         transform: rotate(-45deg);
                         box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+                        position: relative;
+                        margin: 0;
+                        padding: 0;
                       ">
                         <div style="
                           width: 12px;
@@ -570,7 +581,8 @@ export default function NewStepPage() {
                   
                   markerRef.current = L.marker([coordinates.lat, coordinates.lng], { 
                     draggable: true,
-                    icon: personIcon
+                    icon: personIcon,
+                    riseOnHover: false
                   }).addTo(map);
                   markerRef.current.on('dragend', async (e: any) => {
                     const marker = e.target;
