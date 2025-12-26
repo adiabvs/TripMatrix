@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { useEffect, useState, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { getTrip, addPlace, getTripPlaces } from '@/lib/api';
-import type { Trip, TripPlace } from '@tripmatrix/types';
+import type { Trip, TripPlace, ModeOfTravel } from '@tripmatrix/types';
 import { toDate } from '@/lib/dateUtils';
 import { format } from 'date-fns';
 import type L from 'leaflet';
@@ -38,7 +38,7 @@ export default function NewStepPage() {
   const [placeName, setPlaceName] = useState('');
   const [coordinates, setCoordinates] = useState<{ lat: number; lng: number } | null>(null);
   const [visitedDateTime, setVisitedDateTime] = useState(new Date());
-  const [modeOfTravel, setModeOfTravel] = useState<string | null>(null);
+  const [modeOfTravel, setModeOfTravel] = useState<ModeOfTravel | null>(null);
   const [rating, setRating] = useState(0);
   const [comment, setComment] = useState('');
   const [images, setImages] = useState<Array<{ url: string; isPublic: boolean }>>([]);
@@ -52,7 +52,7 @@ export default function NewStepPage() {
   const mapRef = useRef<L.Map | null>(null);
   const markerRef = useRef<L.Marker | null>(null);
 
-  const modes = ['walk', 'bike', 'car', 'train', 'bus', 'flight'];
+  const modes: ModeOfTravel[] = ['walk', 'bike', 'car', 'train', 'bus', 'flight'];
   const modeLabels: Record<string, string> = {
     walk: 'Walk',
     bike: 'Bike',
