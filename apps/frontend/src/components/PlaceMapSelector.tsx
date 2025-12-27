@@ -16,11 +16,12 @@ if (typeof window !== 'undefined') {
 }
 
 interface PlaceMapSelectorProps {
-  onLocationSelect: (coords: { lat: number; lng: number }, name?: string) => void;
+  onLocationSelect?: (coords: { lat: number; lng: number }, name?: string) => void;
   initialCoords?: { lat: number; lng: number };
   height?: string;
   hideUI?: boolean; // Hide default search and GPS buttons
   onMapReady?: (map: L.Map) => void; // Callback when map is ready
+  disabled?: boolean; // Disable map interactions
 }
 
 export default function PlaceMapSelector({
@@ -29,6 +30,7 @@ export default function PlaceMapSelector({
   height = '400px',
   hideUI = false,
   onMapReady,
+  disabled = false,
 }: PlaceMapSelectorProps) {
   const mapRef = useRef<L.Map | null>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -75,6 +77,7 @@ export default function PlaceMapSelector({
 
     // Handle map click - reverse geocode to get place name
     map.on('click', async (e) => {
+      if (disabled || !onLocationSelect) return;
       const { lat, lng } = e.latlng;
       
       // Reverse geocode to get place name using backend API
@@ -114,36 +117,42 @@ export default function PlaceMapSelector({
           iconAnchor: [8, 8],
         });
         markerRef.current = L.marker([lat, lng], { 
-          draggable: true,
+          draggable: !disabled && !!onLocationSelect,
           icon: circleIcon
         }).addTo(map);
-        markerRef.current.on('dragend', async (e) => {
-          const marker = e.target;
-          const position = marker.getLatLng();
-          // Reverse geocode on drag end too using backend API
-          let dragPlaceName: string | undefined;
-          try {
-            const rawUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-            const apiUrl = rawUrl.startsWith('https://') ? rawUrl.replace(/:\d+$/, '') : rawUrl;
-            const response = await fetch(
-              `${apiUrl}/api/geocoding/reverse?lat=${position.lat}&lon=${position.lng}`
-            );
-            if (response.ok) {
-              const result = await response.json();
-              if (result.success && result.data && result.data.display_name) {
-                dragPlaceName = result.data.display_name;
+        if (!disabled && onLocationSelectRef.current) {
+          markerRef.current.on('dragend', async (e) => {
+            const marker = e.target;
+            const position = marker.getLatLng();
+            // Reverse geocode on drag end too using backend API
+            let dragPlaceName: string | undefined;
+            try {
+              const rawUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+              const apiUrl = rawUrl.startsWith('https://') ? rawUrl.replace(/:\d+$/, '') : rawUrl;
+              const response = await fetch(
+                `${apiUrl}/api/geocoding/reverse?lat=${position.lat}&lon=${position.lng}`
+              );
+              if (response.ok) {
+                const result = await response.json();
+                if (result.success && result.data && result.data.display_name) {
+                  dragPlaceName = result.data.display_name;
+                }
               }
+            } catch (error) {
+              // Silently fail
             }
-          } catch (error) {
-            // Silently fail
-          }
-          onLocationSelectRef.current({ lat: position.lat, lng: position.lng }, dragPlaceName);
-        });
+            if (onLocationSelectRef.current) {
+              onLocationSelectRef.current({ lat: position.lat, lng: position.lng }, dragPlaceName);
+            }
+          });
+        }
       }
       
       const popupText = placeName ? placeName.split(',')[0].trim() : `Selected: ${lat.toFixed(4)}, ${lng.toFixed(4)}`;
       markerRef.current.bindPopup(popupText).openPopup();
-      onLocationSelectRef.current({ lat, lng }, placeName);
+      if (onLocationSelectRef.current && !disabled) {
+        onLocationSelectRef.current({ lat, lng }, placeName);
+      }
     });
 
     // Add initial marker if coordinates provided
@@ -164,35 +173,39 @@ export default function PlaceMapSelector({
         iconAnchor: [8, 8],
       });
       markerRef.current = L.marker([initialCoords.lat, initialCoords.lng], { 
-        draggable: true,
+        draggable: !disabled && !!onLocationSelect,
         icon: circleIcon
       })
         .addTo(map)
         .bindPopup('Selected Location')
         .openPopup();
       
-      markerRef.current.on('dragend', async (e) => {
-        const marker = e.target;
-        const position = marker.getLatLng();
-        // Reverse geocode on drag end using backend API
-        let placeName: string | undefined;
-        try {
-          const rawUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-          const apiUrl = rawUrl.startsWith('https://') ? rawUrl.replace(/:\d+$/, '') : rawUrl;
-          const response = await fetch(
-            `${apiUrl}/api/geocoding/reverse?lat=${position.lat}&lon=${position.lng}`
-          );
-          if (response.ok) {
-            const result = await response.json();
-            if (result.success && result.data && result.data.display_name) {
-              placeName = result.data.display_name;
+      if (!disabled && onLocationSelectRef.current) {
+        markerRef.current.on('dragend', async (e) => {
+          const marker = e.target;
+          const position = marker.getLatLng();
+          // Reverse geocode on drag end using backend API
+          let placeName: string | undefined;
+          try {
+            const rawUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+            const apiUrl = rawUrl.startsWith('https://') ? rawUrl.replace(/:\d+$/, '') : rawUrl;
+            const response = await fetch(
+              `${apiUrl}/api/geocoding/reverse?lat=${position.lat}&lon=${position.lng}`
+            );
+            if (response.ok) {
+              const result = await response.json();
+              if (result.success && result.data && result.data.display_name) {
+                placeName = result.data.display_name;
+              }
             }
+          } catch (error) {
+            // Silently fail
           }
-        } catch (error) {
-          // Silently fail
-        }
-        onLocationSelectRef.current({ lat: position.lat, lng: position.lng }, placeName);
-      });
+          if (onLocationSelectRef.current && !disabled) {
+            onLocationSelectRef.current({ lat: position.lat, lng: position.lng }, placeName);
+          }
+        });
+      }
     }
 
     mapRef.current = map;
@@ -203,10 +216,13 @@ export default function PlaceMapSelector({
     }
 
     return () => {
-      map.remove();
+      if (map) {
+        map.remove();
+      }
       mapRef.current = null;
     };
-  }, [initialCoords]); // Only re-initialize if initialCoords changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialCoords, disabled]); // Only re-initialize if initialCoords or disabled changes, [initialCoords, disabled]); // Only re-initialize if initialCoords or disabled changes
 
   // Search function using backend proxy (avoids CORS issues)
   const performSearch = async () => {
@@ -259,16 +275,22 @@ export default function PlaceMapSelector({
           iconSize: [16, 16],
           iconAnchor: [8, 8],
         });
-        markerRef.current = L.marker([lat, lng], { draggable: true, icon: circleIcon }).addTo(map);
-        markerRef.current.on('dragend', (e) => {
-          const marker = e.target;
-          const position = marker.getLatLng();
-          onLocationSelectRef.current({ lat: position.lat, lng: position.lng });
-        });
+        markerRef.current = L.marker([lat, lng], { draggable: !disabled && !!onLocationSelect, icon: circleIcon }).addTo(map);
+        if (!disabled && onLocationSelectRef.current) {
+          markerRef.current.on('dragend', (e) => {
+            const marker = e.target;
+            const position = marker.getLatLng();
+            if (onLocationSelectRef.current) {
+              onLocationSelectRef.current({ lat: position.lat, lng: position.lng });
+            }
+          });
+        }
       }
       
       markerRef.current.bindPopup(result.display_name).openPopup();
-      onLocationSelectRef.current({ lat, lng }, result.display_name);
+      if (onLocationSelectRef.current && !disabled) {
+        onLocationSelectRef.current({ lat, lng }, result.display_name);
+      }
     } catch (error) {
       console.error('Search error:', error);
       alert('Search failed. Please try again.');
@@ -310,19 +332,27 @@ export default function PlaceMapSelector({
               iconSize: [16, 16],
               iconAnchor: [8, 8],
             });
-            markerRef.current = L.marker([latitude, longitude], { draggable: true, icon: circleIcon }).addTo(mapRef.current);
-            markerRef.current.on('dragend', (e) => {
-              const marker = e.target;
-              const position = marker.getLatLng();
-              onLocationSelectRef.current({ lat: position.lat, lng: position.lng });
-            });
+            markerRef.current = L.marker([latitude, longitude], { draggable: !disabled && !!onLocationSelect, icon: circleIcon }).addTo(mapRef.current);
+            if (!disabled && onLocationSelectRef.current) {
+              markerRef.current.on('dragend', (e) => {
+                const marker = e.target;
+                const position = marker.getLatLng();
+                if (onLocationSelectRef.current) {
+                  onLocationSelectRef.current({ lat: position.lat, lng: position.lng });
+                }
+              });
+            }
           }
           
-          markerRef.current
-            .bindPopup('Your Current Location')
-            .openPopup();
-          
-          onLocationSelectRef.current({ lat: latitude, lng: longitude }, 'Current Location');
+          if (markerRef.current) {
+            markerRef.current
+              .bindPopup('Your Current Location')
+              .openPopup();
+            
+            if (onLocationSelectRef.current) {
+              onLocationSelectRef.current({ lat: latitude, lng: longitude }, 'Current Location');
+            }
+          }
         }
         setIsSearching(false);
       },
@@ -346,17 +376,18 @@ export default function PlaceMapSelector({
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyPress={(e) => {
-                  if (e.key === 'Enter') {
+                  if (e.key === 'Enter' && !disabled) {
                     performSearch();
                   }
                 }}
                 placeholder="Search for a place..."
                 className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                disabled={disabled}
               />
               <button
                 type="button"
                 onClick={performSearch}
-                disabled={isSearching || !searchQuery.trim()}
+                disabled={disabled || isSearching || !searchQuery.trim()}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm"
               >
                 {isSearching ? 'Searching...' : 'Search'}
@@ -365,7 +396,7 @@ export default function PlaceMapSelector({
             <button
               type="button"
               onClick={handleGetGPSLocation}
-              disabled={isSearching}
+              disabled={disabled || isSearching}
               className="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 text-sm flex items-center justify-center gap-2"
             >
               <MdMyLocation className="w-4 h-4" />

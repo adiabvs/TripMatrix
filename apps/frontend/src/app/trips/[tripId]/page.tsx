@@ -630,7 +630,7 @@ export default function TripDetailPage() {
                     ref={(el) => {
                       stepCardRefs.current[index] = el;
                     }}
-                    className="w-full"
+                    className={`w-full ${index < sortedPlaces.length - 1 ? 'mb-4' : ''}`}
                   >
                     <CompactStepCard
                       place={place}

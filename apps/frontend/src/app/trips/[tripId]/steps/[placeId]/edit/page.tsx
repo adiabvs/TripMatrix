@@ -31,13 +31,15 @@ function ExpenseList({
   participants, 
   tripId, 
   userNamesMap, 
-  setUserNamesMap 
+  setUserNamesMap,
+  canEdit = false
 }: { 
   expenses: any[]; 
   participants: TripParticipant[]; 
   tripId: string;
   userNamesMap: Record<string, string>;
   setUserNamesMap: (map: Record<string, string> | ((prev: Record<string, string>) => Record<string, string>)) => void;
+  canEdit?: boolean;
 }) {
   const [namesMap, setNamesMap] = useState<Record<string, string>>({});
 
@@ -92,12 +94,14 @@ function ExpenseList({
               {expense.description && ` • ${expense.description}`}
             </p>
           </div>
+          {canEdit && (
           <Link
             href={`/trips/${tripId}/expenses/${expense.expenseId}/edit`}
             className="text-[10px] text-[#1976d2] hover:text-[#1565c0] ml-2"
           >
             Edit
           </Link>
+          )}
         </div>
       ))}
     </div>
@@ -490,10 +494,13 @@ export default function EditStepPage() {
   }
 
   const isCreator = user?.uid === trip.creatorId;
-  if (!isCreator) {
+  const canEdit = isCreator;
+  const canView = isCreator || trip.isPublic || trip.participants?.some(p => p.uid === user?.uid);
+  
+  if (!canView) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#424242]">
-        <div className="text-sm text-white">You don&apos;t have permission to edit this step</div>
+        <div className="text-sm text-white">You don&apos;t have permission to view this step</div>
       </div>
     );
   }
@@ -505,17 +512,18 @@ export default function EditStepPage() {
         <Link href={`/trips/${tripId}`} className="w-10 h-10 flex items-center justify-center">
           <MdArrowBack className="text-white text-xl" />
         </Link>
-        <h1 className="text-xs font-semibold text-white">Edit Step</h1>
+        <h1 className="text-xs font-semibold text-white">{canEdit ? 'Edit Step' : 'View Step'}</h1>
         <div className="w-10" />
       </div>
 
       {/* Map Section - Fixed at 40% */}
       <div className="relative" style={{ height: '40vh', flexShrink: 0 }}>
         <PlaceMapSelector
-          onLocationSelect={handleLocationSelect}
+          onLocationSelect={canEdit ? handleLocationSelect : undefined}
           height="40vh"
           initialCoords={coordinates || undefined}
           hideUI={true}
+          disabled={!canEdit}
           onMapReady={(map) => {
             mapRef.current = map;
             // Set up marker when map is ready - use setTimeout to ensure map container is fully ready
@@ -569,17 +577,18 @@ export default function EditStepPage() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyPress={(e) => {
-                if (e.key === 'Enter') {
+                if (e.key === 'Enter' && canEdit) {
                   handleSearch();
                 }
               }}
               placeholder="Search for a location..."
               className="flex-1 px-0 py-2 bg-transparent text-[14px] text-white border-0 border-b-2 border-white/50 focus:outline-none focus:border-white rounded-none placeholder:text-white/60"
+              disabled={!canEdit}
             />
             <button
               type="button"
               onClick={handleSearch}
-              disabled={isSearching || !searchQuery.trim()}
+              disabled={!canEdit || isSearching || !searchQuery.trim()}
               className="ml-2 px-2 py-2 text-white disabled:opacity-50"
             >
               {isSearching ? (
@@ -592,6 +601,7 @@ export default function EditStepPage() {
         </div>
         
         {/* Compass Icon Button */}
+        {canEdit && (
         <button
           type="button"
           onClick={handleGetCurrentLocation}
@@ -604,11 +614,12 @@ export default function EditStepPage() {
             <MdMyLocation className="w-6 h-6 text-[#1976d2]" />
           )}
         </button>
+        )}
       </div>
 
       {/* Form Section - Bottom 60% */}
       <div className="flex-1 overflow-y-auto" style={{ height: '60vh', WebkitOverflowScrolling: 'touch' }}>
-        <form onSubmit={handleSubmit} className="px-4 py-4 space-y-6">
+        <form onSubmit={canEdit ? handleSubmit : (e) => { e.preventDefault(); }} className="px-4 py-4 space-y-6">
           {/* Date & Time */}
           <div>
             <label className="block text-[12px] font-semibold text-[#bdbdbd] mb-2">
@@ -618,13 +629,17 @@ export default function EditStepPage() {
               type="datetime-local"
               value={formatDateTimeLocalForInput(visitedDateTime)}
               onChange={(e) => {
-                const utcDate = parseDateTimeLocalToUTC(e.target.value);
-                if (!isNaN(utcDate.getTime())) {
-                  setVisitedDateTime(utcDate);
+                if (canEdit) {
+                  const utcDate = parseDateTimeLocalToUTC(e.target.value);
+                  if (!isNaN(utcDate.getTime())) {
+                    setVisitedDateTime(utcDate);
+                  }
                 }
               }}
               className="w-full bg-transparent px-0 py-3 text-[14px] text-white border-0 border-b border-[#9e9e9e] focus:outline-none focus:border-[#1976d2] rounded-none"
               required
+              disabled={!canEdit}
+              readOnly={!canEdit}
             />
           </div>
 
@@ -636,10 +651,12 @@ export default function EditStepPage() {
             <input
               type="text"
               value={placeName}
-              onChange={(e) => setPlaceName(e.target.value)}
+              onChange={(e) => canEdit && setPlaceName(e.target.value)}
               placeholder="Enter place name (e.g., Paris, France)"
               className="w-full bg-transparent px-0 py-3 text-[14px] text-white border-0 border-b border-[#9e9e9e] focus:outline-none focus:border-[#1976d2] rounded-none"
               required
+              disabled={!canEdit}
+              readOnly={!canEdit}
             />
           </div>
 
@@ -653,12 +670,13 @@ export default function EditStepPage() {
                 <button
                   key={mode}
                   type="button"
-                  onClick={() => setModeOfTravel(modeOfTravel === mode ? null : mode)}
+                  onClick={() => canEdit && setModeOfTravel(modeOfTravel === mode ? null : mode)}
+                  disabled={!canEdit}
                   className={`px-4 py-2 rounded-lg border ${
                     modeOfTravel === mode
                       ? 'bg-[#1976d2] border-[#1976d2] text-white'
                       : 'bg-[#616161] border-[#616161] text-white'
-                  }`}
+                  } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
                   <span className="text-[12px]">{modeLabels[mode]}</span>
                 </button>
@@ -671,14 +689,14 @@ export default function EditStepPage() {
             <label className="block text-[12px] font-semibold text-[#bdbdbd] mb-2">
               Photos
             </label>
-            <label className="flex flex-col items-center justify-center border border-dashed border-[#616161] rounded-lg p-4 cursor-pointer hover:border-[#757575] transition-colors">
+            <label className={`flex flex-col items-center justify-center border border-dashed border-[#616161] rounded-lg p-4 ${canEdit ? 'cursor-pointer hover:border-[#757575]' : 'cursor-not-allowed opacity-50'} transition-colors`}>
               <input
                 type="file"
                 accept="image/*"
                 multiple
                 onChange={handleImageUpload}
                 className="hidden"
-                disabled={uploadingImages || images.length >= 10}
+                disabled={!canEdit || uploadingImages || images.length >= 10}
               />
               <MdCameraAlt className="text-2xl mb-2" />
               <span className="text-[14px] text-[#9e9e9e]">
@@ -698,6 +716,7 @@ export default function EditStepPage() {
                       alt={`Photo ${index + 1}`}
                       className="w-full h-full object-cover rounded-lg"
                     />
+                    {canEdit && (
                     <button
                       type="button"
                       onClick={() => removeImage(index)}
@@ -705,6 +724,7 @@ export default function EditStepPage() {
                     >
                       <MdClose className="text-white text-xs" />
                     </button>
+                    )}
                   </div>
                 ))}
               </div>
@@ -721,8 +741,9 @@ export default function EditStepPage() {
                 <button
                   key={star}
                   type="button"
-                  onClick={() => setRating(star)}
-                  className="text-3xl"
+                  onClick={() => canEdit && setRating(star)}
+                  disabled={!canEdit}
+                  className={`text-3xl ${!canEdit ? 'cursor-not-allowed' : ''}`}
                 >
                   <span className={star <= rating ? 'text-yellow-400' : 'text-[#616161]'}>★</span>
                 </button>
@@ -737,10 +758,12 @@ export default function EditStepPage() {
             </label>
             <textarea
               value={comment}
-              onChange={(e) => setComment(e.target.value)}
+              onChange={(e) => canEdit && setComment(e.target.value)}
               placeholder="Write about your experience..."
               rows={4}
               className="w-full bg-transparent px-0 py-3 text-[14px] text-white border-0 border-b border-[#9e9e9e] focus:outline-none focus:border-[#1976d2] rounded-none min-h-[100px]"
+              disabled={!canEdit}
+              readOnly={!canEdit}
             />
           </div>
 
@@ -760,10 +783,12 @@ export default function EditStepPage() {
                   tripId={tripId}
                   userNamesMap={userNamesMap}
                   setUserNamesMap={setUserNamesMap}
+                  canEdit={canEdit}
                 />
               )}
 
-              {/* Add Expense Button */}
+              {/* Add Expense Button - Only show if can edit */}
+              {canEdit && (
               <div className="mb-4">
                 <button
                   type="button"
@@ -774,6 +799,7 @@ export default function EditStepPage() {
                   <span>{showExpenseForm ? 'Cancel' : 'Add Expense'}</span>
                 </button>
               </div>
+              )}
 
               {showExpenseForm && (
                 <div className="mt-4 bg-[#616161] rounded-lg p-4">
@@ -790,7 +816,8 @@ export default function EditStepPage() {
             </div>
           )}
 
-          {/* Submit Button */}
+          {/* Submit Button - Only show if can edit */}
+          {canEdit && (
           <div className="flex gap-3 pb-4">
             <button
               type="submit"
@@ -807,6 +834,20 @@ export default function EditStepPage() {
               Cancel
             </button>
           </div>
+          )}
+          
+          {/* View-only mode - Just show back button */}
+          {!canEdit && (
+          <div className="flex gap-3 pb-4">
+            <button
+              type="button"
+              onClick={() => router.push(`/trips/${tripId}`)}
+              className="w-full px-4 py-3 bg-[#616161] text-white rounded-lg text-[14px] font-medium"
+            >
+              Back to Trip
+            </button>
+          </div>
+          )}
         </form>
       </div>
     </div>

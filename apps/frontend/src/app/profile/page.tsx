@@ -83,7 +83,7 @@ export default function ProfilePage() {
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 overflow-y-auto px-4 py-4" style={{ WebkitOverflowScrolling: 'touch' }}>
+      <div className="flex-1 overflow-y-auto px-4 py-4" style={{ WebkitOverflowScrolling: 'touch', paddingBottom: '32px' }}>
         {/* Profile Header */}
         <div className="mb-6">
           <div className="flex items-start gap-4 mb-6">

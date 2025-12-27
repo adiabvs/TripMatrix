@@ -156,7 +156,7 @@ export default function TripSettingsPage() {
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 overflow-y-auto px-4 py-4" style={{ WebkitOverflowScrolling: 'touch' }}>
+      <div className="flex-1 overflow-y-auto px-4 py-4" style={{ WebkitOverflowScrolling: 'touch', paddingBottom: '80px' }}>
         <div className="mb-6">
           <h2 className="text-[10px] font-semibold text-white mb-1">{trip.title}</h2>
           <p className="text-[12px] text-gray-300">Manage your trip settings</p>
@@ -214,31 +214,38 @@ export default function TripSettingsPage() {
           <div className="bg-[#616161] p-4 rounded-lg">
             <h2 className="text-xs font-semibold text-white mb-4">Privacy Settings</h2>
             
-            {/* Public/Private Toggle */}
+            {/* Public/Private Radio */}
             <div className="mb-6">
-              <label className="flex items-center justify-between cursor-pointer">
-                <div>
-                  <p className="text-[14px] font-semibold text-white">Make Trip Public</p>
-                  <p className="text-[12px] text-gray-300 mt-1">
-                    {settings.isPublic 
-                      ? 'Anyone can view this trip' 
-                      : 'Only trip members can view this trip'}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setSettings({ ...settings, isPublic: !settings.isPublic })}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                    settings.isPublic ? 'bg-[#1976d2]' : 'bg-[#757575]'
-                  }`}
-                >
-                  <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                      settings.isPublic ? 'translate-x-6' : 'translate-x-1'
-                    }`}
-                  />
-                </button>
+              <label className="block text-[12px] font-semibold text-[#bdbdbd] mb-2">
+                Trip Visibility
               </label>
+              <p className="text-[12px] text-gray-300 mb-3">
+                Control who can view this trip
+              </p>
+              <div className="space-y-3">
+                <label className="flex items-center cursor-pointer">
+                  <input
+                    type="radio"
+                    name="tripVisibility"
+                    value="public"
+                    checked={settings.isPublic === true}
+                    onChange={() => setSettings({ ...settings, isPublic: true })}
+                    className="mr-3 w-4 h-4 text-[#1976d2]"
+                  />
+                  <span className="text-[14px] text-white">Public - Anyone can view this trip</span>
+                </label>
+                <label className="flex items-center cursor-pointer">
+                  <input
+                    type="radio"
+                    name="tripVisibility"
+                    value="private"
+                    checked={settings.isPublic === false}
+                    onChange={() => setSettings({ ...settings, isPublic: false })}
+                    className="mr-3 w-4 h-4 text-[#1976d2]"
+                  />
+                  <span className="text-[14px] text-white">Private - Only trip members can view</span>
+                </label>
+              </div>
             </div>
 
             {/* Default Photo Sharing */}

@@ -10,7 +10,8 @@
     "start": "node dist/index.js",
     "type-check": "tsc --noEmit",
     "lint": "eslint src --ext .ts",
-    "test:google-auth": "node test-google-auth.js"
+    "test:google-auth": "node test-google-auth.js",
+    "seed": "tsx scripts/seed-dummy-data.ts"
   },
   "dependencies": {
     "@google/generative-ai": "^0.2.1",
