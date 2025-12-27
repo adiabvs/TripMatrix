@@ -200,7 +200,7 @@ export default function ProfilePage() {
           <h2 className="text-xs font-semibold text-white mb-3">Following</h2>
           {following.length === 0 ? (
             <div className="bg-[#616161] rounded-lg p-4 border border-gray-600">
-              <p className="text-[12px] text-gray-300 text-center">You're not following anyone yet</p>
+              <p className="text-[12px] text-gray-300 text-center">You&apos;re not following anyone yet</p>
             </div>
           ) : (
             <div className="space-y-2">

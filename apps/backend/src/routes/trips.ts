@@ -751,9 +751,9 @@ router.get('/search', async (req: OptionalAuthRequest, res) => {
         const tripsPromises = tripIds.map(async (tripId) => {
           const tripDoc = await db.collection('trips').doc(tripId).get();
           if (tripDoc.exists) {
-            const trip = tripDoc.data() as Trip;
-            if (trip.isPublic) {
-              return { tripId: tripDoc.id, ...trip } as Trip;
+            const tripData = tripDoc.data();
+            if (tripData && tripData.isPublic) {
+              return { tripId: tripDoc.id, ...tripData } as Trip;
             }
           }
           return null;

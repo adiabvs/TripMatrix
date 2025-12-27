@@ -7,7 +7,7 @@ import { searchTrips } from '@/lib/api';
 import type { Trip } from '@tripmatrix/types';
 import { format } from 'date-fns';
 import { toDate } from '@/lib/dateUtils';
-import { MdHome, MdPerson, MdAdd, MdSearch, MdLocationOn, MdAttachMoney, MdArrowBack } from 'react-icons/md';
+import { MdHome, MdPerson, MdAdd, MdSearch, MdLocationOn, MdAttachMoney, MdArrowBack, MdFavorite, MdChatBubbleOutline, MdMoreVert } from 'react-icons/md';
 import dynamic from 'next/dynamic';
 
 const UserMenu = dynamic(() => import('@/components/UserMenu'), {
@@ -22,7 +22,6 @@ const UserMenu = dynamic(() => import('@/components/UserMenu'), {
 export default function ExplorePage() {
   const { user, getIdToken } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchType, setSearchType] = useState<'all' | 'user' | 'place' | 'trip'>('all');
   const [trips, setTrips] = useState<Trip[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -49,7 +48,7 @@ export default function ExplorePage() {
       const token = user ? await getIdToken() : null;
       const result = await searchTrips(
         query,
-        searchType === 'all' ? undefined : searchType,
+        undefined, // Search all types by default
         20,
         loadMore ? lastTripId : undefined,
         token
@@ -69,7 +68,7 @@ export default function ExplorePage() {
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [user, searchType, lastTripId, getIdToken]);
+  }, [user, lastTripId, getIdToken]);
 
   // Debounced search
   useEffect(() => {
@@ -92,7 +91,7 @@ export default function ExplorePage() {
         clearTimeout(searchTimeoutRef.current);
       }
     };
-  }, [searchQuery, searchType]);
+  }, [searchQuery, performSearch]);
 
   // Intersection Observer for lazy loading
   const lastTripElementRef = useCallback((node: HTMLDivElement | null) => {
@@ -109,7 +108,7 @@ export default function ExplorePage() {
   }, [loading, loadingMore, hasMore, searchQuery, performSearch]);
 
   return (
-    <div className="min-h-screen bg-black">
+    <div className="h-full overflow-y-auto bg-black">
       {/* Header */}
       <header className="sticky top-0 z-50 bg-black border-b border-gray-800">
         <div className="max-w-[600px] mx-auto px-4 py-3">
@@ -129,27 +128,8 @@ export default function ExplorePage() {
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search trips, users, places..."
               className="w-full bg-gray-900 text-white pl-10 pr-4 py-2 rounded-lg border border-gray-800 focus:border-blue-500 focus:outline-none"
+              autoFocus
             />
-          </div>
-
-          {/* Search Type Filters */}
-          <div className="flex gap-2 mt-3">
-            {(['all', 'user', 'place', 'trip'] as const).map((type) => (
-              <button
-                key={type}
-                onClick={() => {
-                  setSearchType(type);
-                  setLastTripId(null);
-                }}
-                className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                  searchType === type
-                    ? 'bg-blue-500 text-white'
-                    : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-                }`}
-              >
-                {type.charAt(0).toUpperCase() + type.slice(1)}
-              </button>
-            ))}
           </div>
         </div>
       </header>
@@ -181,6 +161,29 @@ export default function ExplorePage() {
                   ref={isLast ? lastTripElementRef : null}
                   className="bg-black border border-gray-800 rounded-lg overflow-hidden"
                 >
+                  {/* Post Header */}
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center">
+                        <MdPerson className="w-5 h-5 text-white" />
+                      </div>
+                      <div>
+                        <Link
+                          href={`/trips?user=${trip.creatorId}`}
+                          className="text-white font-semibold text-sm hover:opacity-70"
+                        >
+                          User
+                        </Link>
+                        <p className="text-gray-400 text-xs">
+                          {format(toDate(trip.createdAt), 'MMM dd, yyyy')}
+                        </p>
+                      </div>
+                    </div>
+                    <button className="text-white">
+                      <MdMoreVert className="w-5 h-5" />
+                    </button>
+                  </div>
+
                   {/* Cover Image */}
                   <Link href={`/trips/${trip.tripId}`}>
                     <div className="relative aspect-square bg-gray-900">
@@ -195,6 +198,7 @@ export default function ExplorePage() {
                           <MdLocationOn className="w-16 h-16 text-gray-600" />
                         </div>
                       )}
+                      {/* Status Badge */}
                       <div className="absolute top-3 right-3">
                         <span
                           className={`px-2 py-1 rounded text-xs font-semibold ${
@@ -209,27 +213,33 @@ export default function ExplorePage() {
                     </div>
                   </Link>
 
-                  {/* Trip Info */}
+                  {/* Actions */}
                   <div className="px-4 py-3 space-y-2">
-                    <Link
-                      href={`/trips/${trip.tripId}`}
-                      className="text-white font-semibold text-sm hover:opacity-70 block"
-                    >
-                      {trip.title}
-                    </Link>
-                    {trip.description && (
-                      <p className="text-gray-300 text-sm line-clamp-2">
-                        {trip.description}
-                      </p>
-                    )}
-                    <div className="flex items-center gap-4 text-gray-400 text-xs">
-                      <span>{format(toDate(trip.startTime), 'MMM yyyy')}</span>
-                      {trip.totalDistance && (
-                        <span>{(trip.totalDistance / 1000).toFixed(0)} km</span>
+                    <div className="flex items-center gap-4">
+                      <button className="text-white hover:opacity-70">
+                        <MdFavorite className="w-6 h-6" />
+                      </button>
+                      <Link href={`/trips/${trip.tripId}`} className="text-white hover:opacity-70">
+                        <MdChatBubbleOutline className="w-6 h-6" />
+                      </Link>
+                    </div>
+
+                    {/* Trip Info */}
+                    <div>
+                      <Link
+                        href={`/trips/${trip.tripId}`}
+                        className="text-white font-semibold text-sm hover:opacity-70"
+                      >
+                        {trip.title}
+                      </Link>
+                      {trip.description && (
+                        <p className="text-gray-300 text-sm mt-1 line-clamp-2">
+                          {trip.description}
+                        </p>
                       )}
                       {trip.totalExpense && trip.totalExpense > 0 && (
-                        <div className="flex items-center gap-1">
-                          <MdAttachMoney className="w-3 h-3" />
+                        <div className="flex items-center gap-1 mt-2 text-gray-400 text-xs">
+                          <MdAttachMoney className="w-4 h-4" />
                           <span>{trip.totalExpense.toFixed(2)}</span>
                         </div>
                       )}
