@@ -67,7 +67,7 @@ export default function TripStepsList({
             {/* Add Step Button Before (only show before first step) */}
             {canEdit && index === 0 && (
               <div className="relative flex justify-center py-2">
-                <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-[60px] w-0.5 border-l-2 border-dashed border-gray-600" />
+                <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-[30px] w-0.5 border-l-2 border-dashed border-gray-600" />
                 <Link
                   href={`/trips/${tripId}/steps/new`}
                   className="relative z-10 w-8 h-8 rounded-full bg-[#1976d2] flex items-center justify-center hover:bg-[#1565c0] transition-colors shadow-lg"
@@ -120,7 +120,7 @@ export default function TripStepsList({
             {/* Add Step Button After (only after last step in edit mode) */}
             {canEdit && index === sortedPlaces.length - 1 && (
               <div className="relative flex justify-center py-2">
-                <div className="absolute left-1/2 top-0 -translate-x-1/2 h-full w-0.5 border-l-2 border-dashed border-gray-600" />
+                <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-[30px] w-0.5 border-l-2 border-dashed border-gray-600" />
                 <Link
                   href={`/trips/${tripId}/steps/new`}
                   className="relative z-10 w-8 h-8 rounded-full bg-[#1976d2] flex items-center justify-center hover:bg-[#1565c0] transition-colors shadow-lg"

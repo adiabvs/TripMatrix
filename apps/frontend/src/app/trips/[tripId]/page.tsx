@@ -6,7 +6,7 @@ import Link from 'next/link';
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import { updateTrip, deletePlace, deleteExpense } from '@/lib/api';
-import type { TripExpense } from '@tripmatrix/types';
+import type { TripExpense, ModeOfTravel } from '@tripmatrix/types';
 import { db } from '@/lib/firebase';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import type { TripPlace } from '@tripmatrix/types';
