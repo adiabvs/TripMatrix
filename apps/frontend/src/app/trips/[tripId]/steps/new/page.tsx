@@ -350,30 +350,20 @@ export default function NewStepPage() {
           markerRef.current.setLatLng([latitude, longitude]);
         } else {
           const L = await import('leaflet');
-          // Create custom pin-style icon for location marker
+          // Create circular marker for location
           const locationIcon = L.divIcon({
             className: 'custom-location-marker',
-            html: `
-              <div style="
-                position: relative;
-                width: 40px;
-                height: 50px;
-                cursor: move;
-              ">
-                <svg width="40" height="50" viewBox="0 0 40 50" style="filter: drop-shadow(0 3px 6px rgba(0,0,0,0.4));">
-                  <!-- Pin shadow -->
-                  <ellipse cx="20" cy="45" rx="8" ry="3" fill="rgba(0,0,0,0.2)"/>
-                  <!-- Pin body -->
-                  <path d="M20 0 C12 0 6 6 6 14 C6 22 20 40 20 40 C20 40 34 22 34 14 C34 6 28 0 20 0 Z" 
-                        fill="#1976d2" stroke="white" stroke-width="2"/>
-                  <!-- Inner circle -->
-                  <circle cx="20" cy="14" r="6" fill="white"/>
-                  <circle cx="20" cy="14" r="4" fill="#1976d2"/>
-                </svg>
-              </div>
-            `,
-            iconSize: [40, 50],
-            iconAnchor: [20, 50],
+            html: `<div style="
+              width: 18px;
+              height: 18px;
+              border-radius: 50%;
+              background-color: #1976d2;
+              border: 3px solid white;
+              box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+              cursor: move;
+            "></div>`,
+            iconSize: [18, 18],
+            iconAnchor: [9, 9],
           });
           
           markerRef.current = L.marker([latitude, longitude], { 
@@ -824,7 +814,7 @@ export default function NewStepPage() {
                       // For users, we'd need to fetch the name, but for pending expenses we'll show a placeholder
                       paidByName = 'User';
                     } else {
-                      paidByName = expense.paidBy?.length > 20 ? 'User' : (expense.paidBy || 'Unknown');
+                      paidByName = (expense.paidBy && expense.paidBy.length > 20) ? 'User' : (expense.paidBy || 'Unknown');
                     }
                     return (
                       <div

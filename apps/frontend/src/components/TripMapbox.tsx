@@ -604,16 +604,19 @@ export default function TripMapbox({
     // Get mode of travel for vehicle icon (from the destination place - where you're going)
     const mode = endPlace?.modeOfTravel || activeRoute.modeOfTravel;
 
-    // Create/update start point marker
+    // Create/update start point marker (circular)
     if (startPlace && startPlace.coordinates && startPlace.coordinates.lat && startPlace.coordinates.lng) {
       if (!routeStartMarkerRef.current) {
         const startEl = document.createElement('div');
         startEl.className = 'route-start-marker';
-        startEl.style.fontSize = '24px';
+        startEl.style.width = '12px';
+        startEl.style.height = '12px';
+        startEl.style.borderRadius = '50%';
+        startEl.style.backgroundColor = '#22c55e';
+        startEl.style.border = '2px solid white';
+        startEl.style.boxShadow = '0 2px 4px rgba(0,0,0,0.3)';
         startEl.style.zIndex = '9999';
         startEl.style.pointerEvents = 'none';
-        startEl.style.filter = 'drop-shadow(0 2px 4px rgba(0,0,0,0.5))';
-        startEl.textContent = '🟢';
 
         routeStartMarkerRef.current = new maplibregl.Marker({
           element: startEl,
@@ -626,16 +629,19 @@ export default function TripMapbox({
       }
     }
 
-    // Create/update end point marker
+    // Create/update end point marker (circular)
     if (endPlace && endPlace.coordinates && endPlace.coordinates.lat && endPlace.coordinates.lng) {
       if (!routeEndMarkerRef.current) {
         const endEl = document.createElement('div');
         endEl.className = 'route-end-marker';
-        endEl.style.fontSize = '24px';
+        endEl.style.width = '12px';
+        endEl.style.height = '12px';
+        endEl.style.borderRadius = '50%';
+        endEl.style.backgroundColor = '#ef4444';
+        endEl.style.border = '2px solid white';
+        endEl.style.boxShadow = '0 2px 4px rgba(0,0,0,0.3)';
         endEl.style.zIndex = '9999';
         endEl.style.pointerEvents = 'none';
-        endEl.style.filter = 'drop-shadow(0 2px 4px rgba(0,0,0,0.5))';
-        endEl.textContent = '🔴';
 
         routeEndMarkerRef.current = new maplibregl.Marker({
           element: endEl,
