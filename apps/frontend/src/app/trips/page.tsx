@@ -58,12 +58,7 @@ export default function TripsPage() {
 
       // Set user info for display
       if (user) {
-        setUserInfo({
-          uid: user.uid,
-          name: user.displayName || 'You',
-          email: user.email || '',
-          photoUrl: user.photoURL || undefined,
-        } as User);
+        setUserInfo(user);
       }
     } catch (error) {
       console.error('Failed to load trips:', error);
