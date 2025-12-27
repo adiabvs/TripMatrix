@@ -9,6 +9,7 @@ import { getUserTrips, getTripPlaces, getTripRoutes } from '@/lib/api';
 import type { Trip, TripPlace, TripRoute } from '@tripmatrix/types';
 import CompactTripCard from '@/components/CompactTripCard';
 import UserMenu from '@/components/UserMenu';
+import { MdMap, MdHome } from 'react-icons/md';
 
 // Dynamically import SimpleGlobe with SSR disabled
 const SimpleGlobe = dynamic(() => import('@/components/SimpleGlobe'), {
@@ -194,7 +195,7 @@ export default function TripsPage() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-[#424242] to-[#1a1a1a] flex flex-col items-center justify-center px-4">
         <div className="text-6xl mb-4 animate-bounce">🔒</div>
-        <h2 className="text-xl font-semibold text-white mb-2">Sign in required</h2>
+        <h2 className="text-lg font-semibold text-white mb-2">Sign in required</h2>
         <p className="text-sm text-gray-300 mb-8 text-center max-w-sm">
           Please sign in to view and manage your trips
         </p>
@@ -225,7 +226,7 @@ export default function TripsPage() {
         {/* Header Overlay */}
         <div className="absolute top-0 left-0 right-0 pt-3 px-3 pb-2 bg-black/30 z-10">
           <div className="flex justify-between items-center">
-            <h1 className="text-[9px] font-semibold text-white leading-tight">
+            <h1 className="text-[8px] font-semibold text-white leading-tight">
               My Trips
             </h1>
             <Link 
@@ -272,11 +273,11 @@ export default function TripsPage() {
             }}
           >
             <div 
-              className="grid grid-cols-1 gap-3"
+              className="grid grid-cols-1 gap-5"
               style={{ width: '100%' }}
             >
               {trips.map((trip, index) => (
-                <div key={trip.tripId} className={index === trips.length - 1 ? 'mb-4' : ''}>
+                <div key={trip.tripId} className={index === trips.length - 1 ? 'mb-6' : ''}>
                   <CompactTripCard 
                     trip={trip} 
                     onPress={() => handleTripPress(trip.tripId)}
@@ -287,7 +288,7 @@ export default function TripsPage() {
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center py-16 px-4 pb-20 flex-1">
-            <span className="text-6xl mb-4 animate-bounce">🗺️</span>
+            <MdMap className="text-6xl mb-4 animate-bounce text-gray-400" />
             <p className="text-base text-white font-semibold mb-2">No trips yet</p>
             <p className="text-sm text-gray-400 text-center mb-8 max-w-xs">
               Start your first adventure and create beautiful travel stories
@@ -309,14 +310,14 @@ export default function TripsPage() {
               href="/" 
               className="flex flex-col items-center gap-1 text-white active:opacity-70"
             >
-              <span className="text-xl">🏠</span>
+              <MdHome className="text-xl" />
               <span className="text-[10px] font-medium">Discover</span>
             </Link>
             <Link 
               href="/trips" 
               className="flex flex-col items-center gap-1 text-white active:opacity-70"
             >
-              <span className="text-xl">🗺️</span>
+              <MdMap className="text-xl" />
               <span className="text-[10px] font-medium">My Trips</span>
             </Link>
             <div className="flex flex-col items-center gap-1">

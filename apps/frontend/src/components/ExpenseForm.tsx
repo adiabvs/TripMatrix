@@ -177,7 +177,7 @@ export default function ExpenseForm({
 
   return (
     <div className="bg-transparent p-0">
-      <h3 className="text-[14px] font-semibold mb-4 text-white">{initialData ? 'Edit Expense' : 'Add Expense'}</h3>
+      <h3 className="text-xs font-semibold mb-4 text-white">{initialData ? 'Edit Expense' : 'Add Expense'}</h3>
 
       <div className="mb-4">
         <label className="block text-[12px] font-semibold text-[#bdbdbd] mb-2">

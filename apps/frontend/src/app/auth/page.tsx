@@ -12,7 +12,7 @@ import {
   Button,
   CircularProgress,
 } from '@mui/material';
-import { Google as GoogleIcon } from '@mui/icons-material';
+import { FaGoogle } from 'react-icons/fa';
 
 export default function AuthPage() {
   const { signIn, user, loading } = useAuth();
@@ -64,7 +64,7 @@ export default function AuthPage() {
               variant="contained"
               size="large"
               onClick={signIn}
-              startIcon={<GoogleIcon />}
+              startIcon={<FaGoogle />}
               sx={{
                 textTransform: 'none',
                 py: 1.5,

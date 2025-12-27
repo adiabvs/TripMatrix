@@ -8,6 +8,7 @@ import { getPublicTripsWithData } from '@/lib/api';
 import type { Trip, TripPlace, TripRoute } from '@tripmatrix/types';
 import CompactTripCard from '@/components/CompactTripCard';
 import type { User } from '@tripmatrix/types';
+import { MdMap, MdHome, MdPerson } from 'react-icons/md';
 
 // Dynamically import heavy components to reduce initial bundle size
 const SimpleGlobe = dynamic(() => import('@/components/SimpleGlobe'), {
@@ -212,7 +213,7 @@ export default function Home() {
         {/* Header Overlay */}
         <div className="absolute top-0 left-0 right-0 pt-3 px-3 pb-2 bg-black/30 z-10">
           <div className="flex justify-between items-center">
-            <h1 className="text-[6px] font-semibold text-white leading-tight">
+            <h1 className="text-[5px] font-semibold text-white leading-tight">
               Explore the world
             </h1>
             <div className="flex items-center gap-2">
@@ -240,7 +241,7 @@ export default function Home() {
         {selectedTrip && (
           <div className="absolute top-12 left-0 right-0 flex justify-center z-20 px-4">
             <div className="bg-white rounded-lg p-2 shadow-lg max-w-xs">
-              <h3 className="text-[11px] font-semibold text-black mb-0.5 leading-tight">{selectedTrip.title}</h3>
+              <h3 className="text-[10px] font-semibold text-black mb-0.5 leading-tight">{selectedTrip.title}</h3>
               <p className="text-[10px] text-gray-600 mb-1.5 leading-tight line-clamp-2">{selectedTrip.description || 'No description'}</p>
               <div className="flex gap-1.5">
                 <button
@@ -295,11 +296,11 @@ export default function Home() {
             }}
           >
             <div 
-              className="grid grid-cols-1 gap-3"
+              className="grid grid-cols-1 gap-5"
               style={{ width: '100%' }}
             >
               {trips.map((trip, index) => (
-                <div key={trip.tripId} className={index === trips.length - 1 ? 'mb-4' : ''}>
+                <div key={trip.tripId} className={index === trips.length - 1 ? 'mb-6' : ''}>
                   <CompactTripCard 
                     trip={trip} 
                     onPress={() => handleTripPress(trip.tripId)}
@@ -311,7 +312,7 @@ export default function Home() {
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center py-12 px-4 pb-16">
-            <span className="text-4xl mb-2">🗺️</span>
+            <MdMap className="text-4xl mb-2 text-gray-400" />
             <p className="text-[11px] text-gray-300 font-semibold">No trips available</p>
           </div>
         )}
@@ -323,14 +324,14 @@ export default function Home() {
               href="/" 
               className="flex flex-col items-center gap-1 text-white active:opacity-70"
             >
-              <span className="text-xl">🏠</span>
+              <MdHome className="text-xl" />
               <span className="text-[10px] font-medium">Discover</span>
             </Link>
             <Link 
               href="/trips" 
               className="flex flex-col items-center gap-1 text-white active:opacity-70"
             >
-              <span className="text-xl">🗺️</span>
+              <MdMap className="text-xl" />
               <span className="text-[10px] font-medium">My Trips</span>
             </Link>
             {user ? (
@@ -343,7 +344,7 @@ export default function Home() {
                 href="/auth" 
                 className="flex flex-col items-center gap-1 text-white active:opacity-70"
               >
-                <span className="text-xl">👤</span>
+                <MdPerson className="text-xl" />
                 <span className="text-[10px] font-medium">Sign In</span>
               </Link>
             )}

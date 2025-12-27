@@ -26,6 +26,7 @@ import UserMenu from '@/components/UserMenu';
 import { formatDistance, formatDuration } from '@tripmatrix/utils';
 import { format } from 'date-fns';
 import { toDate } from '@/lib/dateUtils';
+import { MdArrowBack, MdSettings, MdAdd, MdLocationOn, MdAttachMoney, MdMap } from 'react-icons/md';
 
 // Dynamically import TripMapbox with SSR disabled
 const TripMapbox = dynamic(() => import('@/components/TripMapbox'), {
@@ -439,8 +440,8 @@ export default function TripDetailPage() {
   if (!trip) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-[#424242] to-[#1a1a1a] px-4">
-        <div className="text-6xl mb-4">🗺️</div>
-        <h2 className="text-xl font-semibold text-white mb-2">Trip not found</h2>
+        <MdMap className="text-6xl mb-4 text-gray-400" />
+        <h2 className="text-lg font-semibold text-white mb-2">Trip not found</h2>
         <p className="text-gray-400 text-sm text-center mb-6">
           The trip you're looking for doesn't exist or you don't have access to it.
         </p>
@@ -462,9 +463,9 @@ export default function TripDetailPage() {
           href="/trips" 
           className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-700/50 transition-all duration-200 active:scale-95"
         >
-          <span className="text-white text-xl">←</span>
+          <MdArrowBack className="text-white text-xl" />
         </Link>
-        <h1 className="text-sm font-semibold text-white">Trip Details</h1>
+        <h1 className="text-xs font-semibold text-white">Trip Details</h1>
         <div className="flex items-center gap-2">
           {canEdit && (
             <Link
@@ -472,7 +473,7 @@ export default function TripDetailPage() {
               className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-700/50 transition-all duration-200 active:scale-95"
               title="Trip Settings"
             >
-              <span className="text-white text-xl">⚙️</span>
+              <MdSettings className="text-white text-xl" />
             </Link>
           )}
           <UserMenu />
@@ -517,7 +518,7 @@ export default function TripDetailPage() {
 
         {/* Trip Info */}
         <div className="px-4 pt-6 pb-4 flex-shrink-0 bg-gradient-to-b from-[#424242] to-transparent">
-          <h2 className="text-lg font-bold text-white mb-3">{trip.title}</h2>
+          <h2 className="text-sm font-bold text-white mb-3">{trip.title}</h2>
           <div className="flex items-center gap-2 mb-3">
             <div 
               className="w-2.5 h-2.5 rounded-full border border-white/30 shadow-lg animate-pulse"
@@ -612,14 +613,14 @@ export default function TripDetailPage() {
                 <React.Fragment key={place.placeId}>
                   {/* Add Step Button Before (only show before first step) */}
                   {canEdit && index === 0 && (
-                    <div className="relative flex flex-col items-center justify-center flex-shrink-0 w-full mb-6" style={{ minHeight: '80px' }}>
+                    <div className="relative flex flex-col items-center justify-center flex-shrink-0 w-full mb-4" style={{ minHeight: '60px' }}>
                       {/* Dotted line from + to first step */}
-                      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 h-[50px] w-0.5 border-l-2 border-dashed border-white" style={{ transform: 'translate(-50%, -50%) translateY(50px)' }} />
+                      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 h-[30px] w-0.5 border-l-2 border-dashed border-white" style={{ transform: 'translate(-50%, -50%) translateY(30px)' }} />
                       <Link
                         href={`/trips/${tripId}/steps/new`}
                         className="relative z-10 w-10 h-10 rounded-full bg-black flex items-center justify-center"
                       >
-                        <span className="text-white text-xl">+</span>
+                        <MdAdd className="text-white text-xl" />
                       </Link>
                     </div>
                   )}
@@ -646,18 +647,18 @@ export default function TripDetailPage() {
                   
                   {/* Add Step Button After (between steps and after last step) */}
                   {canEdit && (
-                    <div className="relative flex flex-col items-center justify-center flex-shrink-0 w-full mt-6 mb-6" style={{ minHeight: index < sortedPlaces.length - 1 ? '120px' : '80px' }}>
+                    <div className="relative flex flex-col items-center justify-center flex-shrink-0 w-full mt-4 mb-4" style={{ minHeight: index < sortedPlaces.length - 1 ? '80px' : '60px' }}>
                       {/* Dotted line from step to + */}
-                      <div className="absolute top-0 left-1/2 -translate-x-1/2 h-[60px] w-0.5 border-l-2 border-dashed border-white" />
+                      <div className="absolute top-0 left-1/2 -translate-x-1/2 h-[30px] w-0.5 border-l-2 border-dashed border-white" />
                       {/* Dotted line from + to next step (only if not last step) */}
                       {index < sortedPlaces.length - 1 && (
-                        <div className="absolute bottom-0 left-1/2 -translate-x-1/2 h-[60px] w-0.5 border-l-2 border-dashed border-white" />
+                        <div className="absolute bottom-0 left-1/2 -translate-x-1/2 h-[30px] w-0.5 border-l-2 border-dashed border-white" />
                       )}
                       <Link
                         href={`/trips/${tripId}/steps/new${index < sortedPlaces.length - 1 ? `?after=${place.placeId}` : ''}`}
                         className="relative z-10 w-10 h-10 rounded-full bg-black flex items-center justify-center"
                       >
-                        <span className="text-white text-xl">+</span>
+                        <MdAdd className="text-white text-xl" />
                       </Link>
                     </div>
                   )}
@@ -667,7 +668,7 @@ export default function TripDetailPage() {
           </div>
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center px-4 py-12">
-            <div className="text-6xl mb-4 animate-bounce">📍</div>
+            <MdLocationOn className="text-6xl mb-4 animate-bounce text-gray-400" />
             <p className="text-base font-semibold text-white mb-2">No steps yet</p>
             <p className="text-sm text-gray-400 text-center mb-8 max-w-xs">
               Add your first step to start your journey and create beautiful travel memories
@@ -689,10 +690,10 @@ export default function TripDetailPage() {
           <div className="px-4 pb-6 flex-shrink-0">
             <div className="bg-gradient-to-br from-[#616161] to-[#424242] rounded-xl p-5 shadow-lg border border-gray-600/50">
               <div className="flex items-center gap-2 mb-3">
-                <span className="text-xl">💰</span>
-                <h3 className="text-sm font-bold text-white">Expense Summary</h3>
+                <MdAttachMoney className="text-xl" />
+                <h3 className="text-xs font-bold text-white">Expense Summary</h3>
               </div>
-              <p className="text-3xl font-bold text-white mb-4">
+              <p className="text-2xl font-bold text-white mb-4">
                 ${expenseSummary.totalSpent.toFixed(2)}
               </p>
               {expenseSummary.settlements.length > 0 && (

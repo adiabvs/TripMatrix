@@ -6,11 +6,14 @@ import Link from 'next/link';
 import { useEffect, useState, useRef, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import { getTrip, addPlace, getTripPlaces, createExpense } from '@/lib/api';
-import type { Trip, TripPlace, TripExpense, ModeOfTravel } from '@tripmatrix/types';
+import type { Trip, TripPlace, TripExpense, ModeOfTravel, TripParticipant } from '@tripmatrix/types';
+import { db } from '@/lib/firebase';
+import { doc, getDoc } from 'firebase/firestore';
 import { toDate, formatDateTimeLocalForInput, parseDateTimeLocalToUTC } from '@/lib/dateUtils';
 import { format } from 'date-fns';
 import type L from 'leaflet';
 import ExpenseForm from '@/components/ExpenseForm';
+import { MdMap, MdArrowBack, MdCameraAlt, MdSearch, MdRefresh, MdMyLocation } from 'react-icons/md';
 
 // Dynamically import PlaceMapSelector with SSR disabled
 const PlaceMapSelector = dynamic(() => import('@/components/PlaceMapSelector'), {
@@ -507,8 +510,8 @@ export default function NewStepPage() {
   if (!trip) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-[#424242] to-[#1a1a1a] px-4">
-        <div className="text-6xl mb-4">🗺️</div>
-        <h2 className="text-xl font-semibold text-white mb-2">Trip not found</h2>
+        <MdMap className="text-6xl mb-4 text-gray-400" />
+        <h2 className="text-lg font-semibold text-white mb-2">Trip not found</h2>
         <p className="text-gray-400 text-sm text-center mb-6">
           The trip you're looking for doesn't exist.
         </p>
@@ -527,7 +530,7 @@ export default function NewStepPage() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-[#424242] to-[#1a1a1a] px-4">
         <div className="text-6xl mb-4">🔒</div>
-        <h2 className="text-xl font-semibold text-white mb-2">Access Denied</h2>
+        <h2 className="text-lg font-semibold text-white mb-2">Access Denied</h2>
         <p className="text-gray-400 text-sm text-center mb-6">
           You don&apos;t have permission to add steps to this trip.
         </p>
@@ -549,9 +552,9 @@ export default function NewStepPage() {
           href={`/trips/${tripId}`} 
           className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-700/50 transition-all duration-200 active:scale-95"
         >
-          <span className="text-white text-xl">←</span>
+          <MdArrowBack className="text-white text-xl" />
         </Link>
-        <h1 className="text-sm font-semibold text-white">Add Step</h1>
+        <h1 className="text-xs font-semibold text-white">Add Step</h1>
         <div className="w-10" />
       </div>
 
@@ -640,9 +643,7 @@ export default function NewStepPage() {
               {isSearching ? (
                 <span className="text-xs">Searching...</span>
               ) : (
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
+                <MdSearch className="w-5 h-5" />
               )}
             </button>
           </div>
@@ -656,15 +657,9 @@ export default function NewStepPage() {
           className="absolute bottom-4 right-4 w-12 h-12 bg-white rounded-full shadow-lg flex items-center justify-center z-10 disabled:opacity-50"
         >
           {locationLoading ? (
-            <svg className="animate-spin h-6 w-6 text-[#1976d2]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
+            <MdRefresh className="animate-spin h-6 w-6 text-[#1976d2]" />
           ) : (
-            <svg className="w-6 h-6 text-[#1976d2]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
+            <MdMyLocation className="w-6 h-6 text-[#1976d2]" />
           )}
         </button>
       </div>
@@ -743,7 +738,7 @@ export default function NewStepPage() {
                 className="hidden"
                 disabled={uploadingImages || images.length >= 10}
               />
-              <span className="text-2xl mb-2">📷</span>
+              <MdCameraAlt className="text-2xl mb-2" />
               <span className="text-[14px] text-[#9e9e9e]">
                 {uploadingImages
                   ? 'Uploading...'
@@ -811,7 +806,7 @@ export default function NewStepPage() {
           {trip.participants && trip.participants.length > 0 && (
             <div className="pt-4 border-t border-[#616161]">
               <div className="mb-4">
-                <h3 className="text-[14px] font-semibold text-white mb-1">Expenses (Optional)</h3>
+                <h3 className="text-xs font-semibold text-white mb-1">Expenses (Optional)</h3>
                 <p className="text-[10px] text-[#9e9e9e]">Add expenses for this step</p>
               </div>
 
@@ -822,9 +817,15 @@ export default function NewStepPage() {
                     const paidByLabel = trip.participants.find(
                       p => (p.uid || p.guestName) === expense.paidBy
                     );
-                    const paidByName = paidByLabel?.isGuest 
-                      ? paidByLabel.guestName 
-                      : paidByLabel?.uid || expense.paidBy;
+                    let paidByName = 'User';
+                    if (paidByLabel?.isGuest && paidByLabel.guestName) {
+                      paidByName = paidByLabel.guestName;
+                    } else if (paidByLabel?.uid) {
+                      // For users, we'd need to fetch the name, but for pending expenses we'll show a placeholder
+                      paidByName = 'User';
+                    } else {
+                      paidByName = expense.paidBy?.length > 20 ? 'User' : (expense.paidBy || 'Unknown');
+                    }
                     return (
                       <div
                         key={index}

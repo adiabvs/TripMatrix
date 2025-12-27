@@ -6,6 +6,7 @@ import { toDate } from '@/lib/dateUtils';
 import type { TripPlace, TripExpense, ModeOfTravel } from '@tripmatrix/types';
 import PhotoViewer from './PhotoViewer';
 import { formatCurrency } from '@/lib/currencyUtils';
+import { MdEdit, MdDelete, MdStar } from 'react-icons/md';
 
 interface StepCardProps {
   place: TripPlace;
@@ -101,11 +102,11 @@ export default function StepCard({
 
         {/* Card - Matching mobile app */}
         <div className="flex-1">
-          <div className="bg-white rounded-xl p-4 border border-gray-200">
+          <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-lg">
             {/* Card Header - Matching mobile app */}
             <div className="flex justify-between items-start mb-2">
               <div className="flex-1">
-                <h3 className="text-lg font-bold text-black mb-1">{place.name}</h3>
+                <h3 className="text-sm font-bold text-black mb-1">{place.name}</h3>
                 <p className="text-xs text-gray-600">{format(visitedDate, 'MMM d, yyyy h:mm a')}</p>
               </div>
               {isCreator && (onEdit || onDelete) && (
@@ -116,7 +117,7 @@ export default function StepCard({
                       className="p-1"
                       title="Edit step"
                     >
-                      <span className="text-base">✏️</span>
+                      <MdEdit className="text-base" />
                     </button>
                   )}
                   {onDelete && (
@@ -129,7 +130,7 @@ export default function StepCard({
                       className="p-1"
                       title="Delete step"
                     >
-                      <span className="text-base">🗑️</span>
+                      <MdDelete className="text-base" />
                     </button>
                   )}
                 </div>
@@ -139,7 +140,11 @@ export default function StepCard({
             {/* Rating - Matching mobile app */}
             {place.rating && (
               <div className="mb-2">
-                <span className="text-sm">{'⭐'.repeat(place.rating)}</span>
+                <div className="flex gap-0.5">
+                  {Array.from({ length: place.rating }).map((_, i) => (
+                    <MdStar key={i} className="text-sm text-yellow-400" />
+                  ))}
+                </div>
               </div>
             )}
 
@@ -232,9 +237,7 @@ export default function StepCard({
                                   className="text-gray-400 hover:text-blue-600 transition-colors p-0.5"
                                   title="Edit expense"
                                 >
-                                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                  </svg>
+                                  <MdEdit className="w-3.5 h-3.5" />
                                 </button>
                               )}
                               {onDeleteExpense && (
@@ -248,9 +251,7 @@ export default function StepCard({
                                   className="text-gray-400 hover:text-red-600 transition-colors p-0.5"
                                   title="Delete expense"
                                 >
-                                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                  </svg>
+                                  <MdDelete className="w-3.5 h-3.5" />
                                 </button>
                               )}
                             </div>

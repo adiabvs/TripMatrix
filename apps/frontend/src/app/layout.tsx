@@ -42,9 +42,22 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={roboto.className}>
-        <ThemeProvider>
-          <AuthProvider>{children}</AuthProvider>
-        </ThemeProvider>
+        <div id="app-root" style={{ 
+          position: 'fixed', 
+          top: 0, 
+          left: 0, 
+          right: 0, 
+          bottom: 0, 
+          width: '100%', 
+          height: '100%',
+          height: '100dvh',
+          overflow: 'hidden',
+          overscrollBehavior: 'none'
+        }}>
+          <ThemeProvider>
+            <AuthProvider>{children}</AuthProvider>
+          </ThemeProvider>
+        </div>
       </body>
     </html>
   );

@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react';
 import { getTrip, createExpense } from '@/lib/api';
 import type { Trip, TripExpense } from '@tripmatrix/types';
 import ExpenseForm from '@/components/ExpenseForm';
+import { MdArrowBack } from 'react-icons/md';
 
 export default function NewExpensePage() {
   const { user, loading: authLoading, getIdToken } = useAuth();
@@ -106,9 +107,7 @@ export default function NewExpensePage() {
             href={`/trips/${tripId}`}
             className="text-gray-700 hover:text-gray-900 transition-colors text-sm font-medium flex items-center gap-2"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-            </svg>
+            <MdArrowBack className="w-4 h-4" />
             Back to Trip
           </Link>
         </div>
@@ -117,7 +116,7 @@ export default function NewExpensePage() {
       {/* Main Content */}
       <div className="max-w-4xl mx-auto px-6 py-12">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Add Expense</h1>
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">Add Expense</h1>
           <p className="text-gray-600">Add an expense to {trip.title}</p>
         </div>
 

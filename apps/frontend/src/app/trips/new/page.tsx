@@ -99,7 +99,7 @@ export default function NewTripPage() {
         <Link href="/trips" className="w-10 h-10 flex items-center justify-center">
           <span className="text-white text-xl">←</span>
         </Link>
-        <h1 className="text-[11px] font-semibold text-white">New Trip</h1>
+        <h1 className="text-xs font-semibold text-white">New Trip</h1>
         <div className="w-10" />
       </div>
 

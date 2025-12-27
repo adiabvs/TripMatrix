@@ -127,10 +127,10 @@ export default function PublicTripViewPage() {
 
       <div className="container mx-auto px-4 py-8">
         {/* Trip Header */}
-        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+        <div className="bg-white rounded-xl shadow-lg p-6 mb-8 border border-gray-200">
           <div className="flex items-start justify-between mb-4">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900 mb-2">{trip.title}</h1>
+              <h1 className="text-xl font-bold text-gray-900 mb-2">{trip.title}</h1>
               {trip.description && (
                 <p className="text-gray-600 mb-4">{trip.description}</p>
               )}
@@ -179,8 +179,8 @@ export default function PublicTripViewPage() {
 
         {/* Map */}
         {routes.length > 0 || places.length > 0 ? (
-          <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-            <h2 className="text-2xl font-bold mb-4">Route Map</h2>
+          <div className="bg-white rounded-xl shadow-lg p-6 mb-8 border border-gray-200">
+            <h2 className="text-xl font-bold mb-4">Route Map</h2>
             <TripMap 
               routes={routes} 
               places={places.map(p => ({
@@ -194,15 +194,15 @@ export default function PublicTripViewPage() {
         ) : null}
 
         {/* Places */}
-        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-          <h2 className="text-2xl font-bold mb-4">Places Visited ({places.length})</h2>
+        <div className="bg-white rounded-xl shadow-lg p-6 mb-8 border border-gray-200">
+          <h2 className="text-xl font-bold mb-4">Places Visited ({places.length})</h2>
           {places.length === 0 ? (
             <p className="text-gray-500">No places visited yet</p>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {places.map((place) => (
-                <div key={place.placeId} className="border border-gray-200 rounded-lg p-4">
-                  <h3 className="font-semibold text-lg mb-2">{place.name}</h3>
+                <div key={place.placeId} className="border border-gray-200 rounded-xl p-6 bg-white shadow-lg">
+                  <h3 className="font-semibold text-sm mb-3">{place.name}</h3>
                   {place.rating && (
                     <div className="mb-2">
                       {'★'.repeat(place.rating)}{'☆'.repeat(5 - place.rating)}
@@ -224,8 +224,8 @@ export default function PublicTripViewPage() {
         </div>
 
         {/* Participants */}
-        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-          <h2 className="text-2xl font-bold mb-4">Participants</h2>
+        <div className="bg-white rounded-xl shadow-lg p-6 mb-8 border border-gray-200">
+          <h2 className="text-xl font-bold mb-4">Participants</h2>
           <div className="flex flex-wrap gap-2">
             {trip.participants.map((participant, idx) => (
               <span
@@ -241,7 +241,7 @@ export default function PublicTripViewPage() {
         {/* Expenses (if allowed) */}
         {trip.totalExpense !== undefined && (
           <div className="bg-white rounded-lg shadow-md p-6">
-            <h2 className="text-2xl font-bold mb-4">
+            <h2 className="text-xl font-bold mb-4">
               Total Expenses: ${trip.totalExpense.toFixed(2)}
             </h2>
             {expenses.length > 0 && (

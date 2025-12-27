@@ -150,21 +150,21 @@ export default function TripSettingsPage() {
         <Link href={`/trips/${tripId}`} className="w-10 h-10 flex items-center justify-center">
           <span className="text-white text-xl">←</span>
         </Link>
-        <h1 className="text-[11px] font-semibold text-white">Trip Settings</h1>
+        <h1 className="text-xs font-semibold text-white">Trip Settings</h1>
         <div className="w-10" /> {/* Spacer for centering */}
       </div>
 
       {/* Main Content */}
       <div className="flex-1 overflow-y-auto px-4 py-4">
         <div className="mb-6">
-          <h2 className="text-[14px] font-semibold text-white mb-1">{trip.title}</h2>
+          <h2 className="text-[10px] font-semibold text-white mb-1">{trip.title}</h2>
           <p className="text-[12px] text-gray-300">Manage your trip settings</p>
         </div>
 
         <div className="space-y-6">
           {/* Cover Image */}
           <div className="bg-[#616161] p-4 rounded-lg">
-            <h2 className="text-[14px] font-semibold text-white mb-4">Cover Image</h2>
+            <h2 className="text-xs font-semibold text-white mb-4">Cover Image</h2>
             
             <div className="space-y-4">
               {coverImage ? (
@@ -208,7 +208,7 @@ export default function TripSettingsPage() {
 
           {/* Privacy Settings */}
           <div className="bg-[#616161] p-4 rounded-lg">
-            <h2 className="text-[14px] font-semibold text-white mb-4">Privacy Settings</h2>
+            <h2 className="text-xs font-semibold text-white mb-4">Privacy Settings</h2>
             
             {/* Public/Private Toggle */}
             <div className="mb-6">
@@ -330,7 +330,7 @@ export default function TripSettingsPage() {
 
           {/* Danger Zone */}
           <div className="bg-[#616161] p-4 rounded-lg border border-red-600">
-            <h2 className="text-[14px] font-semibold text-red-400 mb-4">Danger Zone</h2>
+            <h2 className="text-xs font-semibold text-red-400 mb-4">Danger Zone</h2>
             
             <div className="mb-4">
               <p className="text-[12px] text-red-300 mb-2">

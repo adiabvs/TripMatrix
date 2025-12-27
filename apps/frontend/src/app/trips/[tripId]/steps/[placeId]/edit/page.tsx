@@ -5,12 +5,15 @@ import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useEffect, useState, useRef } from 'react';
 import dynamic from 'next/dynamic';
-import { getTrip, getTripPlaces, updatePlace, createExpense, uploadImage } from '@/lib/api';
-import type { Trip, TripPlace, ModeOfTravel } from '@tripmatrix/types';
+import { getTrip, getTripPlaces, updatePlace, createExpense, uploadImage, getTripExpenses, deleteExpense } from '@/lib/api';
+import type { Trip, TripPlace, ModeOfTravel, TripParticipant } from '@tripmatrix/types';
 import { toDate, formatDateTimeLocalForInput, parseDateTimeLocalToUTC } from '@/lib/dateUtils';
 import { format } from 'date-fns';
 import type L from 'leaflet';
 import ExpenseForm from '@/components/ExpenseForm';
+import { db } from '@/lib/firebase';
+import { doc, getDoc } from 'firebase/firestore';
+import { MdArrowBack, MdCameraAlt, MdAdd, MdRemove, MdSearch, MdRefresh, MdMyLocation } from 'react-icons/md';
 
 // Dynamically import PlaceMapSelector with SSR disabled
 const PlaceMapSelector = dynamic(() => import('@/components/PlaceMapSelector'), {
@@ -21,6 +24,85 @@ const PlaceMapSelector = dynamic(() => import('@/components/PlaceMapSelector'), 
     </div>
   ),
 });
+
+// Component to display expense list with proper names
+function ExpenseList({ 
+  expenses, 
+  participants, 
+  tripId, 
+  userNamesMap, 
+  setUserNamesMap 
+}: { 
+  expenses: any[]; 
+  participants: TripParticipant[]; 
+  tripId: string;
+  userNamesMap: Record<string, string>;
+  setUserNamesMap: (map: Record<string, string> | ((prev: Record<string, string>) => Record<string, string>)) => void;
+}) {
+  const [namesMap, setNamesMap] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    const loadNames = async () => {
+      const newMap: Record<string, string> = {};
+      for (const expense of expenses) {
+        const paidByLabel = participants.find(
+          p => (p.uid || p.guestName) === expense.paidBy
+        );
+        
+        if (paidByLabel?.isGuest && paidByLabel.guestName) {
+          newMap[expense.paidBy] = paidByLabel.guestName;
+        } else if (paidByLabel?.uid) {
+          if (userNamesMap[paidByLabel.uid]) {
+            newMap[expense.paidBy] = userNamesMap[paidByLabel.uid];
+          } else {
+            try {
+              const userDoc = await getDoc(doc(db, 'users', paidByLabel.uid));
+              if (userDoc.exists()) {
+                const userData = userDoc.data();
+                const userName = userData.name || userData.email?.split('@')[0] || 'User';
+                newMap[expense.paidBy] = userName;
+                setUserNamesMap(prev => ({ ...prev, [paidByLabel.uid!]: userName }));
+              } else {
+                newMap[expense.paidBy] = 'User';
+              }
+            } catch (error) {
+              console.error('Failed to fetch user name:', error);
+              newMap[expense.paidBy] = 'User';
+            }
+          }
+        } else {
+          newMap[expense.paidBy] = expense.paidBy?.length > 20 ? 'User' : (expense.paidBy || 'Unknown');
+        }
+      }
+      setNamesMap(newMap);
+    };
+    loadNames();
+  }, [expenses, participants, userNamesMap, setUserNamesMap]);
+
+  return (
+    <div className="space-y-2 mb-4">
+      {expenses.map((expense, index) => (
+        <div key={expense.expenseId || index} className="bg-[#616161] rounded-lg p-3 flex justify-between items-center">
+          <div className="flex-1">
+            <p className="text-[11px] font-semibold text-white">
+              {expense.currency || 'USD'} {expense.amount?.toFixed(2)}
+            </p>
+            <p className="text-[10px] text-[#bdbdbd]">
+              Paid by: {namesMap[expense.paidBy] || 'Loading...'}
+              {expense.description && ` • ${expense.description}`}
+            </p>
+          </div>
+          <Link
+            href={`/trips/${tripId}/expenses/${expense.expenseId}/edit`}
+            className="text-[10px] text-[#1976d2] hover:text-[#1565c0] ml-2"
+          >
+            Edit
+          </Link>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export default function EditStepPage() {
   const { user, loading: authLoading, getIdToken } = useAuth();
@@ -48,6 +130,8 @@ export default function EditStepPage() {
   const [submitting, setSubmitting] = useState(false);
   const [showExpenseForm, setShowExpenseForm] = useState(false);
   const [placeCountry, setPlaceCountry] = useState<string | undefined>(undefined);
+  const [expenses, setExpenses] = useState<any[]>([]);
+  const [userNamesMap, setUserNamesMap] = useState<Record<string, string>>({});
   
   // Map search state
   const [searchQuery, setSearchQuery] = useState('');
@@ -82,12 +166,17 @@ export default function EditStepPage() {
   const loadTripData = async () => {
     try {
       const token = await getIdToken();
-      const [tripData, placesData] = await Promise.all([
+      const [tripData, placesData, expensesData] = await Promise.all([
         getTrip(tripId, token),
         getTripPlaces(tripId, token),
+        getTripExpenses(tripId, token),
       ]);
 
       setTrip(tripData);
+      
+      // Filter expenses for this place
+      const placeExpenses = expensesData.filter((e: any) => e.placeId === placeId);
+      setExpenses(placeExpenses);
       
       // Find the current place
       const currentPlace = placesData.find(p => p.placeId === placeId);
@@ -372,6 +461,10 @@ export default function EditStepPage() {
         tripId,
         placeId,
       }, token);
+      // Reload expenses
+      const expensesData = await getTripExpenses(tripId, token);
+      const placeExpenses = expensesData.filter((e: any) => e.placeId === placeId);
+      setExpenses(placeExpenses);
       alert('Expense added successfully!');
       setShowExpenseForm(false);
     } catch (error: any) {
@@ -410,9 +503,9 @@ export default function EditStepPage() {
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-600">
         <Link href={`/trips/${tripId}`} className="w-10 h-10 flex items-center justify-center">
-          <span className="text-white text-xl">←</span>
+          <MdArrowBack className="text-white text-xl" />
         </Link>
-        <h1 className="text-[11px] font-semibold text-white">Edit Step</h1>
+        <h1 className="text-xs font-semibold text-white">Edit Step</h1>
         <div className="w-10" />
       </div>
 
@@ -502,9 +595,7 @@ export default function EditStepPage() {
               {isSearching ? (
                 <span className="text-xs">Searching...</span>
               ) : (
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
+                <MdSearch className="w-5 h-5" />
               )}
             </button>
           </div>
@@ -518,15 +609,9 @@ export default function EditStepPage() {
           className="absolute bottom-4 right-4 w-12 h-12 bg-white rounded-full shadow-lg flex items-center justify-center z-10 disabled:opacity-50"
         >
           {locationLoading ? (
-            <svg className="animate-spin h-6 w-6 text-[#1976d2]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
+            <MdRefresh className="animate-spin h-6 w-6 text-[#1976d2]" />
           ) : (
-            <svg className="w-6 h-6 text-[#1976d2]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
+            <MdMyLocation className="w-6 h-6 text-[#1976d2]" />
           )}
         </button>
       </div>
@@ -605,7 +690,7 @@ export default function EditStepPage() {
                 className="hidden"
                 disabled={uploadingImages || images.length >= 10}
               />
-              <span className="text-2xl mb-2">📷</span>
+              <MdCameraAlt className="text-2xl mb-2" />
               <span className="text-[14px] text-[#9e9e9e]">
                 {uploadingImages
                   ? 'Uploading...'
@@ -673,18 +758,31 @@ export default function EditStepPage() {
           {trip.participants && trip.participants.length > 0 && (
             <div className="pt-4 border-t border-[#616161]">
               <div className="mb-4">
-                <label className="flex items-center gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={showExpenseForm}
-                    onChange={(e) => setShowExpenseForm(e.target.checked)}
-                    className="w-5 h-5 rounded border-gray-300 text-[#1976d2] focus:ring-[#1976d2] focus:ring-2"
-                  />
-                  <div>
-                    <h3 className="text-[14px] font-semibold text-white mb-1">Add Expense (Optional)</h3>
-                    <p className="text-[10px] text-[#9e9e9e]">Add expenses for this step</p>
-                  </div>
-                </label>
+                <h3 className="text-xs font-semibold text-white mb-2">Expenses</h3>
+                <p className="text-[10px] text-[#9e9e9e] mb-3">Manage expenses for this step</p>
+              </div>
+
+              {/* Existing Expenses List */}
+              {expenses.length > 0 && (
+                <ExpenseList 
+                  expenses={expenses}
+                  participants={trip.participants}
+                  tripId={tripId}
+                  userNamesMap={userNamesMap}
+                  setUserNamesMap={setUserNamesMap}
+                />
+              )}
+
+              {/* Add Expense Button */}
+              <div className="mb-4">
+                <button
+                  type="button"
+                  onClick={() => setShowExpenseForm(!showExpenseForm)}
+                  className="w-full flex items-center justify-center gap-2 py-2 px-4 bg-[#1976d2] text-white rounded-lg text-[12px] font-medium hover:bg-[#1565c0] transition-colors"
+                >
+                  {showExpenseForm ? <MdRemove className="text-xl" /> : <MdAdd className="text-xl" />}
+                  <span>{showExpenseForm ? 'Cancel' : 'Add Expense'}</span>
+                </button>
               </div>
 
               {showExpenseForm && (

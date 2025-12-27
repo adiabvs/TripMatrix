@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import type { Trip, User } from '@tripmatrix/types';
+import { MdMap, MdFavorite, MdChatBubbleOutline } from 'react-icons/md';
 
 interface CompactTripCardProps {
   trip: Trip;
@@ -17,17 +18,34 @@ export default function CompactTripCard({ trip, onPress, creator }: CompactTripC
     if (creator?.name) {
       return creator.name;
     }
-    // Fallback to participant guest name
-    const creatorParticipant = trip.participants?.find(p => p.uid === trip.creatorId);
-    if (creatorParticipant?.guestName) {
+    // Find creator in participants
+    const creatorParticipant = trip.participants?.find(p => 
+      (p.uid && p.uid === trip.creatorId) || 
+      (!p.uid && p.guestName && trip.creatorId === p.guestName)
+    );
+    
+    // If creator is a guest, use guest name
+    if (creatorParticipant?.isGuest && creatorParticipant.guestName) {
       return creatorParticipant.guestName;
     }
+    
+    // If creator is a user participant but we don't have user data, show "You" if it's the current user
+    // Otherwise, try to extract a readable name from the UID
+    if (creatorParticipant?.uid) {
+      // If it's a Firebase UID (long alphanumeric), show a shortened version
+      if (creatorParticipant.uid.length > 20) {
+        return 'Trip Creator';
+      }
+      return creatorParticipant.uid;
+    }
+    
     // Last resort: extract from email or generate
     if (trip.creatorId?.includes('@')) {
       const emailPart = trip.creatorId.split('@')[0];
       return emailPart.charAt(0).toUpperCase() + emailPart.slice(1).replace(/[._-]/g, ' ');
     }
-    return 'User';
+    
+    return 'Trip Creator';
   };
   
   const creatorName = getCreatorName();
@@ -35,7 +53,7 @@ export default function CompactTripCard({ trip, onPress, creator }: CompactTripC
   const commentCount = 0;
 
   const cardContent = (
-    <div className="relative h-[140px] rounded-lg overflow-hidden bg-gray-200 shadow-md cursor-pointer">
+    <div className="relative h-[160px] rounded-xl overflow-hidden bg-white shadow-lg cursor-pointer border border-gray-200">
       {/* Cover Image or Gradient Background */}
       <div className="absolute inset-0">
         {trip.coverImage ? (
@@ -45,19 +63,19 @@ export default function CompactTripCard({ trip, onPress, creator }: CompactTripC
             className="w-full h-full object-cover"
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center bg-gray-200">
-            <span className="text-4xl">🗺️</span>
+          <div className="w-full h-full flex items-center justify-center bg-gray-100">
+            <MdMap className="text-4xl text-gray-400" />
           </div>
         )}
-        {/* Dark grey overlay */}
-        <div className="absolute inset-0 bg-[rgba(66,66,66,0.4)]" />
+        {/* Light overlay */}
+        <div className="absolute inset-0 bg-[rgba(0,0,0,0.2)]" />
       </div>
       
       {/* Content Overlay - No padding, backgrounds cover completely */}
       <div className="absolute inset-0 flex flex-col justify-between">
         {/* Top Banner: Trip Name (left) and Status (right) - Full width, no padding */}
-        <div className="flex justify-between items-center bg-[rgba(66,66,66,0.85)] w-full">
-          <h3 className="text-[9px] font-semibold text-white flex-1 px-2 py-1 truncate leading-tight">
+        <div className="flex justify-between items-center bg-[rgba(0,0,0,0.7)] w-full">
+          <h3 className="text-[8px] font-semibold text-white flex-1 px-3 py-2 truncate leading-tight">
             {trip.title}
           </h3>
           <div 
@@ -67,14 +85,14 @@ export default function CompactTripCard({ trip, onPress, creator }: CompactTripC
         </div>
         
         {/* Bottom Section: Creator (left) and Counts (right) - Full width, no padding */}
-        <div className="flex justify-between items-center bg-[rgba(66,66,66,0.7)] w-full">
-          <span className="text-[9px] text-white opacity-90 px-2 py-1 truncate leading-tight">
+        <div className="flex justify-between items-center bg-[rgba(0,0,0,0.6)] w-full">
+          <span className="text-[9px] text-white opacity-90 px-3 py-2 truncate leading-tight">
             {creatorName}
           </span>
-          <div className="flex items-center gap-0.5 px-2 py-1">
-            <span className="text-[9px] text-white">❤️</span>
+          <div className="flex items-center gap-0.5 px-3 py-2">
+            <MdFavorite className="text-[9px] text-white" />
             <span className="text-[9px] text-white font-medium leading-tight">{loveCount}</span>
-            <span className="text-[9px] text-white ml-0.5">💬</span>
+            <MdChatBubbleOutline className="text-[9px] text-white ml-0.5" />
             <span className="text-[9px] text-white font-medium leading-tight">{commentCount}</span>
           </div>
         </div>

@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { getCurrencyFromCountry } from '@/lib/currencyUtils';
+import { MdCheck } from 'react-icons/md';
 
 interface CountrySelectorProps {
   onSelect: (countryCode: string, currency: string) => void;
@@ -110,9 +111,7 @@ export default function CountrySelector({ onSelect, currentCountry }: CountrySel
                     </div>
                   </div>
                   {selectedCountry === country.code && (
-                    <svg className="w-5 h-5 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
+                    <MdCheck className="w-5 h-5 text-black" />
                   )}
                 </button>
               ))}

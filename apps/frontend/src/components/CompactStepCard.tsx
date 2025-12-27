@@ -6,7 +6,7 @@ import { toDate } from '@/lib/dateUtils';
 import type { TripPlace, TripExpense } from '@tripmatrix/types';
 import PhotoViewer from './PhotoViewer';
 import Link from 'next/link';
-import { Delete as DeleteIcon } from '@mui/icons-material';
+import { MdDelete, MdLocationOn, MdStar, MdAttachMoney } from 'react-icons/md';
 import { formatCurrency } from '@/lib/currencyUtils';
 
 interface CompactStepCardProps {
@@ -59,7 +59,7 @@ export default function CompactStepCard({
   }, {} as Record<string, number>);
 
   const cardContent = (
-    <div className="relative h-[140px] rounded-lg overflow-hidden bg-gray-200 shadow-md cursor-pointer">
+    <div className="relative h-[160px] rounded-xl overflow-hidden bg-white shadow-lg cursor-pointer border border-gray-200">
       {/* Cover Image or Gradient Background */}
       <div className="absolute inset-0">
         {coverImage ? (
@@ -70,24 +70,25 @@ export default function CompactStepCard({
             onClick={() => handlePhotoClick(0)}
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center bg-gray-200">
-            <span className="text-4xl">📍</span>
+          <div className="w-full h-full flex items-center justify-center bg-gray-100">
+            <MdLocationOn className="text-4xl text-gray-400" />
           </div>
         )}
-        {/* Dark grey overlay */}
-        <div className="absolute inset-0 bg-[rgba(66,66,66,0.4)]" />
+        {/* Light overlay */}
+        <div className="absolute inset-0 bg-[rgba(0,0,0,0.2)]" />
       </div>
       
       {/* Content Overlay - No padding, backgrounds cover completely */}
       <div className="absolute inset-0 flex flex-col justify-between">
         {/* Top Banner: Step Name - Full width, no padding */}
-        <div className="flex justify-between items-center bg-[rgba(66,66,66,0.85)] w-full">
-          <h3 className="text-[9px] font-semibold text-white flex-1 px-2 py-1 truncate leading-tight">
+        <div className="flex justify-between items-center bg-[rgba(0,0,0,0.7)] w-full">
+          <h3 className="text-[8px] font-semibold text-white flex-1 px-3 py-2 truncate leading-tight">
             {place.name}
           </h3>
           {/* Delete Button - Inside title banner */}
           {isCreator && onDelete && (
             <button
+              type="button"
               onClick={(e) => {
                 e.stopPropagation();
                 e.preventDefault();
@@ -95,32 +96,33 @@ export default function CompactStepCard({
                   onDelete(place);
                 }
               }}
-              className="w-5 h-5 rounded-full bg-red-600 hover:bg-red-700 flex items-center justify-center mr-1 flex-shrink-0 transition-colors"
+              className="px-2 py-1 rounded bg-red-600 hover:bg-red-700 flex items-center justify-center gap-1 mr-2 flex-shrink-0 transition-colors text-white text-[8px] font-semibold"
               title="Delete step"
-              style={{ minWidth: '20px', minHeight: '20px' }}
+              aria-label="Delete step"
             >
-              <DeleteIcon sx={{ fontSize: 12, color: 'white', display: 'block' }} />
+              <MdDelete className="w-3 h-3" />
+              <span>Delete</span>
             </button>
           )}
         </div>
         
         {/* Bottom Section: Date (left) and Rating/Expenses (right) - Full width, no padding */}
-        <div className="flex justify-between items-center bg-[rgba(66,66,66,0.7)] w-full">
+        <div className="flex justify-between items-center bg-[rgba(0,0,0,0.6)] w-full">
           {visitedDate && !isNaN(visitedDate.getTime()) && (
-            <span className="text-[9px] text-white opacity-90 px-2 py-1 truncate leading-tight">
+            <span className="text-[9px] text-white opacity-90 px-3 py-2 truncate leading-tight">
               {format(visitedDate, 'MMM dd')}
             </span>
           )}
-          <div className="flex items-center gap-2 px-2 py-1">
+          <div className="flex items-center gap-2 px-3 py-2">
             {place.rating && (
               <div className="flex items-center gap-0.5">
-                <span className="text-[9px] text-white">⭐</span>
+                <MdStar className="text-[9px] text-yellow-400" />
                 <span className="text-[9px] text-white font-medium leading-tight">{place.rating}</span>
               </div>
             )}
             {placeExpenses.length > 0 && (
               <div className="flex items-center gap-1">
-                <span className="text-[9px] text-white">💰</span>
+                <MdAttachMoney className="text-[9px] text-white" />
                 <span className="text-[9px] text-white font-medium leading-tight">
                   {Object.entries(expensesByCurrency).map(([curr, total]) => 
                     formatCurrency(total, curr)

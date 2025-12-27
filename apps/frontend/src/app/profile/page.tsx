@@ -8,6 +8,7 @@ import { format } from 'date-fns';
 import { toDate } from '@/lib/dateUtils';
 import { getUserTrips } from '@/lib/api';
 import type { Trip } from '@tripmatrix/types';
+import { MdHome } from 'react-icons/md';
 
 export default function ProfilePage() {
   const { user, firebaseUser, loading: authLoading, signOut, getIdToken } = useAuth();
@@ -75,7 +76,7 @@ export default function ProfilePage() {
       {/* Navigation */}
       <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-100">
         <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
-          <Link href="/trips" className="text-2xl font-bold text-gray-900 tracking-tight">
+          <Link href="/trips" className="text-xl font-bold text-gray-900 tracking-tight">
             TripMatrix
           </Link>
           <Link
@@ -107,7 +108,7 @@ export default function ProfilePage() {
               )}
             </div>
             <div className="flex-1">
-              <h1 className="text-4xl font-bold text-gray-900 mb-2">{user.name}</h1>
+              <h1 className="text-3xl font-bold text-gray-900 mb-2">{user.name}</h1>
               <p className="text-gray-600 mb-4">{user.email}</p>
               <p className="text-sm text-gray-500">
                 Member since {format(toDate(user.createdAt), 'MMMM yyyy')}
@@ -125,19 +126,19 @@ export default function ProfilePage() {
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-12">
           <div className="bg-gray-50 rounded-2xl p-6 border border-gray-100">
-            <p className="text-3xl font-bold text-gray-900 mb-1">{trips.length}</p>
+            <p className="text-2xl font-bold text-gray-900 mb-1">{trips.length}</p>
             <p className="text-sm text-gray-600">Total Trips</p>
           </div>
           <div className="bg-gray-50 rounded-2xl p-6 border border-gray-100">
-            <p className="text-3xl font-bold text-gray-900 mb-1">{activeTrips}</p>
+            <p className="text-2xl font-bold text-gray-900 mb-1">{activeTrips}</p>
             <p className="text-sm text-gray-600">Active Trips</p>
           </div>
           <div className="bg-gray-50 rounded-2xl p-6 border border-gray-100">
-            <p className="text-3xl font-bold text-gray-900 mb-1">{completedTrips}</p>
+            <p className="text-2xl font-bold text-gray-900 mb-1">{completedTrips}</p>
             <p className="text-sm text-gray-600">Completed</p>
           </div>
           <div className="bg-gray-50 rounded-2xl p-6 border border-gray-100">
-            <p className="text-3xl font-bold text-gray-900 mb-1">
+            <p className="text-2xl font-bold text-gray-900 mb-1">
               {(totalDistance / 1000).toFixed(0)}
             </p>
             <p className="text-sm text-gray-600">Kilometers</p>
@@ -146,7 +147,7 @@ export default function ProfilePage() {
 
         {/* Recent Trips */}
         <div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-6">My Trips</h2>
+          <h2 className="text-xl font-bold text-gray-900 mb-6">My Trips</h2>
           {trips.length === 0 ? (
             <div className="text-center py-16 bg-gray-50 rounded-2xl">
               <p className="text-gray-600 mb-4">No trips yet</p>
@@ -165,7 +166,7 @@ export default function ProfilePage() {
                   href={`/trips/${trip.tripId}`}
                   className="group block"
                 >
-                  <div className="relative overflow-hidden rounded-2xl bg-gray-100 aspect-[4/3] mb-4">
+                  <div className="relative overflow-hidden rounded-2xl bg-white aspect-[4/3] mb-5 border border-gray-200 shadow-lg">
                     {trip.coverImage ? (
                       <img
                         src={trip.coverImage}
@@ -173,26 +174,8 @@ export default function ProfilePage() {
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                       />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-100 to-indigo-100">
-                        <svg
-                          className="w-16 h-16 text-gray-400"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"
-                          />
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M9 22V12h6v10"
-                          />
-                        </svg>
+                      <div className="w-full h-full flex items-center justify-center bg-gray-100">
+                        <MdHome className="w-16 h-16 text-gray-400" />
                       </div>
                     )}
                     <div className="absolute top-4 right-4">
@@ -208,7 +191,7 @@ export default function ProfilePage() {
                     </div>
                   </div>
                   <div>
-                    <h3 className="text-xl font-bold text-gray-900 mb-1 group-hover:text-gray-700 transition-colors">
+                    <h3 className="text-base font-bold text-gray-900 mb-1 group-hover:text-gray-700 transition-colors">
                       {trip.title}
                     </h3>
                     <p className="text-xs text-gray-500">
