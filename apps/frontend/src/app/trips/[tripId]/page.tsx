@@ -195,13 +195,13 @@ export default function TripDetailPage() {
     }
   };
 
-  const handleDeletePlace = async (place: TripPlace) => {
+  const handleDeletePlace = async (placeId: string) => {
     if (!token) {
       alert('Authentication token is missing. Please log in again.');
       return;
     }
     try {
-      await deletePlace(place.placeId, token);
+      await deletePlace(placeId, token);
       await loadTripData(); // Reload data to reflect changes
     } catch (error: any) {
       console.error('Failed to delete place:', error);
