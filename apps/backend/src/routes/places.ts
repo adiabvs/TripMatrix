@@ -565,17 +565,186 @@ router.get('/:placeId/comments', async (req: OptionalAuthRequest, res) => {
     // Get all comments for this place
     const commentsSnapshot = await db.collection('placeComments')
       .where('placeId', '==', placeId)
-      .orderBy('createdAt', 'desc')
       .get();
 
-    const comments = commentsSnapshot.docs.map((doc) => ({
-      commentId: doc.id,
-      ...doc.data(),
-    })) as PlaceComment[];
+    const comments = (commentsSnapshot.docs
+      .map((doc) => {
+        const data = doc.data();
+        return {
+          commentId: doc.id,
+          ...data,
+          // Convert Firestore Timestamp to Date if needed
+          createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : data.createdAt,
+        };
+      }) as PlaceComment[])
+      .sort((a, b) => {
+        const aTime = a.createdAt instanceof Date 
+          ? a.createdAt.getTime() 
+          : typeof a.createdAt === 'string' 
+            ? new Date(a.createdAt).getTime() 
+            : 0;
+        const bTime = b.createdAt instanceof Date 
+          ? b.createdAt.getTime() 
+          : typeof b.createdAt === 'string' 
+            ? new Date(b.createdAt).getTime() 
+            : 0;
+        return bTime - aTime; // Sort descending (newest first)
+      });
 
     res.json({
       success: true,
       data: comments,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+// Like a place
+router.post('/:placeId/like', async (req: OptionalAuthRequest, res) => {
+  try {
+    if (!req.uid) {
+      return res.status(401).json({
+        success: false,
+        error: 'Authentication required',
+      });
+    }
+    const { placeId } = req.params;
+    const uid = req.uid;
+    const db = getDb();
+
+    const placeRef = db.collection('tripPlaces').doc(placeId);
+    const placeDoc = await placeRef.get();
+
+    if (!placeDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        error: 'Place not found',
+      });
+    }
+
+    const place = placeDoc.data() as TripPlace;
+    
+    // Check if trip is public or user has access
+    const tripDoc = await db.collection('trips').doc(place.tripId).get();
+    if (!tripDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        error: 'Trip not found',
+      });
+    }
+
+    const trip = tripDoc.data()!;
+    
+    // Allow likes if trip is public, or if user is creator/participant
+    if (!trip.isPublic) {
+      if (trip.creatorId !== uid && 
+          !trip.participants?.some((p: any) => p.uid === uid)) {
+        return res.status(403).json({
+          success: false,
+          error: 'Not authorized to like this place',
+        });
+      }
+    }
+
+    // Check if already liked
+    const likeDoc = await db.collection('placeLikes')
+      .where('placeId', '==', placeId)
+      .where('userId', '==', uid)
+      .limit(1)
+      .get();
+
+    if (!likeDoc.empty) {
+      return res.json({
+        success: true,
+        data: { liked: true, message: 'Already liked' },
+      });
+    }
+
+    // Add like
+    await db.collection('placeLikes').add({
+      placeId,
+      userId: uid,
+      createdAt: new Date(),
+    });
+
+    res.json({
+      success: true,
+      data: { liked: true, message: 'Place liked' },
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+// Unlike a place
+router.delete('/:placeId/like', async (req: OptionalAuthRequest, res) => {
+  try {
+    if (!req.uid) {
+      return res.status(401).json({
+        success: false,
+        error: 'Authentication required',
+      });
+    }
+    const { placeId } = req.params;
+    const uid = req.uid;
+    const db = getDb();
+
+    // Find and delete like
+    const likeSnapshot = await db.collection('placeLikes')
+      .where('placeId', '==', placeId)
+      .where('userId', '==', uid)
+      .limit(1)
+      .get();
+
+    if (likeSnapshot.empty) {
+      return res.json({
+        success: true,
+        data: { liked: false, message: 'Not liked' },
+      });
+    }
+
+    await likeSnapshot.docs[0].ref.delete();
+
+    res.json({
+      success: true,
+      data: { liked: false, message: 'Place unliked' },
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+// Get like status and count for a place
+router.get('/:placeId/likes', async (req: OptionalAuthRequest, res) => {
+  try {
+    const { placeId } = req.params;
+    const uid = req.uid;
+    const db = getDb();
+
+    // Get all likes for this place
+    const likesSnapshot = await db.collection('placeLikes')
+      .where('placeId', '==', placeId)
+      .get();
+
+    const likeCount = likesSnapshot.size;
+    const isLiked = uid ? likesSnapshot.docs.some(doc => doc.data().userId === uid) : false;
+
+    res.json({
+      success: true,
+      data: {
+        likeCount,
+        isLiked,
+      },
     });
   } catch (error: any) {
     res.status(500).json({

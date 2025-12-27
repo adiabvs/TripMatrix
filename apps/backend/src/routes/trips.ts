@@ -808,5 +808,189 @@ router.get('/search', async (req: OptionalAuthRequest, res) => {
   }
 });
 
+// Like a trip
+router.post('/:tripId/like', async (req: OptionalAuthRequest, res) => {
+  try {
+    if (!req.uid) {
+      return res.status(401).json({
+        success: false,
+        error: 'Authentication required',
+      });
+    }
+    const { tripId } = req.params;
+    const uid = req.uid;
+    const db = getDb();
+
+    const tripRef = db.collection('trips').doc(tripId);
+    const tripDoc = await tripRef.get();
+
+    if (!tripDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        error: 'Trip not found',
+      });
+    }
+
+    const trip = tripDoc.data() as Trip;
+    
+    // Check if trip is public or user has access
+    if (!trip.isPublic) {
+      if (trip.creatorId !== uid && 
+          !trip.participants?.some((p) => p.uid === uid)) {
+        return res.status(403).json({
+          success: false,
+          error: 'Not authorized to like this trip',
+        });
+      }
+    }
+
+    // Check if already liked
+    const likeDoc = await db.collection('tripLikes')
+      .where('tripId', '==', tripId)
+      .where('userId', '==', uid)
+      .limit(1)
+      .get();
+
+    if (!likeDoc.empty) {
+      return res.json({
+        success: true,
+        data: { liked: true, message: 'Already liked' },
+      });
+    }
+
+    // Add like
+    await db.collection('tripLikes').add({
+      tripId,
+      userId: uid,
+      createdAt: new Date(),
+    });
+
+    res.json({
+      success: true,
+      data: { liked: true, message: 'Trip liked' },
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+// Unlike a trip
+router.delete('/:tripId/like', async (req: OptionalAuthRequest, res) => {
+  try {
+    if (!req.uid) {
+      return res.status(401).json({
+        success: false,
+        error: 'Authentication required',
+      });
+    }
+    const { tripId } = req.params;
+    const uid = req.uid;
+    const db = getDb();
+
+    // Find and delete like
+    const likeSnapshot = await db.collection('tripLikes')
+      .where('tripId', '==', tripId)
+      .where('userId', '==', uid)
+      .limit(1)
+      .get();
+
+    if (likeSnapshot.empty) {
+      return res.json({
+        success: true,
+        data: { liked: false, message: 'Not liked' },
+      });
+    }
+
+    await likeSnapshot.docs[0].ref.delete();
+
+    res.json({
+      success: true,
+      data: { liked: false, message: 'Trip unliked' },
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+// Get like status and count for a trip
+router.get('/:tripId/likes', async (req: OptionalAuthRequest, res) => {
+  try {
+    const { tripId } = req.params;
+    const uid = req.uid;
+    const db = getDb();
+
+    // Get all likes for this trip
+    const likesSnapshot = await db.collection('tripLikes')
+      .where('tripId', '==', tripId)
+      .get();
+
+    const likeCount = likesSnapshot.size;
+    const isLiked = uid ? likesSnapshot.docs.some(doc => doc.data().userId === uid) : false;
+
+    res.json({
+      success: true,
+      data: {
+        likeCount,
+        isLiked,
+      },
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+// Get comment count for a trip
+router.get('/:tripId/comments/count', async (req: OptionalAuthRequest, res) => {
+  try {
+    const { tripId } = req.params;
+    const db = getDb();
+
+    // Get all comments for places in this trip
+    const placesSnapshot = await db.collection('tripPlaces')
+      .where('tripId', '==', tripId)
+      .get();
+
+    const placeIds = placesSnapshot.docs.map(doc => doc.id);
+    
+    if (placeIds.length === 0) {
+      return res.json({
+        success: true,
+        data: { commentCount: 0 },
+      });
+    }
+
+    // Get comment count for all places in this trip
+    const commentCounts = await Promise.all(
+      placeIds.map(async (placeId) => {
+        const commentsSnapshot = await db.collection('placeComments')
+          .where('placeId', '==', placeId)
+          .get();
+        return commentsSnapshot.size;
+      })
+    );
+
+    const totalCommentCount = commentCounts.reduce((sum, count) => sum + count, 0);
+
+    res.json({
+      success: true,
+      data: { commentCount: totalCommentCount },
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
 export default router;
 

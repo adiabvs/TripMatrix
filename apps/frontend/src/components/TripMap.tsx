@@ -38,12 +38,12 @@ const modeColors: Record<string, string> = {
 
 
 const modeLabels: Record<string, string> = {
-  walk: 'Walk',
-  bike: 'Bike',
+  walk: 'Walking',
+  bike: 'Bicycle',
   car: 'Car',
   train: 'Train',
   bus: 'Bus',
-  flight: 'Flight',
+  flight: 'Airplane',
 };
 
 export default function TripMap({

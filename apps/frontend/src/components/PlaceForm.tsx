@@ -2,6 +2,15 @@
 
 import { useState, useEffect, useRef } from 'react';
 import type { TripPlace, RewriteTone, ModeOfTravel, TripExpense, TripParticipant } from '@tripmatrix/types';
+
+const vehicleTypeLabels: Record<ModeOfTravel, string> = {
+  walk: '🚶 Walking',
+  bike: '🚴 Bicycle',
+  car: '🚗 Car',
+  train: '🚂 Train',
+  bus: '🚌 Bus',
+  flight: '✈️ Airplane',
+};
 import { rewriteText, uploadImage, createExpense } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { getCurrencyFromCountry, commonCurrencies, formatCurrency } from '@/lib/currencyUtils';
@@ -359,7 +368,7 @@ export default function PlaceForm({ tripId, onSubmit, onCancel, token, previousP
                     : 'border-gray-200 hover:border-gray-300 text-gray-700'
                 }`}
               >
-                {mode.charAt(0).toUpperCase() + mode.slice(1)}
+                {vehicleTypeLabels[mode]}
               </button>
             ))}
             <button

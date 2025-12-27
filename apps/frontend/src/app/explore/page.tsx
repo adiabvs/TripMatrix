@@ -3,7 +3,7 @@
 import { useAuth } from '@/lib/auth';
 import Link from 'next/link';
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { searchTrips } from '@/lib/api';
+import { searchTrips, likeTrip, unlikeTrip, getTripLikes, getTripCommentCount } from '@/lib/api';
 import type { Trip } from '@tripmatrix/types';
 import { format } from 'date-fns';
 import { toDate } from '@/lib/dateUtils';
@@ -23,6 +23,8 @@ export default function ExplorePage() {
   const { user, getIdToken } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [trips, setTrips] = useState<Trip[]>([]);
+  const [likes, setLikes] = useState<Record<string, { count: number; isLiked: boolean }>>({});
+  const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
@@ -62,6 +64,44 @@ export default function ExplorePage() {
 
       setHasMore(result.hasMore);
       setLastTripId(result.lastTripId);
+
+      // Load likes and comment counts
+      if (result.trips.length > 0) {
+        const likesPromises = result.trips.map(async (trip: Trip) => {
+          try {
+            const likesData = await getTripLikes(trip.tripId, token);
+            return { tripId: trip.tripId, ...likesData };
+          } catch {
+            return { tripId: trip.tripId, likeCount: 0, isLiked: false };
+          }
+        });
+
+        const commentPromises = result.trips.map(async (trip: Trip) => {
+          try {
+            const count = await getTripCommentCount(trip.tripId, token);
+            return { tripId: trip.tripId, count };
+          } catch {
+            return { tripId: trip.tripId, count: 0 };
+          }
+        });
+
+        const [likesResults, commentResults] = await Promise.all([
+          Promise.all(likesPromises),
+          Promise.all(commentPromises),
+        ]);
+
+        const likesMap: Record<string, { count: number; isLiked: boolean }> = {};
+        likesResults.forEach(({ tripId, likeCount, isLiked }) => {
+          likesMap[tripId] = { count: likeCount, isLiked };
+        });
+        setLikes(prev => ({ ...prev, ...likesMap }));
+
+        const commentsMap: Record<string, number> = {};
+        commentResults.forEach(({ tripId, count }) => {
+          commentsMap[tripId] = count;
+        });
+        setCommentCounts(prev => ({ ...prev, ...commentsMap }));
+      }
     } catch (error) {
       console.error('Search failed:', error);
     } finally {
@@ -216,13 +256,51 @@ export default function ExplorePage() {
                   {/* Actions */}
                   <div className="px-4 py-3 space-y-2">
                     <div className="flex items-center gap-4">
-                      <button className="text-white hover:opacity-70">
-                        <MdFavorite className="w-6 h-6" />
+                      <button 
+                        onClick={async () => {
+                          if (!user) return;
+                          const token = await getIdToken();
+                          const currentLike = likes[trip.tripId];
+                          try {
+                            if (currentLike?.isLiked) {
+                              await unlikeTrip(trip.tripId, token);
+                              setLikes(prev => ({
+                                ...prev,
+                                [trip.tripId]: { count: Math.max(0, (prev[trip.tripId]?.count || 0) - 1), isLiked: false }
+                              }));
+                            } else {
+                              await likeTrip(trip.tripId, token);
+                              setLikes(prev => ({
+                                ...prev,
+                                [trip.tripId]: { count: (prev[trip.tripId]?.count || 0) + 1, isLiked: true }
+                              }));
+                            }
+                          } catch (error) {
+                            console.error('Failed to toggle like:', error);
+                          }
+                        }}
+                        className="text-white hover:opacity-70"
+                      >
+                        <MdFavorite className={`w-6 h-6 ${likes[trip.tripId]?.isLiked ? 'text-red-500 fill-red-500' : ''}`} />
                       </button>
-                      <Link href={`/trips/${trip.tripId}`} className="text-white hover:opacity-70">
+                      <Link href={`/trips/${trip.tripId}`} className="text-white hover:opacity-70 flex items-center gap-1">
                         <MdChatBubbleOutline className="w-6 h-6" />
                       </Link>
                     </div>
+                    {(likes[trip.tripId]?.count > 0 || commentCounts[trip.tripId] > 0) && (
+                      <div className="flex items-center gap-4 text-sm">
+                        {likes[trip.tripId]?.count > 0 && (
+                          <span className="text-white font-semibold">
+                            {likes[trip.tripId].count} {likes[trip.tripId].count === 1 ? 'like' : 'likes'}
+                          </span>
+                        )}
+                        {commentCounts[trip.tripId] > 0 && (
+                          <Link href={`/trips/${trip.tripId}`} className="text-gray-400 hover:text-white">
+                            {commentCounts[trip.tripId]} {commentCounts[trip.tripId] === 1 ? 'comment' : 'comments'}
+                          </Link>
+                        )}
+                      </div>
+                    )}
 
                     {/* Trip Info */}
                     <div>

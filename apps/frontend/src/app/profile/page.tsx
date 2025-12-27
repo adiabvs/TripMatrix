@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { toDate } from '@/lib/dateUtils';
-import { getUserTrips, updateUser, getFollowing, unfollowUser } from '@/lib/api';
+import { getUserTrips, updateUser, getFollowing, unfollowUser, likeTrip, unlikeTrip, getTripLikes, getTripCommentCount } from '@/lib/api';
 import type { Trip, User } from '@tripmatrix/types';
 import { MdHome, MdArrowBack, MdLogout, MdPerson, MdMap, MdCheckCircle, MdTrendingUp, MdPublic, MdLock, MdClose, MdFavorite, MdChatBubbleOutline, MdMoreVert, MdLocationOn, MdAttachMoney, MdSearch, MdAdd, MdSettings } from 'react-icons/md';
 
@@ -17,6 +17,8 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [following, setFollowing] = useState<User[]>([]);
   const [followers, setFollowers] = useState<User[]>([]);
+  const [likes, setLikes] = useState<Record<string, { count: number; isLiked: boolean }>>({});
+  const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
   const [isProfilePublic, setIsProfilePublic] = useState(user?.isProfilePublic || false);
   const [saving, setSaving] = useState(false);
 
@@ -41,6 +43,44 @@ export default function ProfilePage() {
       if (token) {
         const userTrips = await getUserTrips(token);
         setTrips(userTrips);
+
+        // Load likes and comment counts
+        if (userTrips.length > 0) {
+          const likesPromises = userTrips.map(async (trip: Trip) => {
+            try {
+              const likesData = await getTripLikes(trip.tripId, token);
+              return { tripId: trip.tripId, ...likesData };
+            } catch {
+              return { tripId: trip.tripId, likeCount: 0, isLiked: false };
+            }
+          });
+
+          const commentPromises = userTrips.map(async (trip: Trip) => {
+            try {
+              const count = await getTripCommentCount(trip.tripId, token);
+              return { tripId: trip.tripId, count };
+            } catch {
+              return { tripId: trip.tripId, count: 0 };
+            }
+          });
+
+          const [likesResults, commentResults] = await Promise.all([
+            Promise.all(likesPromises),
+            Promise.all(commentPromises),
+          ]);
+
+          const likesMap: Record<string, { count: number; isLiked: boolean }> = {};
+          likesResults.forEach(({ tripId, likeCount, isLiked }) => {
+            likesMap[tripId] = { count: likeCount, isLiked };
+          });
+          setLikes(likesMap);
+
+          const commentsMap: Record<string, number> = {};
+          commentResults.forEach(({ tripId, count }) => {
+            commentsMap[tripId] = count;
+          });
+          setCommentCounts(commentsMap);
+        }
       }
     } catch (error) {
       console.error('Failed to load trips:', error);
@@ -384,13 +424,51 @@ export default function ProfilePage() {
                   {/* Actions */}
                   <div className="px-4 py-3 space-y-2">
                     <div className="flex items-center gap-4">
-                      <button className="text-white hover:opacity-70">
-                        <MdFavorite className="w-6 h-6" />
+                      <button 
+                        onClick={async () => {
+                          if (!user) return;
+                          const token = await getIdToken();
+                          const currentLike = likes[trip.tripId];
+                          try {
+                            if (currentLike?.isLiked) {
+                              await unlikeTrip(trip.tripId, token);
+                              setLikes(prev => ({
+                                ...prev,
+                                [trip.tripId]: { count: Math.max(0, (prev[trip.tripId]?.count || 0) - 1), isLiked: false }
+                              }));
+                            } else {
+                              await likeTrip(trip.tripId, token);
+                              setLikes(prev => ({
+                                ...prev,
+                                [trip.tripId]: { count: (prev[trip.tripId]?.count || 0) + 1, isLiked: true }
+                              }));
+                            }
+                          } catch (error) {
+                            console.error('Failed to toggle like:', error);
+                          }
+                        }}
+                        className="text-white hover:opacity-70"
+                      >
+                        <MdFavorite className={`w-6 h-6 ${likes[trip.tripId]?.isLiked ? 'text-red-500 fill-red-500' : ''}`} />
                       </button>
-                      <Link href={`/trips/${trip.tripId}`} className="text-white hover:opacity-70">
+                      <Link href={`/trips/${trip.tripId}`} className="text-white hover:opacity-70 flex items-center gap-1">
                         <MdChatBubbleOutline className="w-6 h-6" />
                       </Link>
                     </div>
+                    {(likes[trip.tripId]?.count > 0 || commentCounts[trip.tripId] > 0) && (
+                      <div className="flex items-center gap-4 text-sm">
+                        {likes[trip.tripId]?.count > 0 && (
+                          <span className="text-white font-semibold">
+                            {likes[trip.tripId].count} {likes[trip.tripId].count === 1 ? 'like' : 'likes'}
+                          </span>
+                        )}
+                        {commentCounts[trip.tripId] > 0 && (
+                          <Link href={`/trips/${trip.tripId}`} className="text-gray-400 hover:text-white">
+                            {commentCounts[trip.tripId]} {commentCounts[trip.tripId] === 1 ? 'comment' : 'comments'}
+                          </Link>
+                        )}
+                      </div>
+                    )}
 
                     {/* Trip Info */}
                     <div>

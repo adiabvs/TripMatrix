@@ -27,12 +27,12 @@ interface StepCardProps {
 }
 
 const modeLabels: Record<ModeOfTravel, string> = {
-  walk: '🚶 Walk',
-  bike: '🚴 Bike',
+  walk: '🚶 Walking',
+  bike: '🚴 Bicycle',
   car: '🚗 Car',
   train: '🚂 Train',
   bus: '🚌 Bus',
-  flight: '✈️ Flight',
+  flight: '✈️ Airplane',
 };
 
 export default function StepCard({ 

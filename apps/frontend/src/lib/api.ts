@@ -263,6 +263,45 @@ export async function searchTrips(
   return result.data;
 }
 
+// Trip Like APIs
+export async function likeTrip(tripId: string, token: string | null): Promise<void> {
+  const response = await fetchWithAuth(`/api/trips/${tripId}/like`, {
+    method: 'POST',
+  }, token);
+  const result: ApiResponse<{ liked: boolean; message: string }> = await response.json();
+  if (!result.success) {
+    throw new Error(result.error || 'Failed to like trip');
+  }
+}
+
+export async function unlikeTrip(tripId: string, token: string | null): Promise<void> {
+  const response = await fetchWithAuth(`/api/trips/${tripId}/like`, {
+    method: 'DELETE',
+  }, token);
+  const result: ApiResponse<{ liked: boolean; message: string }> = await response.json();
+  if (!result.success) {
+    throw new Error(result.error || 'Failed to unlike trip');
+  }
+}
+
+export async function getTripLikes(tripId: string, token: string | null): Promise<{ likeCount: number; isLiked: boolean }> {
+  const response = await fetchWithAuth(`/api/trips/${tripId}/likes`, {}, token);
+  const result: ApiResponse<{ likeCount: number; isLiked: boolean }> = await response.json();
+  if (!result.success || !result.data) {
+    throw new Error(result.error || 'Failed to get trip likes');
+  }
+  return result.data;
+}
+
+export async function getTripCommentCount(tripId: string, token: string | null): Promise<number> {
+  const response = await fetchWithAuth(`/api/trips/${tripId}/comments/count`, {}, token);
+  const result: ApiResponse<{ commentCount: number }> = await response.json();
+  if (!result.success || !result.data) {
+    throw new Error(result.error || 'Failed to get comment count');
+  }
+  return result.data.commentCount;
+}
+
 // Place APIs
 export async function addPlace(
   placeData: Partial<TripPlace>,
@@ -520,6 +559,36 @@ export async function getPlaceComments(placeId: string, token: string | null): P
   const result: ApiResponse<PlaceComment[]> = await response.json();
   if (!result.success || !result.data) {
     throw new Error(result.error || 'Failed to get comments');
+  }
+  return result.data;
+}
+
+// Place Like APIs
+export async function likePlace(placeId: string, token: string | null): Promise<void> {
+  const response = await fetchWithAuth(`/api/places/${placeId}/like`, {
+    method: 'POST',
+  }, token);
+  const result: ApiResponse<{ liked: boolean; message: string }> = await response.json();
+  if (!result.success) {
+    throw new Error(result.error || 'Failed to like place');
+  }
+}
+
+export async function unlikePlace(placeId: string, token: string | null): Promise<void> {
+  const response = await fetchWithAuth(`/api/places/${placeId}/like`, {
+    method: 'DELETE',
+  }, token);
+  const result: ApiResponse<{ liked: boolean; message: string }> = await response.json();
+  if (!result.success) {
+    throw new Error(result.error || 'Failed to unlike place');
+  }
+}
+
+export async function getPlaceLikes(placeId: string, token: string | null): Promise<{ likeCount: number; isLiked: boolean }> {
+  const response = await fetchWithAuth(`/api/places/${placeId}/likes`, {}, token);
+  const result: ApiResponse<{ likeCount: number; isLiked: boolean }> = await response.json();
+  if (!result.success || !result.data) {
+    throw new Error(result.error || 'Failed to get place likes');
   }
   return result.data;
 }

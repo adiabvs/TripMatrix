@@ -15,12 +15,12 @@ interface StepConnectorProps {
 }
 
 const modeLabels: Record<ModeOfTravel, string> = {
-  walk: '🚶 Walk',
-  bike: '🚴 Bike',
+  walk: '🚶 Walking',
+  bike: '🚴 Bicycle',
   car: '🚗 Car',
   train: '🚂 Train',
   bus: '🚌 Bus',
-  flight: '✈️ Flight',
+  flight: '✈️ Airplane',
 };
 
 // Calculate distance between two coordinates (Haversine formula)

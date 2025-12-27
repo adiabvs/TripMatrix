@@ -3,7 +3,7 @@
 import { useAuth } from '@/lib/auth';
 import Link from 'next/link';
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { getPublicTripsWithData, searchTrips } from '@/lib/api';
+import { getPublicTripsWithData, searchTrips, likeTrip, unlikeTrip, getTripLikes, getTripCommentCount, followUser, getFollowing } from '@/lib/api';
 import type { Trip, User } from '@tripmatrix/types';
 import { format } from 'date-fns';
 import { toDate } from '@/lib/dateUtils';
@@ -24,12 +24,17 @@ export default function Home() {
   const { user, getIdToken } = useAuth();
   const [trips, setTrips] = useState<Trip[]>([]);
   const [creators, setCreators] = useState<Record<string, User>>({});
+  const [likes, setLikes] = useState<Record<string, { count: number; isLiked: boolean }>>({});
+  const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
+  const [following, setFollowing] = useState<Set<string>>(new Set());
+  const [menuOpen, setMenuOpen] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [lastTripId, setLastTripId] = useState<string | null>(null);
   const observerRef = useRef<IntersectionObserver | null>(null);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
+  const menuRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const loadTrips = useCallback(async (loadMore: boolean = false, currentLastTripId?: string | null) => {
     try {
@@ -53,6 +58,44 @@ export default function Home() {
       setCreators(prev => ({ ...prev, ...result.creators }));
       setHasMore(result.hasMore);
       setLastTripId(result.lastTripId);
+
+      // Load likes and comment counts for all trips
+      if (result.trips.length > 0) {
+        const likesPromises = result.trips.map(async (trip: Trip) => {
+          try {
+            const likesData = await getTripLikes(trip.tripId, token);
+            return { tripId: trip.tripId, ...likesData };
+          } catch {
+            return { tripId: trip.tripId, likeCount: 0, isLiked: false };
+          }
+        });
+
+        const commentPromises = result.trips.map(async (trip: Trip) => {
+          try {
+            const count = await getTripCommentCount(trip.tripId, token);
+            return { tripId: trip.tripId, count };
+          } catch {
+            return { tripId: trip.tripId, count: 0 };
+          }
+        });
+
+        const [likesResults, commentResults] = await Promise.all([
+          Promise.all(likesPromises),
+          Promise.all(commentPromises),
+        ]);
+
+        const likesMap: Record<string, { count: number; isLiked: boolean }> = {};
+        likesResults.forEach(({ tripId, likeCount, isLiked }) => {
+          likesMap[tripId] = { count: likeCount, isLiked };
+        });
+        setLikes(prev => ({ ...prev, ...likesMap }));
+
+        const commentsMap: Record<string, number> = {};
+        commentResults.forEach(({ tripId, count }) => {
+          commentsMap[tripId] = count;
+        });
+        setCommentCounts(prev => ({ ...prev, ...commentsMap }));
+      }
     } catch (error) {
       console.error('Failed to load trips:', error);
     } finally {
@@ -67,6 +110,19 @@ export default function Home() {
     setLastTripId(null);
     setHasMore(true);
     loadTrips(false);
+    // Load following list if user is logged in
+    if (user) {
+      const loadFollowing = async () => {
+        try {
+          const token = await getIdToken();
+          const followingList = await getFollowing(token);
+          setFollowing(new Set(followingList.map(u => u.uid)));
+        } catch (error) {
+          console.error('Failed to load following:', error);
+        }
+      };
+      loadFollowing();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
@@ -83,6 +139,22 @@ export default function Home() {
     
     if (node) observerRef.current.observe(node);
   }, [loading, loadingMore, hasMore, lastTripId, loadTrips]);
+
+  // Close menus when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      Object.keys(menuOpen).forEach(tripId => {
+        if (menuOpen[tripId] && menuRefs.current[tripId] && !menuRefs.current[tripId]?.contains(event.target as Node)) {
+          setMenuOpen(prev => ({ ...prev, [tripId]: false }));
+        }
+      });
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [menuOpen]);
 
   if (loading) {
     return (
@@ -166,9 +238,53 @@ export default function Home() {
                         </p>
                       </div>
                     </div>
-                    <button className="text-white">
-                      <MdMoreVert className="w-5 h-5" />
-                    </button>
+                    <div 
+                      className="relative"
+                      ref={(el) => {
+                        menuRefs.current[trip.tripId] = el;
+                      }}
+                    >
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setMenuOpen(prev => ({
+                            ...prev,
+                            [trip.tripId]: !prev[trip.tripId]
+                          }));
+                        }}
+                        className="text-white"
+                      >
+                        <MdMoreVert className="w-5 h-5" />
+                      </button>
+                      {menuOpen[trip.tripId] && creator && user && creator.uid !== user.uid && (
+                        <div className="absolute right-0 top-8 bg-gray-800 border border-gray-700 rounded-lg shadow-lg z-50 min-w-[120px]">
+                          <button
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              try {
+                                const token = await getIdToken();
+                                const isFollowing = following.has(creator.uid);
+                                if (isFollowing) {
+                                  // Unfollow functionality can be added here if needed
+                                  alert('Unfollow feature coming soon');
+                                } else {
+                                  await followUser(creator.uid, token);
+                                  setFollowing(prev => new Set([...prev, creator.uid]));
+                                  alert(`Now following ${creator.name}`);
+                                }
+                                setMenuOpen(prev => ({ ...prev, [trip.tripId]: false }));
+                              } catch (error) {
+                                console.error('Failed to follow user:', error);
+                                alert('Failed to follow user');
+                              }
+                            }}
+                            className="w-full px-4 py-2 text-left text-white text-sm hover:bg-gray-700 rounded-lg"
+                          >
+                            {following.has(creator.uid) ? 'Unfollow' : 'Follow'}
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   {/* Cover Image */}
@@ -203,13 +319,51 @@ export default function Home() {
                   {/* Actions */}
                   <div className="px-4 py-3 space-y-2">
                     <div className="flex items-center gap-4">
-                      <button className="text-white hover:opacity-70">
-                        <MdFavorite className="w-6 h-6" />
+                      <button 
+                        onClick={async () => {
+                          if (!user) return;
+                          const token = await getIdToken();
+                          const currentLike = likes[trip.tripId];
+                          try {
+                            if (currentLike?.isLiked) {
+                              await unlikeTrip(trip.tripId, token);
+                              setLikes(prev => ({
+                                ...prev,
+                                [trip.tripId]: { count: Math.max(0, (prev[trip.tripId]?.count || 0) - 1), isLiked: false }
+                              }));
+                            } else {
+                              await likeTrip(trip.tripId, token);
+                              setLikes(prev => ({
+                                ...prev,
+                                [trip.tripId]: { count: (prev[trip.tripId]?.count || 0) + 1, isLiked: true }
+                              }));
+                            }
+                          } catch (error) {
+                            console.error('Failed to toggle like:', error);
+                          }
+                        }}
+                        className="text-white hover:opacity-70"
+                      >
+                        <MdFavorite className={`w-6 h-6 ${likes[trip.tripId]?.isLiked ? 'text-red-500 fill-red-500' : ''}`} />
                       </button>
-                      <Link href={`/trips/${trip.tripId}`} className="text-white hover:opacity-70">
+                      <Link href={`/trips/${trip.tripId}`} className="text-white hover:opacity-70 flex items-center gap-1">
                         <MdChatBubbleOutline className="w-6 h-6" />
                       </Link>
                     </div>
+                    {(likes[trip.tripId]?.count > 0 || commentCounts[trip.tripId] > 0) && (
+                      <div className="flex items-center gap-4 text-sm">
+                        {likes[trip.tripId]?.count > 0 && (
+                          <span className="text-white font-semibold">
+                            {likes[trip.tripId].count} {likes[trip.tripId].count === 1 ? 'like' : 'likes'}
+                          </span>
+                        )}
+                        {commentCounts[trip.tripId] > 0 && (
+                          <Link href={`/trips/${trip.tripId}`} className="text-gray-400 hover:text-white">
+                            {commentCounts[trip.tripId]} {commentCounts[trip.tripId] === 1 ? 'comment' : 'comments'}
+                          </Link>
+                        )}
+                      </div>
+                    )}
 
                     {/* Trip Info */}
                     <div>

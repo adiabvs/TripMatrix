@@ -151,7 +151,7 @@ export default function TripMapbox({
         setMapLoaded(true);
         mapRef.current = map;
         
-        // Hide MapLibre attribution
+        // Hide MapLibre attribution and controls
         setTimeout(() => {
           const attribution = map.getContainer().querySelector('.maplibregl-ctrl-attrib');
           if (attribution) {
@@ -161,6 +161,11 @@ export default function TripMapbox({
           if (bottomRight) {
             (bottomRight as HTMLElement).style.display = 'none';
           }
+          // Hide navigation controls
+          const navControls = map.getContainer().querySelectorAll('.maplibregl-ctrl');
+          navControls.forEach((ctrl: any) => {
+            if (ctrl) ctrl.style.display = 'none';
+          });
         }, 100);
       });
 
@@ -289,7 +294,7 @@ export default function TripMapbox({
     }
   }, [mapLoaded, allPlacesBounds]);
 
-  // Update markers and routes
+  // Update markers and routes - delay marker rendering to prevent icons from appearing on initial load
   useEffect(() => {
     if (!mapRef.current || !mapLoaded) return;
 
@@ -316,36 +321,43 @@ export default function TripMapbox({
     });
     routesRef.current = [];
 
-    // Add markers for places
-    sortedPlacesData.forEach((place, index) => {
-      if (!place.coordinates || !place.coordinates.lat || !place.coordinates.lng) return;
+    // Delay marker rendering to prevent icons from appearing immediately
+    const markerTimeout = setTimeout(() => {
+      // Add markers for places
+      sortedPlacesData.forEach((place, index) => {
+        if (!place.coordinates || !place.coordinates.lat || !place.coordinates.lng) return;
 
-      const isHighlighted = index === highlightedStepIndex;
-      const modeColor = getModeColor(place.modeOfTravel);
-      const color = isHighlighted ? '#ffc107' : modeColor;
+        const isHighlighted = index === highlightedStepIndex;
+        const modeColor = getModeColor(place.modeOfTravel);
+        const color = isHighlighted ? '#ffc107' : modeColor;
 
-      // Create custom marker element
-      const el = document.createElement('div');
-      el.className = 'custom-marker';
-      el.style.width = isHighlighted ? '32px' : '24px';
-      el.style.height = isHighlighted ? '32px' : '24px';
-      el.style.borderRadius = '50%';
-      el.style.backgroundColor = color;
-      el.style.border = '3px solid white';
-      el.style.boxShadow = '0 2px 8px rgba(0,0,0,0.3)';
-      el.style.display = 'flex';
-      el.style.alignItems = 'center';
-      el.style.justifyContent = 'center';
-      el.style.fontSize = isHighlighted ? '16px' : '12px';
-      el.style.cursor = 'pointer';
-      el.title = place.name;
+        // Create custom marker element
+        const el = document.createElement('div');
+        el.className = 'custom-marker';
+        el.style.width = isHighlighted ? '32px' : '24px';
+        el.style.height = isHighlighted ? '32px' : '24px';
+        el.style.borderRadius = '50%';
+        el.style.backgroundColor = color;
+        el.style.border = '3px solid white';
+        el.style.boxShadow = '0 2px 8px rgba(0,0,0,0.3)';
+        el.style.display = 'flex';
+        el.style.alignItems = 'center';
+        el.style.justifyContent = 'center';
+        el.style.fontSize = isHighlighted ? '16px' : '12px';
+        el.style.cursor = 'pointer';
+        el.title = place.name;
 
-      const marker = new maplibregl.Marker(el)
-        .setLngLat([place.coordinates.lng, place.coordinates.lat])
-        .addTo(map);
+        const marker = new maplibregl.Marker(el)
+          .setLngLat([place.coordinates.lng, place.coordinates.lat])
+          .addTo(map);
 
-      markersRef.current.push(marker);
-    });
+        markersRef.current.push(marker);
+      });
+    }, 500); // Delay by 500ms to prevent icons from appearing on initial load
+
+    return () => {
+      clearTimeout(markerTimeout);
+    };
 
     // Add routes
     if (routes.length > 0) {
