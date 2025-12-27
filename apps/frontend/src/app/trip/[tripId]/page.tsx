@@ -116,8 +116,8 @@ export default function PublicTripViewPage() {
       : 0;
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <nav className="bg-white shadow-sm">
+    <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
+      <nav className="bg-white shadow-sm flex-shrink-0">
         <div className="container mx-auto px-4 py-4">
           <Link href="/trips/public" className="text-blue-600 hover:text-blue-700">
             ← Back to Public Trips
@@ -125,7 +125,8 @@ export default function PublicTripViewPage() {
         </div>
       </nav>
 
-      <div className="container mx-auto px-4 py-8">
+      <div className="flex-1 overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
+        <div className="container mx-auto px-4 py-8">
         {/* Trip Header */}
         <div className="bg-white rounded-xl shadow-lg p-6 mb-8 border border-gray-200">
           <div className="flex items-start justify-between mb-4">
@@ -258,6 +259,7 @@ export default function PublicTripViewPage() {
             )}
           </div>
         )}
+        </div>
       </div>
     </div>
   );

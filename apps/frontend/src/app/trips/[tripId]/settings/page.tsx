@@ -144,9 +144,9 @@ export default function TripSettingsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#424242] flex flex-col">
+    <div className="h-screen bg-[#424242] flex flex-col overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-600">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-600 flex-shrink-0">
         <Link href={`/trips/${tripId}`} className="w-10 h-10 flex items-center justify-center">
           <span className="text-white text-xl">←</span>
         </Link>
@@ -155,7 +155,7 @@ export default function TripSettingsPage() {
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 overflow-y-auto px-4 py-4">
+      <div className="flex-1 overflow-y-auto px-4 py-4" style={{ WebkitOverflowScrolling: 'touch' }}>
         <div className="mb-6">
           <h2 className="text-[10px] font-semibold text-white mb-1">{trip.title}</h2>
           <p className="text-[12px] text-gray-300">Manage your trip settings</p>

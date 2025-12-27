@@ -55,7 +55,8 @@ export default function PublicTripsPage() {
         </div>
       </nav>
 
-      <div className="max-w-7xl mx-auto px-6 py-12">
+      <div className="flex-1 overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
+        <div className="max-w-7xl mx-auto px-6 py-12">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Explore Public Trips</h1>
           <p className="text-gray-600">Discover amazing travel stories from around the world</p>
@@ -123,6 +124,7 @@ export default function PublicTripsPage() {
             ))}
           </div>
         )}
+        </div>
       </div>
     </div>
   );

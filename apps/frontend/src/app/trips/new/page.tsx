@@ -93,9 +93,9 @@ export default function NewTripPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#424242]">
+    <div className="h-screen bg-[#424242] flex flex-col overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-600">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-600 flex-shrink-0">
         <Link href="/trips" className="w-10 h-10 flex items-center justify-center">
           <span className="text-white text-xl">←</span>
         </Link>
@@ -103,7 +103,7 @@ export default function NewTripPage() {
         <div className="w-10" />
       </div>
 
-      <div className="px-4 py-4">
+      <div className="flex-1 overflow-y-auto px-4 py-4" style={{ WebkitOverflowScrolling: 'touch' }}>
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Cover Image Section */}
           <div>

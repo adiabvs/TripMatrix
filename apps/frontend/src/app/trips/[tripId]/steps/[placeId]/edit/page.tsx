@@ -499,9 +499,9 @@ export default function EditStepPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#424242] flex flex-col">
+    <div className="h-screen bg-[#424242] flex flex-col overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-600">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-600 flex-shrink-0">
         <Link href={`/trips/${tripId}`} className="w-10 h-10 flex items-center justify-center">
           <MdArrowBack className="text-white text-xl" />
         </Link>
@@ -607,7 +607,7 @@ export default function EditStepPage() {
       </div>
 
       {/* Form Section - Bottom 60% */}
-      <div className="flex-1 overflow-y-auto" style={{ height: '60vh' }}>
+      <div className="flex-1 overflow-y-auto" style={{ height: '60vh', WebkitOverflowScrolling: 'touch' }}>
         <form onSubmit={handleSubmit} className="px-4 py-4 space-y-6">
           {/* Date & Time */}
           <div>

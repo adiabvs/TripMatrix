@@ -309,9 +309,9 @@ export default function DiaryPage() {
   }
 
   return (
-    <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
-      <Container maxWidth="lg" sx={{ py: { xs: 3, sm: 4, md: 6 } }}>
-        <Box sx={{ mb: 4 }}>
+    <Box sx={{ height: '100vh', bgcolor: 'background.default', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <Container maxWidth="lg" sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', py: { xs: 3, sm: 4, md: 6 } }}>
+        <Box sx={{ mb: 4, flexShrink: 0 }}>
           <Button
             component={Link}
             href={`/trips/${tripId}`}
@@ -328,6 +328,7 @@ export default function DiaryPage() {
           </Typography>
         </Box>
 
+        <Box sx={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
         {error && (
           <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError(null)}>
             {error}
@@ -585,6 +586,7 @@ export default function DiaryPage() {
             )}
           </Box>
         )}
+        </Box>
       </Container>
     </Box>
   );

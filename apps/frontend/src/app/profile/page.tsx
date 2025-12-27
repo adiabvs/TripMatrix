@@ -72,9 +72,9 @@ export default function ProfilePage() {
   const totalExpenses = trips.reduce((sum, t) => sum + (t.totalExpense || 0), 0);
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="h-screen bg-white flex flex-col overflow-hidden">
       {/* Navigation */}
-      <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-100">
+      <nav className="flex-shrink-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-100">
         <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
           <Link href="/trips" className="text-xl font-bold text-gray-900 tracking-tight">
             TripMatrix
@@ -88,7 +88,8 @@ export default function ProfilePage() {
         </div>
       </nav>
 
-      <div className="max-w-4xl mx-auto px-6 py-12">
+      <div className="flex-1 overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
+        <div className="max-w-4xl mx-auto px-6 py-12">
         {/* Profile Header */}
         <div className="mb-12">
           <div className="flex items-start gap-6 mb-8">
@@ -202,6 +203,7 @@ export default function ProfilePage() {
               ))}
             </div>
           )}
+        </div>
         </div>
       </div>
     </div>

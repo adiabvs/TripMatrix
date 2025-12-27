@@ -535,9 +535,9 @@ export default function NewStepPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#424242] flex flex-col">
+    <div className="h-screen bg-[#424242] flex flex-col overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-4 border-b border-gray-700/50 bg-[#424242]/95 backdrop-blur-sm">
+      <div className="flex items-center justify-between px-4 py-4 border-b border-gray-700/50 bg-[#424242]/95 backdrop-blur-sm flex-shrink-0">
         <Link 
           href={`/trips/${tripId}`} 
           className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-700/50 transition-all duration-200 active:scale-95"
@@ -655,7 +655,7 @@ export default function NewStepPage() {
       </div>
 
       {/* Form Section - Bottom 60% */}
-      <div className="flex-1 overflow-y-auto" style={{ height: '60vh' }}>
+      <div className="flex-1 overflow-y-auto" style={{ height: '60vh', WebkitOverflowScrolling: 'touch' }}>
         <form onSubmit={handleSubmitWithExpense} className="px-4 py-4 space-y-6">
           {/* Date & Time */}
           <div>
