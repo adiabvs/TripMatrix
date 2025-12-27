@@ -570,8 +570,8 @@ export default function TripGlobe({
   return (
     <div ref={globeContainerRef} style={{ width: '100%', height, position: 'relative', background: '#000' }}>
       <Globe
-        globeImageUrl="//unpkg.com/three-globe/example/img/earth-blue-marble.jpg"
-        backgroundImageUrl="//unpkg.com/three-globe/example/img/night-sky.png"
+        globeImageUrl="https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg"
+        backgroundImageUrl="https://unpkg.com/three-globe/example/img/night-sky.png"
         pointsData={points}
         pointColor={(point: any) => {
           // Add glow effect for highlighted points

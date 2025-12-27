@@ -10,7 +10,7 @@ import { doc, getDoc } from 'firebase/firestore';
 interface ExpenseFormProps {
   tripId: string;
   participants: TripParticipant[];
-  onSubmit: (expense: Partial<TripExpense>) => Promise<void>;
+  onSubmit: (expense: Partial<TripExpense>) => Promise<void> | void;
   onCancel: () => void;
   placeId?: string;
   placeCountry?: string; // Country code for currency detection
@@ -133,8 +133,11 @@ export default function ExpenseForm({
     setSplitBetween(newSet);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (e?: React.FormEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation(); // Prevent form from bubbling up to parent form
+    }
     if (!amount || !paidBy || splitBetween.size === 0) {
       alert('Please fill all required fields');
       return;
@@ -142,7 +145,7 @@ export default function ExpenseForm({
 
     setLoading(true);
     try {
-      await onSubmit({
+      const result = onSubmit({
         tripId,
         amount: parseFloat(amount),
         currency,
@@ -151,6 +154,10 @@ export default function ExpenseForm({
         description: description || undefined,
         placeId: placeId || undefined,
       });
+      // If onSubmit returns a promise, wait for it
+      if (result && typeof result.then === 'function') {
+        await result;
+      }
       // Reset form only if creating new expense
       if (!initialData) {
         setAmount('');
@@ -169,7 +176,7 @@ export default function ExpenseForm({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="bg-transparent p-0">
+    <div className="bg-transparent p-0">
       <h3 className="text-[14px] font-semibold mb-4 text-white">{initialData ? 'Edit Expense' : 'Add Expense'}</h3>
 
       <div className="mb-4">
@@ -179,7 +186,7 @@ export default function ExpenseForm({
         <select
           value={currency}
           onChange={(e) => setCurrency(e.target.value)}
-          className="w-full px-4 py-2 bg-[#424242] border border-[#616161] rounded-lg text-white focus:ring-2 focus:ring-[#1976d2] focus:border-transparent text-[14px]"
+          className="w-full px-4 py-3 bg-[#424242] border border-[#616161] rounded-xl text-white focus:ring-2 focus:ring-[#1976d2] focus:border-transparent text-sm transition-all duration-200"
           required
         >
           {/* Option 1: Default Currency (always first, selected by default) */}
@@ -216,7 +223,7 @@ export default function ExpenseForm({
             step="0.01"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
-            className="flex-1 px-4 py-2 bg-[#424242] border border-[#616161] rounded-lg text-white focus:ring-2 focus:ring-[#1976d2] text-[14px]"
+            className="flex-1 px-4 py-3 bg-[#424242] border border-[#616161] rounded-xl text-white focus:ring-2 focus:ring-[#1976d2] text-sm transition-all duration-200"
             placeholder="0.00"
             required
           />
@@ -230,7 +237,7 @@ export default function ExpenseForm({
         <select
           value={paidBy}
           onChange={(e) => setPaidBy(e.target.value)}
-          className="w-full px-4 py-2 bg-[#424242] border border-[#616161] rounded-lg text-white focus:ring-2 focus:ring-[#1976d2] text-[14px]"
+          className="w-full px-4 py-3 bg-[#424242] border border-[#616161] rounded-xl text-white focus:ring-2 focus:ring-[#1976d2] text-sm transition-all duration-200"
           required
         >
           <option value="">Select person</option>
@@ -323,23 +330,31 @@ export default function ExpenseForm({
         />
       </div>
 
-      <div className="flex gap-4">
+      <div className="flex gap-3">
         <button
-          type="submit"
+          type="button"
+          onClick={handleSubmit}
           disabled={loading}
-          className="flex-1 bg-[#1976d2] text-white py-2 px-4 rounded-lg hover:bg-[#1565c0] disabled:opacity-50 text-[14px] font-semibold"
+          className="flex-1 bg-[#1976d2] text-white py-3 px-6 rounded-xl hover:bg-[#1565c0] disabled:opacity-50 text-sm font-semibold shadow-lg hover:shadow-xl transition-all duration-200 active:scale-95 disabled:active:scale-100"
         >
-          {loading ? (initialData ? 'Updating...' : 'Adding...') : (initialData ? 'Update Expense' : 'Add Expense')}
+          {loading ? (
+            <span className="flex items-center justify-center gap-2">
+              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              {initialData ? 'Updating...' : 'Adding...'}
+            </span>
+          ) : (
+            initialData ? 'Update Expense' : 'Add Expense'
+          )}
         </button>
         <button
           type="button"
           onClick={onCancel}
-          className="px-4 py-2 border border-[#616161] rounded-lg hover:bg-[#616161] text-white text-[14px]"
+          className="px-6 py-3 border border-[#616161] rounded-xl hover:bg-[#616161] text-white text-sm font-medium transition-all duration-200 active:scale-95"
         >
           Cancel
         </button>
       </div>
-    </form>
+    </div>
   );
 }
 

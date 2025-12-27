@@ -183,23 +183,24 @@ export default function TripsPage() {
 
   if (authLoading || loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#424242]">
-        <div className="text-sm text-white">Loading...</div>
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-[#424242] to-[#1a1a1a]">
+        <div className="w-16 h-16 border-4 border-gray-600 border-t-[#1976d2] rounded-full animate-spin mb-4" />
+        <p className="text-white text-sm font-medium animate-pulse">Loading your trips...</p>
       </div>
     );
   }
 
   if (!user) {
     return (
-      <div className="min-h-screen bg-[#424242] flex flex-col items-center justify-center px-4">
-        <div className="text-6xl mb-4">🔒</div>
+      <div className="min-h-screen bg-gradient-to-br from-[#424242] to-[#1a1a1a] flex flex-col items-center justify-center px-4">
+        <div className="text-6xl mb-4 animate-bounce">🔒</div>
         <h2 className="text-xl font-semibold text-white mb-2">Sign in required</h2>
-        <p className="text-sm text-gray-300 mb-6 text-center">
+        <p className="text-sm text-gray-300 mb-8 text-center max-w-sm">
           Please sign in to view and manage your trips
         </p>
         <Link
           href="/auth"
-          className="flex items-center gap-2 px-6 py-3 bg-[#1976d2] text-white rounded-none text-sm font-semibold"
+          className="inline-flex items-center gap-2 px-6 py-3 bg-[#1976d2] text-white rounded-xl text-sm font-semibold shadow-lg hover:bg-[#1565c0] transition-all duration-200 hover:shadow-xl active:scale-95"
         >
           <span>Sign In</span>
         </Link>
@@ -285,15 +286,15 @@ export default function TripsPage() {
             </div>
           </div>
         ) : (
-          <div className="flex flex-col items-center justify-center py-12 px-4 pb-16 flex-1">
-            <span className="text-4xl mb-3">🗺️</span>
-            <p className="text-[11px] text-gray-300 font-semibold mb-4">No trips yet</p>
-            <p className="text-[10px] text-gray-400 text-center mb-6">
+          <div className="flex flex-col items-center justify-center py-16 px-4 pb-20 flex-1">
+            <span className="text-6xl mb-4 animate-bounce">🗺️</span>
+            <p className="text-base text-white font-semibold mb-2">No trips yet</p>
+            <p className="text-sm text-gray-400 text-center mb-8 max-w-xs">
               Start your first adventure and create beautiful travel stories
             </p>
             <Link
               href="/trips/new"
-              className="flex items-center gap-2 px-6 py-3 bg-[#1976d2] text-white rounded-none text-sm font-semibold"
+              className="inline-flex items-center gap-2 px-6 py-3.5 bg-[#1976d2] text-white rounded-xl text-sm font-semibold shadow-lg hover:bg-[#1565c0] transition-all duration-200 hover:shadow-xl active:scale-95"
             >
               <span className="text-lg">+</span>
               <span>Create Your First Trip</span>

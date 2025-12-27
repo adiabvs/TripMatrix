@@ -212,6 +212,48 @@ export default function TripDetailPage() {
     };
   }, [user, tripId]);
 
+  // Subscribe to expenses updates
+  useEffect(() => {
+    if (!tripId) return;
+
+    let unsubscribe: (() => void) | undefined;
+    try {
+      const expensesQuery = query(
+        collection(db, 'tripExpenses'),
+        where('tripId', '==', tripId)
+      );
+      unsubscribe = onSnapshot(expensesQuery, (snapshot) => {
+        const expensesData = snapshot.docs.map((doc) => ({
+          expenseId: doc.id,
+          ...doc.data(),
+        })) as TripExpense[];
+        console.log('Expenses updated:', expensesData.length, 'expenses');
+        setExpenses(expensesData);
+      });
+    } catch (error) {
+      console.error('Failed to subscribe to expenses updates:', error);
+    }
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, [tripId]);
+
+  // Reload data when page becomes visible (user navigates back)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && tripId && !loading) {
+        console.log('Page visible, reloading trip data...');
+        loadTripData(token);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [tripId, token, loading, loadTripData]);
+
   const handleEndTrip = async () => {
     if (!trip || !confirm('Are you sure you want to end this trip?')) return;
 
@@ -387,16 +429,27 @@ export default function TripDetailPage() {
 
   if (authLoading || loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#424242]">
-        <div className="text-sm text-white">Loading...</div>
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-[#424242] to-[#1a1a1a]">
+        <div className="w-16 h-16 border-4 border-gray-600 border-t-[#1976d2] rounded-full animate-spin mb-4" />
+        <p className="text-white text-sm font-medium animate-pulse">Loading your trip...</p>
       </div>
     );
   }
 
   if (!trip) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#424242]">
-        <div className="text-sm text-white">Trip not found</div>
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-[#424242] to-[#1a1a1a] px-4">
+        <div className="text-6xl mb-4">🗺️</div>
+        <h2 className="text-xl font-semibold text-white mb-2">Trip not found</h2>
+        <p className="text-gray-400 text-sm text-center mb-6">
+          The trip you're looking for doesn't exist or you don't have access to it.
+        </p>
+        <Link
+          href="/trips"
+          className="px-6 py-3 bg-[#1976d2] text-white rounded-xl font-medium hover:bg-[#1565c0] transition-all duration-200 shadow-lg hover:shadow-xl"
+        >
+          Back to Trips
+        </Link>
       </div>
     );
   }
@@ -404,16 +457,19 @@ export default function TripDetailPage() {
   return (
     <div className="min-h-screen bg-[#424242] flex flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-600">
-        <Link href="/trips" className="w-10 h-10 flex items-center justify-center">
+      <div className="flex items-center justify-between px-4 py-4 border-b border-gray-700/50 bg-[#424242]/95 backdrop-blur-sm">
+        <Link 
+          href="/trips" 
+          className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-700/50 transition-all duration-200 active:scale-95"
+        >
           <span className="text-white text-xl">←</span>
         </Link>
-        <h1 className="text-[11px] font-semibold text-white">Trip Details</h1>
+        <h1 className="text-sm font-semibold text-white">Trip Details</h1>
         <div className="flex items-center gap-2">
           {canEdit && (
             <Link
               href={`/trips/${tripId}/settings`}
-              className="w-10 h-10 flex items-center justify-center"
+              className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-700/50 transition-all duration-200 active:scale-95"
               title="Trip Settings"
             >
               <span className="text-white text-xl">⚙️</span>
@@ -460,27 +516,27 @@ export default function TripDetailPage() {
         </div>
 
         {/* Trip Info */}
-        <div className="px-4 pt-4 pb-2 flex-shrink-0">
-          <h2 className="text-[14px] font-semibold text-white mb-2">{trip.title}</h2>
-          <div className="flex items-center gap-2 mb-2">
+        <div className="px-4 pt-6 pb-4 flex-shrink-0 bg-gradient-to-b from-[#424242] to-transparent">
+          <h2 className="text-lg font-bold text-white mb-3">{trip.title}</h2>
+          <div className="flex items-center gap-2 mb-3">
             <div 
-              className="w-2 h-2 rounded-full border border-white"
+              className="w-2.5 h-2.5 rounded-full border border-white/30 shadow-lg animate-pulse"
               style={{ backgroundColor: statusColor }}
             />
-            <span className="text-[11px] text-white">
+            <span className="text-xs font-medium text-white/90">
               {trip.status === 'completed' ? 'Completed' : 'Active'}
             </span>
             {trip.startTime && (
               <>
-                <span className="text-[11px] text-gray-400">•</span>
-                <span className="text-[11px] text-gray-400">
+                <span className="text-xs text-gray-400">•</span>
+                <span className="text-xs text-gray-400">
                   {format(toDate(trip.startTime), 'MMM dd, yyyy')}
                 </span>
               </>
             )}
           </div>
           {trip.description && (
-            <p className="text-[12px] text-gray-300">{trip.description}</p>
+            <p className="text-sm text-gray-300 leading-relaxed">{trip.description}</p>
           )}
         </div>
 
@@ -584,6 +640,7 @@ export default function TripDetailPage() {
                       onDelete={handleDeletePlace}
                       isCreator={canEdit}
                       tripId={tripId}
+                      expenses={expenses}
                     />
                   </div>
                   
@@ -609,16 +666,19 @@ export default function TripDetailPage() {
             </div>
           </div>
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center px-4">
-            <div className="text-5xl mb-2">📍</div>
-            <p className="text-[12px] font-semibold text-white mb-1">No steps yet</p>
-            <p className="text-[10px] text-gray-400">Add your first step to start your journey</p>
+          <div className="flex-1 flex flex-col items-center justify-center px-4 py-12">
+            <div className="text-6xl mb-4 animate-bounce">📍</div>
+            <p className="text-base font-semibold text-white mb-2">No steps yet</p>
+            <p className="text-sm text-gray-400 text-center mb-8 max-w-xs">
+              Add your first step to start your journey and create beautiful travel memories
+            </p>
             {canEdit && (
               <Link
                 href={`/trips/${tripId}/steps/new`}
-                className="inline-block mt-4 px-4 py-2 bg-[#1976d2] text-white rounded-lg text-[12px] font-semibold"
+                className="inline-flex items-center gap-2 px-6 py-3 bg-[#1976d2] text-white rounded-xl text-sm font-semibold shadow-lg hover:bg-[#1565c0] transition-all duration-200 hover:shadow-xl active:scale-95"
               >
-                + Add Step
+                <span className="text-lg">+</span>
+                <span>Add Your First Step</span>
               </Link>
             )}
           </div>
@@ -626,21 +686,29 @@ export default function TripDetailPage() {
 
         {/* Expense Summary */}
         {trip.status === 'completed' && expenseSummary && (
-          <div className="px-4 pb-4 flex-shrink-0">
-            <div className="bg-[#616161] rounded-lg p-4">
-              <h3 className="text-[13px] font-bold text-white mb-2">Expense Summary</h3>
-              <p className="text-2xl font-bold text-white mb-3">
+          <div className="px-4 pb-6 flex-shrink-0">
+            <div className="bg-gradient-to-br from-[#616161] to-[#424242] rounded-xl p-5 shadow-lg border border-gray-600/50">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-xl">💰</span>
+                <h3 className="text-sm font-bold text-white">Expense Summary</h3>
+              </div>
+              <p className="text-3xl font-bold text-white mb-4">
                 ${expenseSummary.totalSpent.toFixed(2)}
               </p>
               {expenseSummary.settlements.length > 0 && (
-                <div className="pt-3 border-t border-gray-500">
-                  <p className="text-[11px] font-semibold text-white mb-2">Settlements:</p>
-                  {expenseSummary.settlements.map((settlement, idx) => (
-                    <p key={idx} className="text-[10px] text-gray-300 mb-1">
-                      {settlement.from.substring(0, 8)}... owes ${settlement.amount.toFixed(2)} to{' '}
-                      {settlement.to.substring(0, 8)}...
-                    </p>
-                  ))}
+                <div className="pt-4 border-t border-gray-500/50">
+                  <p className="text-xs font-semibold text-white/90 mb-3">Settlements:</p>
+                  <div className="space-y-2">
+                    {expenseSummary.settlements.map((settlement, idx) => (
+                      <div key={idx} className="bg-gray-700/50 rounded-lg p-2.5">
+                        <p className="text-xs text-gray-200">
+                          <span className="font-medium">{settlement.from.substring(0, 8)}...</span> owes{' '}
+                          <span className="font-semibold text-white">${settlement.amount.toFixed(2)}</span> to{' '}
+                          <span className="font-medium">{settlement.to.substring(0, 8)}...</span>
+                        </p>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>

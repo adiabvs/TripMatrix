@@ -3,10 +3,11 @@
 import { useState } from 'react';
 import { format } from 'date-fns';
 import { toDate } from '@/lib/dateUtils';
-import type { TripPlace } from '@tripmatrix/types';
+import type { TripPlace, TripExpense } from '@tripmatrix/types';
 import PhotoViewer from './PhotoViewer';
 import Link from 'next/link';
 import { Delete as DeleteIcon } from '@mui/icons-material';
+import { formatCurrency } from '@/lib/currencyUtils';
 
 interface CompactStepCardProps {
   place: TripPlace;
@@ -15,6 +16,7 @@ interface CompactStepCardProps {
   onDelete?: (place: TripPlace) => void;
   isCreator?: boolean;
   tripId: string;
+  expenses?: TripExpense[];
 }
 
 export default function CompactStepCard({ 
@@ -23,7 +25,8 @@ export default function CompactStepCard({
   onEdit,
   onDelete,
   isCreator,
-  tripId
+  tripId,
+  expenses = []
 }: CompactStepCardProps) {
   const [viewingPhotos, setViewingPhotos] = useState(false);
   const [photoIndex, setPhotoIndex] = useState(0);
@@ -43,6 +46,17 @@ export default function CompactStepCard({
 
   // Use first image as cover, or placeholder
   const coverImage = imageList.length > 0 ? imageList[0] : null;
+
+  // Filter expenses for this place
+  const placeExpenses = expenses.filter(e => e.placeId === place.placeId);
+  
+  // Calculate total expenses by currency
+  const expensesByCurrency = placeExpenses.reduce((acc, e) => {
+    const curr = e.currency || 'USD';
+    if (!acc[curr]) acc[curr] = 0;
+    acc[curr] += e.amount;
+    return acc;
+  }, {} as Record<string, number>);
 
   const cardContent = (
     <div className="relative h-[140px] rounded-lg overflow-hidden bg-gray-200 shadow-md cursor-pointer">
@@ -90,19 +104,31 @@ export default function CompactStepCard({
           )}
         </div>
         
-        {/* Bottom Section: Date (left) and Rating (right) - Full width, no padding */}
+        {/* Bottom Section: Date (left) and Rating/Expenses (right) - Full width, no padding */}
         <div className="flex justify-between items-center bg-[rgba(66,66,66,0.7)] w-full">
           {visitedDate && !isNaN(visitedDate.getTime()) && (
             <span className="text-[9px] text-white opacity-90 px-2 py-1 truncate leading-tight">
               {format(visitedDate, 'MMM dd')}
             </span>
           )}
-          {place.rating && (
-            <div className="flex items-center gap-0.5 px-2 py-1">
-              <span className="text-[9px] text-white">⭐</span>
-              <span className="text-[9px] text-white font-medium leading-tight">{place.rating}</span>
-            </div>
-          )}
+          <div className="flex items-center gap-2 px-2 py-1">
+            {place.rating && (
+              <div className="flex items-center gap-0.5">
+                <span className="text-[9px] text-white">⭐</span>
+                <span className="text-[9px] text-white font-medium leading-tight">{place.rating}</span>
+              </div>
+            )}
+            {placeExpenses.length > 0 && (
+              <div className="flex items-center gap-1">
+                <span className="text-[9px] text-white">💰</span>
+                <span className="text-[9px] text-white font-medium leading-tight">
+                  {Object.entries(expensesByCurrency).map(([curr, total]) => 
+                    formatCurrency(total, curr)
+                  ).join(', ')}
+                </span>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

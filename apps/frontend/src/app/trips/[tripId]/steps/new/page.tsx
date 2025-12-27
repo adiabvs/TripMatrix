@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { useEffect, useState, useRef, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import { getTrip, addPlace, getTripPlaces, createExpense } from '@/lib/api';
-import type { Trip, TripPlace, ModeOfTravel } from '@tripmatrix/types';
+import type { Trip, TripPlace, TripExpense, ModeOfTravel } from '@tripmatrix/types';
 import { toDate, formatDateTimeLocalForInput, parseDateTimeLocalToUTC } from '@/lib/dateUtils';
 import { format } from 'date-fns';
 import type L from 'leaflet';
@@ -47,7 +47,7 @@ export default function NewStepPage() {
   const [submitting, setSubmitting] = useState(false);
   const [showExpenseForm, setShowExpenseForm] = useState(false);
   const [placeCountry, setPlaceCountry] = useState<string | undefined>(undefined);
-  const [newPlaceId, setNewPlaceId] = useState<string | null>(null);
+  const [pendingExpenses, setPendingExpenses] = useState<Array<Partial<TripExpense>>>([]);
   
   // Map search state
   const [searchQuery, setSearchQuery] = useState('');
@@ -426,28 +426,16 @@ export default function NewStepPage() {
   };
 
 
-  const handleAddExpense = async (expenseData: Partial<any>) => {
-    if (!token) {
-      alert('Authentication token is missing. Please log in again.');
-      return;
-    }
-    if (!newPlaceId) {
-      alert('Please save the step first before adding an expense.');
-      return;
-    }
-    try {
-      await createExpense({
-        ...expenseData,
-        tripId,
-        placeId: newPlaceId,
-      }, token);
-      alert('Expense added successfully!');
-      setShowExpenseForm(false);
-      // Don't refresh the page, just close the form
-    } catch (error: any) {
-      console.error('Failed to add expense:', error);
-      alert(`Failed to add expense: ${error.message || 'Unknown error'}`);
-    }
+  const handleAddExpense = (expenseData: Partial<TripExpense>) => {
+    // Add expense to pending expenses list (like adding a guest)
+    setPendingExpenses([...pendingExpenses, expenseData]);
+    setShowExpenseForm(false);
+  };
+
+  const removeExpense = (index: number) => {
+    const newExpenses = [...pendingExpenses];
+    newExpenses.splice(index, 1);
+    setPendingExpenses(newExpenses);
   };
 
   const handleSubmitWithExpense = async (e: React.FormEvent) => {
@@ -465,7 +453,7 @@ export default function NewStepPage() {
 
     setSubmitting(true);
     try {
-      const { addPlace } = await import('@/lib/api');
+      const { addPlace, createExpense } = await import('@/lib/api');
       // visitedDateTime is already a Date object, send it directly (backend will store as UTC)
       const newPlace = await addPlace({
         tripId,
@@ -478,15 +466,24 @@ export default function NewStepPage() {
         imageMetadata: images.length > 0 ? images : undefined,
       }, token);
       
-      // Store the new place ID for expense creation
-      if (newPlace && newPlace.placeId) {
-        setNewPlaceId(newPlace.placeId);
-      }
-      
-      // If expense form is shown, don't redirect yet - let user add expense
-      if (showExpenseForm) {
-        alert('Step saved! You can now add an expense below.');
-        return;
+      // Create all pending expenses after place is created
+      if (pendingExpenses.length > 0 && newPlace?.placeId) {
+        try {
+          const expenseResults = await Promise.all(
+            pendingExpenses.map(expense => 
+              createExpense({
+                ...expense,
+                tripId,
+                placeId: newPlace.placeId,
+              }, token)
+            )
+          );
+          console.log(`Successfully created ${expenseResults.length} expense(s)`);
+        } catch (expenseError: any) {
+          console.error('Failed to create some expenses:', expenseError);
+          alert(`Step was created, but failed to add expenses: ${expenseError.message || 'Unknown error'}`);
+          // Don't fail the whole operation if expenses fail, but inform user
+        }
       }
       
       router.push(`/trips/${tripId}`);
@@ -500,16 +497,27 @@ export default function NewStepPage() {
 
   if (authLoading || loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#424242]">
-        <div className="text-sm text-white">Loading...</div>
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-[#424242] to-[#1a1a1a]">
+        <div className="w-16 h-16 border-4 border-gray-600 border-t-[#1976d2] rounded-full animate-spin mb-4" />
+        <p className="text-white text-sm font-medium animate-pulse">Loading...</p>
       </div>
     );
   }
 
   if (!trip) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#424242]">
-        <div className="text-sm text-white">Trip not found</div>
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-[#424242] to-[#1a1a1a] px-4">
+        <div className="text-6xl mb-4">🗺️</div>
+        <h2 className="text-xl font-semibold text-white mb-2">Trip not found</h2>
+        <p className="text-gray-400 text-sm text-center mb-6">
+          The trip you're looking for doesn't exist.
+        </p>
+        <Link
+          href="/trips"
+          className="px-6 py-3 bg-[#1976d2] text-white rounded-xl font-medium hover:bg-[#1565c0] transition-all duration-200 shadow-lg hover:shadow-xl"
+        >
+          Back to Trips
+        </Link>
       </div>
     );
   }
@@ -517,8 +525,18 @@ export default function NewStepPage() {
   const isCreator = user?.uid === trip.creatorId;
   if (!isCreator) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#424242]">
-        <div className="text-sm text-white">You don&apos;t have permission to add steps to this trip</div>
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-[#424242] to-[#1a1a1a] px-4">
+        <div className="text-6xl mb-4">🔒</div>
+        <h2 className="text-xl font-semibold text-white mb-2">Access Denied</h2>
+        <p className="text-gray-400 text-sm text-center mb-6">
+          You don&apos;t have permission to add steps to this trip.
+        </p>
+        <Link
+          href={`/trips/${tripId}`}
+          className="px-6 py-3 bg-[#1976d2] text-white rounded-xl font-medium hover:bg-[#1565c0] transition-all duration-200 shadow-lg hover:shadow-xl"
+        >
+          Back to Trip
+        </Link>
       </div>
     );
   }
@@ -526,11 +544,14 @@ export default function NewStepPage() {
   return (
     <div className="min-h-screen bg-[#424242] flex flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-600">
-        <Link href={`/trips/${tripId}`} className="w-10 h-10 flex items-center justify-center">
+      <div className="flex items-center justify-between px-4 py-4 border-b border-gray-700/50 bg-[#424242]/95 backdrop-blur-sm">
+        <Link 
+          href={`/trips/${tripId}`} 
+          className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-700/50 transition-all duration-200 active:scale-95"
+        >
           <span className="text-white text-xl">←</span>
         </Link>
-        <h1 className="text-[11px] font-semibold text-white">Add Step</h1>
+        <h1 className="text-sm font-semibold text-white">Add Step</h1>
         <div className="w-10" />
       </div>
 
@@ -790,20 +811,61 @@ export default function NewStepPage() {
           {trip.participants && trip.participants.length > 0 && (
             <div className="pt-4 border-t border-[#616161]">
               <div className="mb-4">
-                <label className="flex items-center gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={showExpenseForm}
-                    onChange={(e) => setShowExpenseForm(e.target.checked)}
-                    className="w-5 h-5 rounded border-gray-300 text-[#1976d2] focus:ring-[#1976d2] focus:ring-2"
-                  />
-                  <div>
-                    <h3 className="text-[14px] font-semibold text-white mb-1">Add Expense (Optional)</h3>
-                    <p className="text-[10px] text-[#9e9e9e]">Add expenses for this step</p>
-                  </div>
-                </label>
+                <h3 className="text-[14px] font-semibold text-white mb-1">Expenses (Optional)</h3>
+                <p className="text-[10px] text-[#9e9e9e]">Add expenses for this step</p>
               </div>
 
+              {/* Expenses List */}
+              {pendingExpenses.length > 0 && (
+                <div className="space-y-2 mb-4">
+                  {pendingExpenses.map((expense, index) => {
+                    const paidByLabel = trip.participants.find(
+                      p => (p.uid || p.guestName) === expense.paidBy
+                    );
+                    const paidByName = paidByLabel?.isGuest 
+                      ? paidByLabel.guestName 
+                      : paidByLabel?.uid || expense.paidBy;
+                    return (
+                      <div
+                        key={index}
+                        className="flex items-center justify-between p-3 bg-[#616161] rounded-lg border border-[#757575]"
+                      >
+                        <div className="flex-1">
+                          <p className="text-[14px] font-medium text-white">
+                            {expense.currency} {expense.amount?.toFixed(2)}
+                          </p>
+                          {expense.description && (
+                            <p className="text-[12px] text-[#bdbdbd] mt-1">{expense.description}</p>
+                          )}
+                          <p className="text-[11px] text-[#9e9e9e] mt-1">
+                            Paid by: {paidByName} • Split between {expense.splitBetween?.length || 0} people
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeExpense(index)}
+                          className="ml-3 text-red-400 hover:text-red-300 text-sm font-medium"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Add Expense Button */}
+              {!showExpenseForm && (
+                <button
+                  type="button"
+                  onClick={() => setShowExpenseForm(true)}
+                  className="w-full px-4 py-2 border-2 border-dashed border-[#616161] rounded-lg text-[#bdbdbd] hover:border-[#757575] hover:text-white transition-colors text-[14px]"
+                >
+                  + Add Expense
+                </button>
+              )}
+
+              {/* Expense Form */}
               {showExpenseForm && (
                 <div className="mt-4 bg-[#616161] rounded-lg p-4">
                   <ExpenseForm
@@ -819,18 +881,25 @@ export default function NewStepPage() {
           )}
 
           {/* Submit Button */}
-          <div className="flex gap-3 pb-4">
+          <div className="flex gap-3 pb-6">
             <button
               type="submit"
               disabled={submitting || !placeName.trim()}
-              className="flex-1 bg-[#1976d2] text-white py-3 px-4 rounded-lg text-[14px] font-semibold disabled:opacity-50"
+              className="flex-1 bg-[#1976d2] text-white py-3.5 px-6 rounded-xl text-sm font-semibold shadow-lg hover:bg-[#1565c0] hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 disabled:active:scale-100"
             >
-              {submitting ? 'Adding...' : 'Add Step'}
+              {submitting ? (
+                <span className="flex items-center justify-center gap-2">
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  Adding...
+                </span>
+              ) : (
+                'Add Step'
+              )}
             </button>
             <button
               type="button"
               onClick={() => router.push(`/trips/${tripId}`)}
-              className="px-4 py-3 bg-[#616161] text-white rounded-lg text-[14px] font-medium"
+              className="px-6 py-3.5 bg-[#616161] text-white rounded-xl text-sm font-medium hover:bg-[#757575] transition-all duration-200 active:scale-95"
             >
               Cancel
             </button>
