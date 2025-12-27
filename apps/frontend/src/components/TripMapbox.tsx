@@ -5,6 +5,7 @@ import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import type { TripPlace, TripRoute, ModeOfTravel } from '@tripmatrix/types';
 import { geoInterpolate } from 'd3-geo';
+import { getModeIconSVG } from '@/lib/iconUtils';
 
 interface TripMapboxProps {
   places: TripPlace[];
@@ -59,15 +60,7 @@ const getAnimationDuration = (mode: ModeOfTravel | null | undefined): number => 
 
 // Get vehicle icon HTML
 const getVehicleIcon = (mode: ModeOfTravel | null | undefined): string => {
-  const icons: Record<string, string> = {
-    walk: '🚶',
-    bike: '🚴',
-    car: '🚗',
-    train: '🚂',
-    bus: '🚌',
-    flight: '✈️',
-  };
-  return icons[mode || ''] || '📍';
+  return getModeIconSVG(mode, '#000');
 };
 
 // Fetch road route from OSRM (free routing service)
@@ -680,7 +673,7 @@ export default function TripMapbox({
       vehicleEl.style.zIndex = '10000';
       vehicleEl.style.pointerEvents = 'none';
       vehicleEl.style.filter = 'drop-shadow(0 2px 4px rgba(0,0,0,0.5))';
-      vehicleEl.textContent = getVehicleIcon(mode);
+      vehicleEl.innerHTML = getVehicleIcon(mode);
 
       vehicleMarkerRef.current = new maplibregl.Marker({
         element: vehicleEl,

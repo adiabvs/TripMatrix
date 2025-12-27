@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { Trip, TripPlace, TripRoute } from '@tripmatrix/types';
+import { getModeIconSVG } from '@/lib/iconUtils';
 
 interface HomeMapViewProps {
   places: TripPlace[];
@@ -119,10 +120,23 @@ export default function HomeMapView({
     });
     layersRef.current = [];
 
-    // Add place markers (using default Leaflet marker)
+    // Add place markers (circular)
     places.forEach((place) => {
       if (place.coordinates && place.coordinates.lat && place.coordinates.lng) {
-        const marker = L.marker([place.coordinates.lat, place.coordinates.lng])
+        const circleIcon = L.divIcon({
+          className: 'place-marker',
+          html: `<div style="
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background-color: #1976d2;
+            border: 2px solid white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+          "></div>`,
+          iconSize: [12, 12],
+          iconAnchor: [6, 6],
+        });
+        const marker = L.marker([place.coordinates.lat, place.coordinates.lng], { icon: circleIcon })
           .addTo(map)
           .bindPopup(place.name || 'Place');
         layersRef.current.push(marker);
@@ -130,23 +144,28 @@ export default function HomeMapView({
       }
     });
 
-    // Add trip start location markers (using default Leaflet marker with red color)
+    // Add trip start location markers (circular)
     trips.forEach((trip) => {
       const tripWithCoords = trip as Trip & { startLocationCoords?: { lat: number; lng: number } };
       if (tripWithCoords.startLocationCoords && 
           tripWithCoords.startLocationCoords.lat !== 0 && 
           tripWithCoords.startLocationCoords.lng !== 0) {
         const coords = tripWithCoords.startLocationCoords;
-        // Create red marker icon
-        const redIcon = new L.Icon({
-          iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png',
-          shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
-          iconSize: [25, 41],
-          iconAnchor: [12, 41],
-          popupAnchor: [1, -34],
-          shadowSize: [41, 41]
+        // Create circular marker
+        const circleIcon = L.divIcon({
+          className: 'trip-marker',
+          html: `<div style="
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background-color: #ef4444;
+            border: 2px solid white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+          "></div>`,
+          iconSize: [14, 14],
+          iconAnchor: [7, 7],
         });
-        const marker = L.marker([coords.lat, coords.lng], { icon: redIcon })
+        const marker = L.marker([coords.lat, coords.lng], { icon: circleIcon })
           .addTo(map)
           .bindPopup(trip.title || 'Trip')
           .on('click', () => {
@@ -217,16 +236,7 @@ export default function HomeMapView({
             const midLat = (currentPlace.coordinates.lat + nextPlace.coordinates.lat) / 2;
             const midLng = (currentPlace.coordinates.lng + nextPlace.coordinates.lng) / 2;
             
-            const modeIcons: Record<string, string> = {
-              walk: '🚶',
-              bike: '🚴',
-              car: '🚗',
-              train: '🚂',
-              bus: '🚌',
-              flight: '✈️',
-            };
-            
-            const icon = modeIcons[nextPlace.modeOfTravel] || '📍';
+            const iconHTML = getModeIconSVG(nextPlace.modeOfTravel, color);
             
             // Remove previous animation layer
             if (animationLayerRef.current) {
@@ -244,10 +254,10 @@ export default function HomeMapView({
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                font-size: 20px;
                 box-shadow: 0 4px 8px rgba(0,0,0,0.4);
                 animation: pulse 2s infinite;
-              ">${icon}</div>
+                color: ${color};
+              ">${iconHTML}</div>
               <style>
                 @keyframes pulse {
                   0%, 100% { transform: scale(1); opacity: 1; }

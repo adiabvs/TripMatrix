@@ -49,7 +49,6 @@ export default function RootLayout({
           right: 0, 
           bottom: 0, 
           width: '100%', 
-          height: '100%',
           height: '100dvh',
           overflow: 'hidden',
           overscrollBehavior: 'none'

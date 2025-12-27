@@ -98,18 +98,24 @@ export default function PlaceMapSelector({
       if (markerRef.current) {
         markerRef.current.setLatLng([lat, lng]);
       } else {
-        // Use default Leaflet marker without shadow
-        const icon = L.icon({
-          iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
-          iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png',
-          shadowUrl: '', // Remove shadow
-          iconSize: [25, 41],
-          iconAnchor: [12, 41],
-          popupAnchor: [1, -34],
+        // Use circular marker
+        const circleIcon = L.divIcon({
+          className: 'place-selector-marker',
+          html: `<div style="
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background-color: #1976d2;
+            border: 3px solid white;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+            cursor: move;
+          "></div>`,
+          iconSize: [16, 16],
+          iconAnchor: [8, 8],
         });
         markerRef.current = L.marker([lat, lng], { 
           draggable: true,
-          icon: icon
+          icon: circleIcon
         }).addTo(map);
         markerRef.current.on('dragend', async (e) => {
           const marker = e.target;
@@ -142,18 +148,24 @@ export default function PlaceMapSelector({
 
     // Add initial marker if coordinates provided
     if (initialCoords) {
-      // Use default Leaflet marker without shadow
-      const icon = L.icon({
-        iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
-        iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png',
-        shadowUrl: '', // Remove shadow
-        iconSize: [25, 41],
-        iconAnchor: [12, 41],
-        popupAnchor: [1, -34],
+      // Use circular marker
+      const circleIcon = L.divIcon({
+        className: 'place-selector-marker',
+        html: `<div style="
+          width: 16px;
+          height: 16px;
+          border-radius: 50%;
+          background-color: #1976d2;
+          border: 3px solid white;
+          box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+          cursor: move;
+        "></div>`,
+        iconSize: [16, 16],
+        iconAnchor: [8, 8],
       });
       markerRef.current = L.marker([initialCoords.lat, initialCoords.lng], { 
         draggable: true,
-        icon: icon
+        icon: circleIcon
       })
         .addTo(map)
         .bindPopup('Selected Location')
@@ -233,7 +245,21 @@ export default function PlaceMapSelector({
       if (markerRef.current) {
         markerRef.current.setLatLng([lat, lng]);
       } else {
-        markerRef.current = L.marker([lat, lng], { draggable: true }).addTo(map);
+        const circleIcon = L.divIcon({
+          className: 'place-selector-marker',
+          html: `<div style="
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background-color: #1976d2;
+            border: 3px solid white;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+            cursor: move;
+          "></div>`,
+          iconSize: [16, 16],
+          iconAnchor: [8, 8],
+        });
+        markerRef.current = L.marker([lat, lng], { draggable: true, icon: circleIcon }).addTo(map);
         markerRef.current.on('dragend', (e) => {
           const marker = e.target;
           const position = marker.getLatLng();
@@ -270,7 +296,21 @@ export default function PlaceMapSelector({
           if (markerRef.current) {
             markerRef.current.setLatLng([latitude, longitude]);
           } else {
-            markerRef.current = L.marker([latitude, longitude], { draggable: true }).addTo(mapRef.current);
+            const circleIcon = L.divIcon({
+              className: 'place-selector-marker',
+              html: `<div style="
+                width: 16px;
+                height: 16px;
+                border-radius: 50%;
+                background-color: #1976d2;
+                border: 3px solid white;
+                box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+                cursor: move;
+              "></div>`,
+              iconSize: [16, 16],
+              iconAnchor: [8, 8],
+            });
+            markerRef.current = L.marker([latitude, longitude], { draggable: true, icon: circleIcon }).addTo(mapRef.current);
             markerRef.current.on('dragend', (e) => {
               const marker = e.target;
               const position = marker.getLatLng();
