@@ -13,7 +13,7 @@ import { toDate, formatDateTimeLocalForInput, parseDateTimeLocalToUTC } from '@/
 import { format } from 'date-fns';
 import type L from 'leaflet';
 import ExpenseForm from '@/components/ExpenseForm';
-import { MdMap, MdArrowBack, MdCameraAlt, MdSearch, MdRefresh, MdMyLocation } from 'react-icons/md';
+import { MdMap, MdArrowBack, MdCameraAlt, MdSearch, MdRefresh, MdMyLocation, MdClose } from 'react-icons/md';
 
 // Dynamically import PlaceMapSelector with SSR disabled
 const PlaceMapSelector = dynamic(() => import('@/components/PlaceMapSelector'), {
@@ -751,7 +751,7 @@ export default function NewStepPage() {
                       onClick={() => removeImage(index)}
                       className="absolute top-1 right-1 w-6 h-6 bg-black/60 rounded-full flex items-center justify-center"
                     >
-                      <span className="text-white text-xs">×</span>
+                      <MdClose className="text-white text-xs" />
                     </button>
                   </div>
                 ))}

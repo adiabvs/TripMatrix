@@ -11,6 +11,7 @@ import TripMap from '@/components/TripMap';
 import { formatDistance, formatDuration } from '@tripmatrix/utils';
 import { format } from 'date-fns';
 import { toDate } from '@/lib/dateUtils';
+import { MdArrowBack } from 'react-icons/md';
 
 export default function PublicTripViewPage() {
   const params = useParams();
@@ -119,8 +120,9 @@ export default function PublicTripViewPage() {
     <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
       <nav className="bg-white shadow-sm flex-shrink-0">
         <div className="container mx-auto px-4 py-4">
-          <Link href="/trips/public" className="text-blue-600 hover:text-blue-700">
-            ← Back to Public Trips
+          <Link href="/trips/public" className="text-blue-600 hover:text-blue-700 flex items-center gap-2">
+            <MdArrowBack className="w-4 h-4" />
+            <span>Back to Public Trips</span>
           </Link>
         </div>
       </nav>

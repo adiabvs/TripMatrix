@@ -8,6 +8,7 @@ import { createTrip, uploadImage } from '@/lib/api';
 import type { Trip, TripParticipant } from '@tripmatrix/types';
 import ParticipantSelector from '@/components/ParticipantSelector';
 import { parseDateTimeLocalToUTC } from '@/lib/dateUtils';
+import { MdArrowBack, MdClose, MdCheck, MdPublic } from 'react-icons/md';
 
 export default function NewTripPage() {
   const { user, loading: authLoading, getIdToken } = useAuth();
@@ -97,7 +98,7 @@ export default function NewTripPage() {
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-600 flex-shrink-0">
         <Link href="/trips" className="w-10 h-10 flex items-center justify-center">
-          <span className="text-white text-xl">←</span>
+          <MdArrowBack className="text-white text-xl" />
         </Link>
         <h1 className="text-xs font-semibold text-white">New Trip</h1>
         <div className="w-10" />
@@ -122,7 +123,7 @@ export default function NewTripPage() {
                   onClick={() => setCoverImage(null)}
                   className="absolute top-2 right-2 w-8 h-8 bg-black/60 rounded-full flex items-center justify-center"
                 >
-                  <span className="text-white text-lg">×</span>
+                  <MdClose className="text-white text-lg" />
                 </button>
               </div>
             ) : (
@@ -231,7 +232,7 @@ export default function NewTripPage() {
                     : 'bg-transparent border-[#616161] text-white'
                 }`}
               >
-                <span>✓</span>
+                <MdCheck className="w-4 h-4" />
                 <span className="text-[14px] font-medium">Completed</span>
               </button>
             </div>
@@ -240,7 +241,7 @@ export default function NewTripPage() {
           {/* Public/Private Toggle */}
           <div className="flex items-center justify-between py-2">
             <div className="flex items-center gap-3">
-              <span className="text-xl">🌐</span>
+              <MdPublic className="text-xl text-white" />
               <div>
                 <label className="block text-[12px] font-semibold text-white mb-0.5">
                   Public Trip
@@ -278,7 +279,7 @@ export default function NewTripPage() {
             disabled={loading}
             className="w-full flex items-center justify-center gap-2 py-4 bg-[#1976d2] text-white rounded-lg text-[14px] font-semibold disabled:opacity-50 mt-4"
           >
-            <span>✓</span>
+            <MdCheck className="w-4 h-4" />
             <span>{loading ? 'Creating...' : 'Create Trip'}</span>
           </button>
         </form>

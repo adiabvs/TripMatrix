@@ -8,7 +8,7 @@ import { format } from 'date-fns';
 import { toDate } from '@/lib/dateUtils';
 import { getUserTrips } from '@/lib/api';
 import type { Trip } from '@tripmatrix/types';
-import { MdHome } from 'react-icons/md';
+import { MdHome, MdArrowBack, MdLogout, MdPerson, MdMap, MdCheckCircle, MdTrendingUp } from 'react-icons/md';
 
 export default function ProfilePage() {
   const { user, firebaseUser, loading: authLoading, signOut, getIdToken } = useAuth();
@@ -56,8 +56,8 @@ export default function ProfilePage() {
 
   if (authLoading || loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-white">
-        <div className="text-lg text-gray-600">Loading...</div>
+      <div className="h-screen flex items-center justify-center bg-[#424242]">
+        <div className="text-sm text-white">Loading...</div>
       </div>
     );
   }
@@ -72,138 +72,145 @@ export default function ProfilePage() {
   const totalExpenses = trips.reduce((sum, t) => sum + (t.totalExpense || 0), 0);
 
   return (
-    <div className="h-screen bg-white flex flex-col overflow-hidden">
-      {/* Navigation */}
-      <nav className="flex-shrink-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-100">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
-          <Link href="/trips" className="text-xl font-bold text-gray-900 tracking-tight">
-            TripMatrix
-          </Link>
-          <Link
-            href="/trips"
-            className="text-gray-700 hover:text-gray-900 transition-colors text-sm font-medium"
-          >
-            Back to Trips
-          </Link>
-        </div>
-      </nav>
+    <div className="h-screen bg-[#424242] flex flex-col overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-600 flex-shrink-0">
+        <Link href="/trips" className="w-10 h-10 flex items-center justify-center">
+          <MdArrowBack className="text-white text-xl" />
+        </Link>
+        <h1 className="text-xs font-semibold text-white">Profile</h1>
+        <div className="w-10" /> {/* Spacer for centering */}
+      </div>
 
-      <div className="flex-1 overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
-        <div className="max-w-4xl mx-auto px-6 py-12">
+      {/* Main Content */}
+      <div className="flex-1 overflow-y-auto px-4 py-4" style={{ WebkitOverflowScrolling: 'touch' }}>
         {/* Profile Header */}
-        <div className="mb-12">
-          <div className="flex items-start gap-6 mb-8">
+        <div className="mb-6">
+          <div className="flex items-start gap-4 mb-6">
             <div className="relative">
               {user.photoUrl ? (
                 <img
                   src={user.photoUrl}
                   alt={user.name}
-                  className="w-24 h-24 rounded-full object-cover border-4 border-gray-100"
+                  className="w-20 h-20 rounded-full object-cover border-2 border-gray-500"
                 />
               ) : (
-                <div className="w-24 h-24 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center border-4 border-gray-100">
-                  <span className="text-3xl font-bold text-white">
-                    {user.name.charAt(0).toUpperCase()}
-                  </span>
+                <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center border-2 border-gray-500">
+                  <MdPerson className="text-3xl text-white" />
                 </div>
               )}
             </div>
             <div className="flex-1">
-              <h1 className="text-3xl font-bold text-gray-900 mb-2">{user.name}</h1>
-              <p className="text-gray-600 mb-4">{user.email}</p>
-              <p className="text-sm text-gray-500">
+              <h2 className="text-[14px] font-semibold text-white mb-1">{user.name}</h2>
+              <p className="text-[12px] text-gray-300 mb-2">{user.email}</p>
+              <p className="text-[10px] text-gray-400">
                 Member since {format(toDate(user.createdAt), 'MMMM yyyy')}
               </p>
             </div>
             <button
               onClick={handleSignOut}
-              className="px-5 py-2.5 rounded-full border border-gray-300 hover:border-gray-400 text-gray-700 hover:text-gray-900 transition-colors text-sm font-medium"
+              className="px-4 py-2 rounded-lg border border-gray-600 hover:border-gray-500 text-white hover:bg-[#616161] transition-colors text-[12px] font-medium flex items-center gap-2"
             >
-              Sign Out
+              <MdLogout className="w-4 h-4" />
+              <span>Sign Out</span>
             </button>
           </div>
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-12">
-          <div className="bg-gray-50 rounded-2xl p-6 border border-gray-100">
-            <p className="text-2xl font-bold text-gray-900 mb-1">{trips.length}</p>
-            <p className="text-sm text-gray-600">Total Trips</p>
+        <div className="grid grid-cols-2 gap-4 mb-6">
+          <div className="bg-[#616161] rounded-lg p-4 border border-gray-600">
+            <div className="flex items-center gap-2 mb-2">
+              <MdMap className="w-4 h-4 text-gray-300" />
+              <p className="text-[10px] font-semibold text-gray-300">Total Trips</p>
+            </div>
+            <p className="text-[18px] font-bold text-white">{trips.length}</p>
           </div>
-          <div className="bg-gray-50 rounded-2xl p-6 border border-gray-100">
-            <p className="text-2xl font-bold text-gray-900 mb-1">{activeTrips}</p>
-            <p className="text-sm text-gray-600">Active Trips</p>
+          <div className="bg-[#616161] rounded-lg p-4 border border-gray-600">
+            <div className="flex items-center gap-2 mb-2">
+              <MdTrendingUp className="w-4 h-4 text-gray-300" />
+              <p className="text-[10px] font-semibold text-gray-300">Active Trips</p>
+            </div>
+            <p className="text-[18px] font-bold text-white">{activeTrips}</p>
           </div>
-          <div className="bg-gray-50 rounded-2xl p-6 border border-gray-100">
-            <p className="text-2xl font-bold text-gray-900 mb-1">{completedTrips}</p>
-            <p className="text-sm text-gray-600">Completed</p>
+          <div className="bg-[#616161] rounded-lg p-4 border border-gray-600">
+            <div className="flex items-center gap-2 mb-2">
+              <MdCheckCircle className="w-4 h-4 text-gray-300" />
+              <p className="text-[10px] font-semibold text-gray-300">Completed</p>
+            </div>
+            <p className="text-[18px] font-bold text-white">{completedTrips}</p>
           </div>
-          <div className="bg-gray-50 rounded-2xl p-6 border border-gray-100">
-            <p className="text-2xl font-bold text-gray-900 mb-1">
+          <div className="bg-[#616161] rounded-lg p-4 border border-gray-600">
+            <div className="flex items-center gap-2 mb-2">
+              <MdMap className="w-4 h-4 text-gray-300" />
+              <p className="text-[10px] font-semibold text-gray-300">Kilometers</p>
+            </div>
+            <p className="text-[18px] font-bold text-white">
               {(totalDistance / 1000).toFixed(0)}
             </p>
-            <p className="text-sm text-gray-600">Kilometers</p>
           </div>
         </div>
 
         {/* Recent Trips */}
         <div>
-          <h2 className="text-xl font-bold text-gray-900 mb-6">My Trips</h2>
+          <h2 className="text-xs font-semibold text-white mb-4">My Trips</h2>
           {trips.length === 0 ? (
-            <div className="text-center py-16 bg-gray-50 rounded-2xl">
-              <p className="text-gray-600 mb-4">No trips yet</p>
+            <div className="text-center py-12 bg-[#616161] rounded-lg border border-gray-600">
+              <MdMap className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+              <p className="text-[12px] text-gray-300 mb-4">No trips yet</p>
               <Link
                 href="/trips/new"
-                className="inline-block bg-black text-white px-6 py-3 rounded-full hover:bg-gray-800 transition-colors font-medium"
+                className="inline-block bg-[#1976d2] text-white px-6 py-3 rounded-lg hover:bg-[#1565c0] transition-colors text-[12px] font-medium"
               >
                 Create Your First Trip
               </Link>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-4">
               {trips.map((trip) => (
                 <Link
                   key={trip.tripId}
                   href={`/trips/${trip.tripId}`}
-                  className="group block"
+                  className="block"
                 >
-                  <div className="relative overflow-hidden rounded-2xl bg-white aspect-[4/3] mb-5 border border-gray-200 shadow-lg">
-                    {trip.coverImage ? (
-                      <img
-                        src={trip.coverImage}
-                        alt={trip.title}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center bg-gray-100">
-                        <MdHome className="w-16 h-16 text-gray-400" />
+                  <div className="bg-[#616161] rounded-lg border border-gray-600 overflow-hidden">
+                    <div className="relative aspect-[4/3]">
+                      {trip.coverImage ? (
+                        <img
+                          src={trip.coverImage}
+                          alt={trip.title}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center bg-[#757575]">
+                          <MdHome className="w-12 h-12 text-gray-400" />
+                        </div>
+                      )}
+                      <div className="absolute top-2 right-2">
+                        <span
+                          className={`px-2 py-1 rounded text-[10px] font-semibold ${
+                            trip.status === 'completed'
+                              ? 'bg-green-500 text-white'
+                              : 'bg-blue-500 text-white'
+                          }`}
+                        >
+                          {trip.status === 'completed' ? 'Completed' : 'Active'}
+                        </span>
                       </div>
-                    )}
-                    <div className="absolute top-4 right-4">
-                      <span
-                        className={`px-3 py-1 rounded-full text-xs font-semibold backdrop-blur-sm ${
-                          trip.status === 'completed'
-                            ? 'bg-green-500/90 text-white'
-                            : 'bg-blue-500/90 text-white'
-                        }`}
-                      >
-                        {trip.status === 'completed' ? 'Completed' : 'Active'}
-                      </span>
                     </div>
-                  </div>
-                  <div>
-                    <h3 className="text-base font-bold text-gray-900 mb-1 group-hover:text-gray-700 transition-colors">
-                      {trip.title}
-                    </h3>
-                    <p className="text-xs text-gray-500">
-                      {format(toDate(trip.startTime), 'MMM yyyy')}
-                    </p>
+                    <div className="p-3">
+                      <h3 className="text-[12px] font-semibold text-white mb-1">
+                        {trip.title}
+                      </h3>
+                      <p className="text-[10px] text-gray-400">
+                        {format(toDate(trip.startTime), 'MMM yyyy')}
+                      </p>
+                    </div>
                   </div>
                 </Link>
               ))}
             </div>
           )}
-        </div>
         </div>
       </div>
     </div>

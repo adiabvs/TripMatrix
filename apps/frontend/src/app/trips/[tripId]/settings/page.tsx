@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { getTrip, updateTrip, deleteTrip, uploadImage } from '@/lib/api';
 import type { Trip, PhotoSharingPrivacy, ExpenseVisibility } from '@tripmatrix/types';
+import { MdArrowBack, MdDelete, MdImage } from 'react-icons/md';
 
 export default function TripSettingsPage() {
   const { user, loading: authLoading, getIdToken } = useAuth();
@@ -148,7 +149,7 @@ export default function TripSettingsPage() {
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-600 flex-shrink-0">
         <Link href={`/trips/${tripId}`} className="w-10 h-10 flex items-center justify-center">
-          <span className="text-white text-xl">←</span>
+          <MdArrowBack className="text-white text-xl" />
         </Link>
         <h1 className="text-xs font-semibold text-white">Trip Settings</h1>
         <div className="w-10" /> {/* Spacer for centering */}
@@ -164,7 +165,10 @@ export default function TripSettingsPage() {
         <div className="space-y-6">
           {/* Cover Image */}
           <div className="bg-[#616161] p-4 rounded-lg">
-            <h2 className="text-xs font-semibold text-white mb-4">Cover Image</h2>
+            <h2 className="text-xs font-semibold text-white mb-4 flex items-center gap-2">
+              <MdImage className="w-4 h-4" />
+              Cover Image
+            </h2>
             
             <div className="space-y-4">
               {coverImage ? (
@@ -347,8 +351,9 @@ export default function TripSettingsPage() {
             <button
               onClick={handleDeleteTrip}
               disabled={deleting}
-              className="px-4 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors text-[12px] font-medium"
+              className="px-4 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors text-[12px] font-medium flex items-center gap-2"
             >
+              <MdDelete className="w-4 h-4" />
               {deleting ? 'Deleting...' : 'Delete Trip'}
             </button>
           </div>
