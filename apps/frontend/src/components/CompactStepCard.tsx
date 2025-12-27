@@ -15,7 +15,7 @@ interface CompactStepCardProps {
   place: TripPlace;
   index: number;
   onEdit?: (place: TripPlace) => void;
-  onDelete?: (place: TripPlace) => void;
+  onDelete?: (placeId: string) => Promise<void>;
   isCreator?: boolean;
   tripId: string;
   expenses?: TripExpense[];
@@ -125,7 +125,7 @@ export default function CompactStepCard({
                 e.preventDefault();
                 e.stopPropagation();
                 if (confirm(`Are you sure you want to delete "${place.name}"?`)) {
-                  onDelete(place);
+                  onDelete(place.placeId);
                 }
               }}
               className="text-white hover:opacity-70"
