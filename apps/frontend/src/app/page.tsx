@@ -40,7 +40,9 @@ export default function Home() {
       }
 
       const token = user ? await getIdToken() : null;
-      const result = await getPublicTripsWithData(20, loadMore ? (currentLastTripId || lastTripId) : undefined, token);
+      const lastTripIdValue = currentLastTripId ?? lastTripId;
+      const tripIdForPagination = loadMore && lastTripIdValue != null ? lastTripIdValue : undefined;
+      const result = await getPublicTripsWithData(20, tripIdForPagination, token);
       
       if (loadMore) {
         setTrips(prev => [...prev, ...result.trips]);
