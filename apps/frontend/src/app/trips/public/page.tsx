@@ -40,12 +40,12 @@ export default function PublicTripsPage() {
     <div className="min-h-screen bg-white">
       <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-100">
         <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
-          <Link href="/trips" className="text-xl font-bold text-gray-900 tracking-tight">
+          <Link href="/" className="text-xl font-bold text-gray-900 tracking-tight">
             TripMatrix
           </Link>
           <div className="flex items-center gap-6">
             <Link
-              href="/trips"
+              href="/profile"
               className="text-gray-700 hover:text-gray-900 transition-colors text-sm font-medium"
             >
               My Trips

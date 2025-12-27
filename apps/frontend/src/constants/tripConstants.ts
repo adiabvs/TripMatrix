@@ -34,3 +34,4 @@ export const getTripStatusConfig = (status: TripStatus, isUpcoming: boolean = fa
   return TRIP_STATUS_CONFIG[status];
 };
 
+

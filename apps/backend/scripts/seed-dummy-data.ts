@@ -8,7 +8,7 @@ const __dirname = dirname(__filename);
 dotenv.config({ path: join(__dirname, '../.env') });
 
 import { initializeFirebase, getFirestore } from '../src/config/firebase.js';
-import type { Trip, TripPlace, TripExpense, TripRoute, User, ModeOfTravel } from '@tripmatrix/types';
+import type { Trip, TripPlace, TripExpense, TripRoute, User, ModeOfTravel, PlaceComment } from '@tripmatrix/types';
 import admin from 'firebase-admin';
 
 // Free high-quality travel images from Unsplash
@@ -50,108 +50,38 @@ const DUMMY_IMAGES = {
   ],
 };
 
-const DUMMY_TRIPS = [
-  {
-    title: 'European Adventure',
-    description: 'An amazing journey through the heart of Europe, exploring historic cities and beautiful landscapes.',
-    places: [
-      { name: 'Paris, France', lat: 48.8566, lng: 2.3522, country: 'FR', comment: 'The City of Light never disappoints! Beautiful architecture and amazing food.', rating: 5 },
-      { name: 'Amsterdam, Netherlands', lat: 52.3676, lng: 4.9041, country: 'NL', comment: 'Charming canals and vibrant culture. Loved the bike-friendly streets!', rating: 5 },
-      { name: 'Berlin, Germany', lat: 52.5200, lng: 13.4050, country: 'DE', comment: 'Rich history and amazing nightlife. The Berlin Wall was a powerful experience.', rating: 4 },
-      { name: 'Prague, Czech Republic', lat: 50.0755, lng: 14.4378, country: 'CZ', comment: 'Stunning medieval architecture. The Old Town Square is breathtaking!', rating: 5 },
-      { name: 'Vienna, Austria', lat: 48.2082, lng: 16.3738, country: 'AT', comment: 'Elegant city with incredible music scene. The coffee culture is amazing!', rating: 5 },
-    ],
-    modes: ['flight', 'train', 'train', 'train', 'train'] as ModeOfTravel[],
-    expenses: [
-      { description: 'Hotel in Paris', amount: 450, currency: 'EUR', paidBy: 'user1' },
-      { description: 'Dinner at Le Jules Verne', amount: 320, currency: 'EUR', paidBy: 'user2' },
-      { description: 'Train to Amsterdam', amount: 120, currency: 'EUR', paidBy: 'user1' },
-      { description: 'Museum tickets', amount: 85, currency: 'EUR', paidBy: 'user2' },
-      { description: 'Hotel in Berlin', amount: 380, currency: 'EUR', paidBy: 'user1' },
-    ],
-  },
-  {
-    title: 'Southeast Asia Backpacking',
-    description: 'Exploring the vibrant cultures, delicious food, and stunning beaches of Southeast Asia.',
-    places: [
-      { name: 'Bangkok, Thailand', lat: 13.7563, lng: 100.5018, country: 'TH', comment: 'Incredible street food and bustling markets. The temples are absolutely stunning!', rating: 5 },
-      { name: 'Chiang Mai, Thailand', lat: 18.7883, lng: 98.9853, country: 'TH', comment: 'Peaceful mountain city with amazing temples and elephant sanctuaries.', rating: 5 },
-      { name: 'Luang Prabang, Laos', lat: 19.8833, lng: 102.1333, country: 'LA', comment: 'Beautiful UNESCO World Heritage site. The morning alms ceremony was unforgettable.', rating: 5 },
-      { name: 'Siem Reap, Cambodia', lat: 13.4125, lng: 103.8670, country: 'KH', comment: 'Angkor Wat at sunrise is a once-in-a-lifetime experience!', rating: 5 },
-      { name: 'Ho Chi Minh City, Vietnam', lat: 10.8231, lng: 106.6297, country: 'VN', comment: 'Vibrant city with amazing food scene. The War Remnants Museum was very moving.', rating: 4 },
-    ],
-    modes: ['flight', 'bus', 'bus', 'bus', 'bus'] as ModeOfTravel[],
-    expenses: [
-      { description: 'Hostel in Bangkok', amount: 25, currency: 'USD', paidBy: 'user1' },
-      { description: 'Street food tour', amount: 45, currency: 'USD', paidBy: 'user2' },
-      { description: 'Flight to Chiang Mai', amount: 85, currency: 'USD', paidBy: 'user1' },
-      { description: 'Elephant sanctuary', amount: 120, currency: 'USD', paidBy: 'user2' },
-      { description: 'Bus to Laos', amount: 35, currency: 'USD', paidBy: 'user1' },
-    ],
-  },
-  {
-    title: 'Iceland Ring Road',
-    description: 'A road trip around Iceland, witnessing incredible natural wonders and Northern Lights.',
-    places: [
-      { name: 'Reykjavik, Iceland', lat: 64.1466, lng: -21.9426, country: 'IS', comment: 'Charming capital city. The Blue Lagoon was the perfect start!', rating: 5 },
-      { name: 'Golden Circle', lat: 64.3265, lng: -20.1211, country: 'IS', comment: 'Geysers, waterfalls, and tectonic plates. Nature at its finest!', rating: 5 },
-      { name: 'Vik, Iceland', lat: 63.4187, lng: -19.0064, country: 'IS', comment: 'Black sand beaches and dramatic cliffs. Absolutely stunning!', rating: 5 },
-      { name: 'Jökulsárlón Glacier Lagoon', lat: 64.0479, lng: -16.1794, country: 'IS', comment: 'Icebergs floating in a glacial lagoon. One of the most beautiful places on Earth!', rating: 5 },
-      { name: 'Akureyri, Iceland', lat: 65.6839, lng: -18.1105, country: 'IS', comment: 'Northern lights were incredible here! The whale watching was amazing too.', rating: 5 },
-    ],
-    modes: ['flight', 'car', 'car', 'car', 'car'] as ModeOfTravel[],
-    expenses: [
-      { description: 'Car rental', amount: 850, currency: 'USD', paidBy: 'user1' },
-      { description: 'Hotel in Reykjavik', amount: 280, currency: 'USD', paidBy: 'user2' },
-      { description: 'Northern Lights tour', amount: 150, currency: 'USD', paidBy: 'user1' },
-      { description: 'Glacier hike', amount: 200, currency: 'USD', paidBy: 'user2' },
-      { description: 'Whale watching', amount: 120, currency: 'USD', paidBy: 'user1' },
-    ],
-  },
-  {
-    title: 'Japan Cherry Blossom Season',
-    description: 'Chasing sakura across Japan during the beautiful cherry blossom season.',
-    places: [
-      { name: 'Tokyo, Japan', lat: 35.6762, lng: 139.6503, country: 'JP', comment: 'Incredible city! The cherry blossoms in Ueno Park were magical.', rating: 5 },
-      { name: 'Kyoto, Japan', lat: 35.0116, lng: 135.7681, country: 'JP', comment: 'Traditional temples and gardens. The Philosopher\'s Path during sakura was breathtaking!', rating: 5 },
-      { name: 'Osaka, Japan', lat: 34.6937, lng: 135.5023, country: 'JP', comment: 'Amazing food scene! Dotonbori at night is an experience.', rating: 5 },
-      { name: 'Nara, Japan', lat: 34.6851, lng: 135.8048, country: 'JP', comment: 'Friendly deer and ancient temples. The Great Buddha was impressive!', rating: 5 },
-      { name: 'Hiroshima, Japan', lat: 34.3853, lng: 132.4553, country: 'JP', comment: 'Peaceful and moving. The Peace Memorial Park was very powerful.', rating: 5 },
-    ],
-    modes: ['flight', 'train', 'train', 'train', 'train'] as ModeOfTravel[],
-    expenses: [
-      { description: 'JR Pass', amount: 450, currency: 'USD', paidBy: 'user1' },
-      { description: 'Ryokan in Kyoto', amount: 350, currency: 'USD', paidBy: 'user2' },
-      { description: 'Sushi dinner', amount: 180, currency: 'USD', paidBy: 'user1' },
-      { description: 'Temple entrance fees', amount: 60, currency: 'USD', paidBy: 'user2' },
-      { description: 'Hotel in Tokyo', amount: 420, currency: 'USD', paidBy: 'user1' },
-    ],
-  },
-  {
-    title: 'Patagonia Adventure',
-    description: 'Hiking through the stunning landscapes of Patagonia, from glaciers to mountains.',
-    places: [
-      { name: 'El Calafate, Argentina', lat: -50.3378, lng: -72.2641, country: 'AR', comment: 'Gateway to glaciers. Perito Moreno Glacier was absolutely massive!', rating: 5 },
-      { name: 'El Chaltén, Argentina', lat: -49.3303, lng: -72.8861, country: 'AR', comment: 'Hiking capital of Argentina. Fitz Roy sunrise was unforgettable!', rating: 5 },
-      { name: 'Torres del Paine, Chile', lat: -50.9423, lng: -73.4068, country: 'CL', comment: 'One of the most beautiful national parks in the world. The W Trek was challenging but amazing!', rating: 5 },
-      { name: 'Ushuaia, Argentina', lat: -54.8019, lng: -68.3030, country: 'AR', comment: 'End of the world! The Beagle Channel cruise was incredible.', rating: 5 },
-    ],
-    modes: ['flight', 'bus', 'bus', 'bus'] as ModeOfTravel[],
-    expenses: [
-      { description: 'Flight to El Calafate', amount: 450, currency: 'USD', paidBy: 'user1' },
-      { description: 'Glacier tour', amount: 120, currency: 'USD', paidBy: 'user2' },
-      { description: 'Hiking gear rental', amount: 180, currency: 'USD', paidBy: 'user1' },
-      { description: 'National park entrance', amount: 80, currency: 'USD', paidBy: 'user2' },
-      { description: 'Hostel in El Chaltén', amount: 45, currency: 'USD', paidBy: 'user1' },
-    ],
-  },
+const COMMENT_TEXTS = [
+  'Amazing place! Would definitely visit again.',
+  'Stunning views and great atmosphere. Highly recommend!',
+  'The food here was incredible. Best meal of the trip!',
+  'Beautiful architecture and rich history. Loved it!',
+  'Perfect spot for photos. The sunset was breathtaking!',
+  'Great experience! The locals were so friendly.',
+  'One of the highlights of my trip. Unforgettable!',
+  'Beautiful location with amazing vibes. Will come back!',
+  'The culture here is fascinating. Learned so much!',
+  'Absolutely loved this place! Worth every moment.',
+  'Incredible destination. The memories will last forever!',
+  'Perfect blend of nature and culture. Amazing!',
+  'The best part of my journey. Truly special!',
+  'Stunning location with so much to explore.',
+  'An experience I will never forget. Magical!',
 ];
 
-async function deleteAllTripsData() {
+async function deleteAllData() {
   const db = getFirestore();
-  console.log('🗑️  Deleting all trips data...');
+  console.log('🗑️  Deleting all data...');
 
-  const collections = ['trips', 'tripPlaces', 'tripExpenses', 'tripRoutes', 'placeComments'];
+  const collections = [
+    'users', 
+    'trips', 
+    'tripPlaces', 
+    'tripExpenses', 
+    'tripRoutes', 
+    'placeComments',
+    'tripLikes',
+    'placeLikes',
+  ];
   
   for (const collectionName of collections) {
     try {
@@ -183,18 +113,33 @@ async function deleteAllTripsData() {
     }
   }
   
-  console.log('✅ All trips data deleted!\n');
+  console.log('✅ All data deleted!\n');
 }
 
 async function createDummyUsers() {
   const db = getFirestore();
-  console.log('👥 Creating dummy users...');
+  console.log('👥 Creating 100 dummy users...');
 
-  const userNames = [
-    'Alex Johnson', 'Sarah Chen', 'Michael Brown', 'Emily Davis', 'James Wilson',
-    'Olivia Martinez', 'William Anderson', 'Sophia Taylor', 'Benjamin Thomas', 'Isabella Jackson',
-    'Daniel White', 'Mia Harris', 'Matthew Martin', 'Charlotte Thompson', 'David Garcia',
-    'Amelia Martinez', 'Joseph Rodriguez', 'Harper Lewis', 'Andrew Walker', 'Evelyn Hall',
+  const firstNames = [
+    'Alex', 'Sarah', 'Michael', 'Emily', 'James', 'Olivia', 'William', 'Sophia', 'Benjamin', 'Isabella',
+    'Daniel', 'Mia', 'Matthew', 'Charlotte', 'David', 'Amelia', 'Joseph', 'Harper', 'Andrew', 'Evelyn',
+    'Ryan', 'Grace', 'Christopher', 'Lily', 'Joshua', 'Ava', 'Nathan', 'Zoe', 'Jonathan', 'Chloe',
+    'Samuel', 'Emma', 'Nicholas', 'Maya', 'Tyler', 'Sofia', 'Brandon', 'Aria', 'Justin', 'Scarlett',
+    'Kevin', 'Victoria', 'Eric', 'Madison', 'Brian', 'Luna', 'Jacob', 'Aurora', 'Noah', 'Hazel',
+    'Ethan', 'Nora', 'Lucas', 'Penelope', 'Mason', 'Eleanor', 'Logan', 'Stella', 'Jackson', 'Layla',
+    'Aiden', 'Riley', 'Carter', 'Natalie', 'Owen', 'Zoe', 'Wyatt', 'Lillian', 'Luke', 'Addison',
+    'Henry', 'Aubrey', 'Jack', 'Ellie', 'Levi', 'Hannah', 'Sebastian', 'Aaliyah', 'Julian', 'Natalia',
+    'Aaron', 'Savannah', 'Eli', 'Leah', 'Landon', 'Audrey', 'Connor', 'Bella', 'Caleb', 'Skylar',
+  ];
+
+  const lastNames = [
+    'Johnson', 'Chen', 'Brown', 'Davis', 'Wilson', 'Martinez', 'Anderson', 'Taylor', 'Thomas', 'Jackson',
+    'White', 'Harris', 'Martin', 'Thompson', 'Garcia', 'Rodriguez', 'Lewis', 'Walker', 'Hall', 'Allen',
+    'Young', 'King', 'Wright', 'Lopez', 'Hill', 'Scott', 'Green', 'Adams', 'Baker', 'Nelson',
+    'Carter', 'Mitchell', 'Perez', 'Roberts', 'Turner', 'Phillips', 'Campbell', 'Parker', 'Evans', 'Edwards',
+    'Collins', 'Stewart', 'Sanchez', 'Morris', 'Rogers', 'Reed', 'Cook', 'Morgan', 'Bell', 'Murphy',
+    'Bailey', 'Rivera', 'Cooper', 'Richardson', 'Cox', 'Howard', 'Ward', 'Torres', 'Peterson', 'Gray',
+    'Ramirez', 'James', 'Watson', 'Brooks', 'Kelly', 'Sanders', 'Price', 'Bennett', 'Wood', 'Barnes',
   ];
 
   const countries = ['US', 'CA', 'GB', 'AU', 'FR', 'DE', 'IT', 'ES', 'JP', 'KR', 'SG', 'IN', 'BR', 'MX', 'AR', 'CL', 'NZ', 'NL', 'BE', 'CH'];
@@ -205,19 +150,44 @@ async function createDummyUsers() {
     'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200&h=200&fit=crop',
     'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=200&h=200&fit=crop',
     'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=200&h=200&fit=crop',
+    'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=200&h=200&fit=crop',
+    'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=200&h=200&fit=crop',
+    'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&h=200&fit=crop',
   ];
 
-  const users: User[] = userNames.map((name, index) => ({
-    uid: `user${index + 1}`,
-    name,
-    email: `${name.toLowerCase().replace(' ', '.')}@example.com`,
-    photoUrl: photoUrls[index % photoUrls.length],
-    country: countries[index % countries.length],
-    defaultCurrency: currencies[index % currencies.length],
-    isProfilePublic: true, // All users have public profiles
-    follows: index > 0 ? [`user${index}`] : [], // Each user follows the previous one
-    createdAt: admin.firestore.Timestamp.now(),
-  }));
+  const users: User[] = [];
+  const numUsers = 100;
+
+  for (let i = 0; i < numUsers; i++) {
+    const firstName = firstNames[i % firstNames.length];
+    const lastName = lastNames[Math.floor(i / firstNames.length) % lastNames.length];
+    const name = `${firstName} ${lastName}`;
+    
+    // Create following relationships - each user follows 5-15 random users
+    const follows: string[] = [];
+    const numFollows = Math.floor(Math.random() * 11) + 5; // 5-15 follows
+    const followedIndices = new Set<number>();
+    
+    while (follows.length < numFollows && followedIndices.size < numUsers - 1) {
+      const followIndex = Math.floor(Math.random() * numUsers);
+      if (followIndex !== i && !followedIndices.has(followIndex)) {
+        followedIndices.add(followIndex);
+        follows.push(`user${followIndex + 1}`);
+      }
+    }
+
+    users.push({
+      uid: `user${i + 1}`,
+      name,
+      email: `${firstName.toLowerCase()}.${lastName.toLowerCase()}${i}@example.com`,
+      photoUrl: photoUrls[i % photoUrls.length],
+      country: countries[i % countries.length],
+      defaultCurrency: currencies[i % currencies.length],
+      isProfilePublic: true,
+      follows,
+      createdAt: admin.firestore.Timestamp.now(),
+    });
+  }
 
   // Write in batches
   const batchSize = 500;
@@ -229,13 +199,14 @@ async function createDummyUsers() {
       batch.set(userRef, user);
     });
     await batch.commit();
+    console.log(`   Created ${Math.min(i + batchSize, users.length)}/${users.length} users...`);
   }
 
-  console.log(`✅ Created ${users.length} users\n`);
+  console.log(`✅ Created ${users.length} users with following relationships\n`);
   return users;
 }
 
-// Generate trip templates for 200+ trips
+// Generate trip templates for 250+ trips
 function generateTripTemplates(): Array<{
   title: string;
   description: string;
@@ -255,6 +226,11 @@ function generateTripTemplates(): Array<{
     { name: 'Prague, Czech Republic', lat: 50.0755, lng: 14.4378, country: 'CZ' },
     { name: 'Budapest, Hungary', lat: 47.4979, lng: 19.0402, country: 'HU' },
     { name: 'Lisbon, Portugal', lat: 38.7223, lng: -9.1393, country: 'PT' },
+    { name: 'Istanbul, Turkey', lat: 41.0082, lng: 28.9784, country: 'TR' },
+    { name: 'Athens, Greece', lat: 37.9838, lng: 23.7275, country: 'GR' },
+    { name: 'Dublin, Ireland', lat: 53.3498, lng: -6.2603, country: 'IE' },
+    { name: 'Stockholm, Sweden', lat: 59.3293, lng: 18.0686, country: 'SE' },
+    { name: 'Copenhagen, Denmark', lat: 55.6761, lng: 12.5683, country: 'DK' },
     // Asia
     { name: 'Tokyo, Japan', lat: 35.6762, lng: 139.6503, country: 'JP' },
     { name: 'Seoul, South Korea', lat: 37.5665, lng: 126.9780, country: 'KR' },
@@ -264,14 +240,23 @@ function generateTripTemplates(): Array<{
     { name: 'Bali, Indonesia', lat: -8.3405, lng: 115.0920, country: 'ID' },
     { name: 'Mumbai, India', lat: 19.0760, lng: 72.8777, country: 'IN' },
     { name: 'Dubai, UAE', lat: 25.2048, lng: 55.2708, country: 'AE' },
+    { name: 'Beijing, China', lat: 39.9042, lng: 116.4074, country: 'CN' },
+    { name: 'Shanghai, China', lat: 31.2304, lng: 121.4737, country: 'CN' },
+    { name: 'Kyoto, Japan', lat: 35.0116, lng: 135.7681, country: 'JP' },
+    { name: 'Taipei, Taiwan', lat: 25.0330, lng: 121.5654, country: 'TW' },
     // Americas
     { name: 'New York, USA', lat: 40.7128, lng: -74.0060, country: 'US' },
     { name: 'Los Angeles, USA', lat: 34.0522, lng: -118.2437, country: 'US' },
     { name: 'San Francisco, USA', lat: 37.7749, lng: -122.4194, country: 'US' },
+    { name: 'Miami, USA', lat: 25.7617, lng: -80.1918, country: 'US' },
+    { name: 'Chicago, USA', lat: 41.8781, lng: -87.6298, country: 'US' },
     { name: 'Toronto, Canada', lat: 43.6532, lng: -79.3832, country: 'CA' },
+    { name: 'Vancouver, Canada', lat: 49.2827, lng: -123.1207, country: 'CA' },
     { name: 'Mexico City, Mexico', lat: 19.4326, lng: -99.1332, country: 'MX' },
     { name: 'Rio de Janeiro, Brazil', lat: -22.9068, lng: -43.1729, country: 'BR' },
     { name: 'Buenos Aires, Argentina', lat: -34.6037, lng: -58.3816, country: 'AR' },
+    { name: 'Lima, Peru', lat: -12.0464, lng: -77.0428, country: 'PE' },
+    { name: 'Santiago, Chile', lat: -33.4489, lng: -70.6693, country: 'CL' },
     // Oceania
     { name: 'Sydney, Australia', lat: -33.8688, lng: 151.2093, country: 'AU' },
     { name: 'Melbourne, Australia', lat: -37.8136, lng: 144.9631, country: 'AU' },
@@ -279,6 +264,7 @@ function generateTripTemplates(): Array<{
     // Africa
     { name: 'Cape Town, South Africa', lat: -33.9249, lng: 18.4241, country: 'ZA' },
     { name: 'Marrakech, Morocco', lat: 31.6295, lng: -7.9811, country: 'MA' },
+    { name: 'Cairo, Egypt', lat: 30.0444, lng: 31.2357, country: 'EG' },
   ];
 
   const tripTitles = [
@@ -286,6 +272,7 @@ function generateTripTemplates(): Array<{
     'Wonderful Escape', 'Magical Tour', 'Spectacular Voyage', 'Fantastic Expedition', 'Memorable Getaway',
     'Beautiful Discovery', 'Stunning Exploration', 'Remarkable Travel', 'Extraordinary Trip', 'Inspiring Journey',
     'Breathtaking Adventure', 'Magnificent Tour', 'Phenomenal Experience', 'Astonishing Voyage', 'Marvelous Escape',
+    'Enchanting Expedition', 'Captivating Journey', 'Mesmerizing Adventure', 'Fascinating Discovery', 'Exhilarating Trip',
   ];
 
   const comments = [
@@ -312,7 +299,8 @@ function generateTripTemplates(): Array<{
     expenses: Array<{ description: string; amount: number; currency: string }>;
   }> = [];
 
-  for (let i = 0; i < 200; i++) {
+  const numTrips = 250;
+  for (let i = 0; i < numTrips; i++) {
     const numPlaces = Math.floor(Math.random() * 4) + 3; // 3-6 places
     const selectedCities = [];
     const usedIndices = new Set<number>();
@@ -348,7 +336,7 @@ function generateTripTemplates(): Array<{
     const expenses = [];
     for (let j = 0; j < numExpenses; j++) {
       expenses.push({
-        description: ['Hotel', 'Restaurant', 'Transport', 'Activity', 'Shopping', 'Food'][Math.floor(Math.random() * 6)],
+        description: ['Hotel', 'Restaurant', 'Transport', 'Activity', 'Shopping', 'Food', 'Museum', 'Tour'][Math.floor(Math.random() * 8)],
         amount: Math.floor(Math.random() * 500) + 50,
         currency,
       });
@@ -374,32 +362,54 @@ async function createDummyTrips(users: User[], templates: Array<{
   expenses: Array<{ description: string; amount: number; currency: string }>;
 }>) {
   const db = getFirestore();
-  console.log('✈️  Creating 200+ dummy trips...');
+  console.log('✈️  Creating 250+ dummy trips...');
 
   const trips: Trip[] = [];
   const now = new Date();
   
   templates.forEach((tripData, index) => {
     const startDate = new Date(now);
-    startDate.setMonth(startDate.getMonth() - Math.floor(index / 10)); // Spread over months
+    // Spread trips across past 12 months and future 3 months
+    const monthsAgo = index % 15; // 0-14 months
+    if (monthsAgo < 3) {
+      // Future trips (upcoming)
+      startDate.setMonth(startDate.getMonth() + (3 - monthsAgo));
+    } else {
+      // Past trips
+      startDate.setMonth(startDate.getMonth() - (monthsAgo - 3));
+    }
     startDate.setDate(startDate.getDate() - (index % 30)); // Spread over days
+    
     const endDate = new Date(startDate);
     endDate.setDate(endDate.getDate() + tripData.places.length * 2);
     
-    const isCompleted = index % 3 !== 0; // Most trips are completed
+    // Determine status: 20% upcoming, 10% active, 70% completed
+    let status: 'upcoming' | 'in_progress' | 'completed';
+    if (monthsAgo < 3) {
+      status = 'upcoming';
+    } else if (monthsAgo === 3 && (index % 10) < 1) {
+      status = 'in_progress';
+    } else {
+      status = 'completed';
+    }
+    
     const creatorIndex = index % users.length;
+    const numParticipants = Math.floor(Math.random() * 3) + 1; // 1-3 participants
+    const participants = [{ uid: users[creatorIndex].uid, isGuest: false }];
+    
+    for (let i = 1; i < numParticipants; i++) {
+      const participantIndex = (creatorIndex + i) % users.length;
+      participants.push({ uid: users[participantIndex].uid, isGuest: false });
+    }
     
     const tripData_obj: any = {
       tripId: `trip-${index + 1}`,
       creatorId: users[creatorIndex].uid,
       title: tripData.title,
       description: tripData.description,
-      participants: [
-        { uid: users[creatorIndex].uid, isGuest: false },
-        ...(index % 2 === 0 ? [{ uid: users[(creatorIndex + 1) % users.length].uid, isGuest: false }] : []),
-      ],
+      participants,
       isPublic: true, // ALL trips are public
-      status: isCompleted ? 'completed' : 'in_progress',
+      status,
       startTime: admin.firestore.Timestamp.fromDate(startDate),
       coverImage: DUMMY_IMAGES.covers[index % DUMMY_IMAGES.covers.length],
       totalExpense: tripData.expenses.reduce((sum, e) => sum + e.amount, 0),
@@ -411,7 +421,7 @@ async function createDummyTrips(users: User[], templates: Array<{
     };
     
     // Only add endTime if trip is completed
-    if (isCompleted) {
+    if (status === 'completed') {
       tripData_obj.endTime = admin.firestore.Timestamp.fromDate(endDate);
     }
     
@@ -458,6 +468,16 @@ async function createDummyPlaces(trips: Trip[], templates: Array<{
       const visitedAt = new Date(startDate);
       visitedAt.setDate(visitedAt.getDate() + index * 2);
       
+      // Add 1-3 images per place
+      const numImages = Math.floor(Math.random() * 3) + 1;
+      const imageMetadata = [];
+      for (let i = 0; i < numImages; i++) {
+        imageMetadata.push({
+          url: DUMMY_IMAGES.places[(placeIndex + i) % DUMMY_IMAGES.places.length],
+          isPublic: trip.isPublic,
+        });
+      }
+      
       const placeData_obj: any = {
         placeId: `place-${placeIndex + 1}`,
         tripId: trip.tripId,
@@ -470,16 +490,7 @@ async function createDummyPlaces(trips: Trip[], templates: Array<{
         comment: placeData.comment,
         rewrittenComment: placeData.comment,
         rating: placeData.rating,
-        imageMetadata: [
-          {
-            url: DUMMY_IMAGES.places[placeIndex % DUMMY_IMAGES.places.length],
-            isPublic: trip.isPublic,
-          },
-          {
-            url: DUMMY_IMAGES.places[(placeIndex + 1) % DUMMY_IMAGES.places.length],
-            isPublic: trip.isPublic,
-          },
-        ],
+        imageMetadata,
         modeOfTravel: index === 0 ? 'flight' : tripTemplate.modes[index] || 'car',
         country: placeData.country,
         createdAt: admin.firestore.Timestamp.fromDate(visitedAt),
@@ -643,30 +654,114 @@ async function createDummyRoutes(trips: Trip[], places: TripPlace[]) {
   return routes;
 }
 
+async function createDummyLikesAndComments(trips: Trip[], places: TripPlace[], users: User[]) {
+  const db = getFirestore();
+  console.log('❤️  Creating dummy likes and comments...');
+
+  let tripLikeIndex = 0;
+  let placeLikeIndex = 0;
+  let commentIndex = 0;
+
+  // Create trip likes - each trip gets 5-50 likes from random users
+  for (const trip of trips) {
+    const numLikes = Math.floor(Math.random() * 46) + 5; // 5-50 likes
+    const likedBy = new Set<string>();
+    
+    while (likedBy.size < numLikes && likedBy.size < users.length) {
+      const userIndex = Math.floor(Math.random() * users.length);
+      const userId = users[userIndex].uid;
+      
+      // Don't like own trips
+      if (userId !== trip.creatorId && !likedBy.has(userId)) {
+        likedBy.add(userId);
+        
+        await db.collection('tripLikes').add({
+          tripId: trip.tripId,
+          userId,
+          createdAt: admin.firestore.Timestamp.now(),
+        });
+        tripLikeIndex++;
+      }
+    }
+  }
+
+  console.log(`   Created ${tripLikeIndex} trip likes...`);
+
+  // Create place likes - each place gets 2-20 likes from random users
+  for (const place of places) {
+    const numLikes = Math.floor(Math.random() * 19) + 2; // 2-20 likes
+    const likedBy = new Set<string>();
+    
+    // Get trip to find creator
+    const trip = trips.find(t => t.tripId === place.tripId);
+    const creatorId = trip?.creatorId || '';
+    
+    while (likedBy.size < numLikes && likedBy.size < users.length) {
+      const userIndex = Math.floor(Math.random() * users.length);
+      const userId = users[userIndex].uid;
+      
+      // Don't like own places
+      if (userId !== creatorId && !likedBy.has(userId)) {
+        likedBy.add(userId);
+        
+        await db.collection('placeLikes').add({
+          placeId: place.placeId,
+          userId,
+          createdAt: admin.firestore.Timestamp.now(),
+        });
+        placeLikeIndex++;
+      }
+    }
+  }
+
+  console.log(`   Created ${placeLikeIndex} place likes...`);
+
+  // Create place comments - each place gets 1-10 comments from random users
+  for (const place of places) {
+    const numComments = Math.floor(Math.random() * 10) + 1; // 1-10 comments
+    const commentedBy = new Set<string>();
+    
+    // Get trip to find creator
+    const trip = trips.find(t => t.tripId === place.tripId);
+    const creatorId = trip?.creatorId || '';
+    
+    while (commentedBy.size < numComments && commentedBy.size < users.length) {
+      const userIndex = Math.floor(Math.random() * users.length);
+      const userId = users[userIndex].uid;
+      
+      if (!commentedBy.has(userId)) {
+        commentedBy.add(userId);
+        
+        const comment: PlaceComment = {
+          commentId: `comment-${commentIndex + 1}`,
+          placeId: place.placeId,
+          userId,
+          text: COMMENT_TEXTS[Math.floor(Math.random() * COMMENT_TEXTS.length)],
+          createdAt: new Date(),
+        };
+        
+        await db.collection('placeComments').doc(comment.commentId).set(comment);
+        commentIndex++;
+      }
+    }
+  }
+
+  console.log(`   Created ${commentIndex} place comments...`);
+  console.log(`✅ Created ${tripLikeIndex} trip likes, ${placeLikeIndex} place likes, and ${commentIndex} comments\n`);
+}
+
 async function main() {
   try {
-    console.log('🚀 Starting dummy data seeding...\n');
+    console.log('🚀 Starting comprehensive dummy data seeding...\n');
     
     // Initialize Firebase Admin
     initializeFirebase();
     
-    // Delete all trips data (keep users)
-    await deleteAllTripsData();
+    // Delete all data
+    await deleteAllData();
     
-    // Get or create users
-    const db = getFirestore();
-    const usersSnapshot = await db.collection('users').limit(20).get();
-    let users: User[] = [];
-    
-    if (usersSnapshot.empty) {
-      users = await createDummyUsers();
-    } else {
-      users = usersSnapshot.docs.map(doc => ({
-        uid: doc.id,
-        ...doc.data(),
-      })) as User[];
-      console.log(`ℹ️  Using existing ${users.length} users\n`);
-    }
+    // Create users with following relationships
+    const users = await createDummyUsers();
     
     // Generate trip templates
     const templates = generateTripTemplates();
@@ -677,13 +772,17 @@ async function main() {
     const expenses = await createDummyExpenses(trips, users, templates);
     const routes = await createDummyRoutes(trips, places);
     
+    // Create likes and comments
+    await createDummyLikesAndComments(trips, places, users);
+    
     console.log('✨ Seeding complete!');
     console.log(`📊 Summary:`);
-    console.log(`   - ${users.length} users`);
-    console.log(`   - ${trips.length} trips (ALL PUBLIC)`);
+    console.log(`   - ${users.length} users (with following relationships)`);
+    console.log(`   - ${trips.length} trips (ALL PUBLIC, mixed statuses)`);
     console.log(`   - ${places.length} places`);
     console.log(`   - ${expenses.length} expenses`);
     console.log(`   - ${routes.length} routes`);
+    console.log(`   - Likes and comments on trips and places`);
     console.log('\n🎉 All dummy data has been created successfully!');
     
     process.exit(0);
@@ -694,4 +793,3 @@ async function main() {
 }
 
 main();
-

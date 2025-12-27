@@ -512,9 +512,9 @@ export default function ProfilePage() {
               <Link href="/trips/new" className="text-gray-400">
                 <MdAdd className="w-6 h-6" />
               </Link>
-              <Link href="/profile" className="text-white">
+              <div className="text-white">
                 <MdPerson className="w-6 h-6" />
-              </Link>
+              </div>
             </>
           ) : (
             <Link href="/auth" className="text-gray-400">

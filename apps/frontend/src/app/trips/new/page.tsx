@@ -97,7 +97,7 @@ export default function NewTripPage() {
     <div className="h-screen bg-[#424242] flex flex-col overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-600 flex-shrink-0">
-        <Link href="/trips" className="w-10 h-10 flex items-center justify-center">
+        <Link href="/profile" className="w-10 h-10 flex items-center justify-center">
           <MdArrowBack className="text-white text-xl" />
         </Link>
         <h1 className="text-xs font-semibold text-white">New Trip</h1>

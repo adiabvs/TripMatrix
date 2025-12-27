@@ -9,7 +9,7 @@ interface TripHeaderProps {
   backHref?: string;
 }
 
-export default function TripHeader({ title, canEdit, tripId, backHref = '/trips' }: TripHeaderProps) {
+export default function TripHeader({ title, canEdit, tripId, backHref = '/profile' }: TripHeaderProps) {
   return (
     <header className="sticky top-0 z-50 bg-black border-b border-gray-800">
       <div className="max-w-[600px] mx-auto px-4 py-3 flex items-center justify-between">

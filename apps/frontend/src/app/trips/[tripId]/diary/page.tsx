@@ -83,9 +83,9 @@ export default function DiaryPage() {
       const token = await getIdToken();
       const [tripData, diaryData] = await Promise.all([
         getTrip(tripId, token).catch((err: any) => {
-          // If trip not found, redirect to trips list
+          // If trip not found, redirect to profile
           if (err.message?.includes('not found') || err.message?.includes('404')) {
-            router.push('/trips');
+            router.push('/profile');
             return null;
           }
           throw err;
@@ -107,9 +107,9 @@ export default function DiaryPage() {
       }
     } catch (error: any) {
       console.error('Failed to load data:', error);
-      // If it's a "not found" error, redirect to trips list
+      // If it's a "not found" error, redirect to profile
       if (error.message?.includes('not found') || error.message?.includes('404')) {
-        router.push('/trips');
+        router.push('/profile');
       } else {
         setError(error.message || 'Failed to load data');
       }

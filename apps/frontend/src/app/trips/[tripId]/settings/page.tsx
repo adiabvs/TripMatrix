@@ -110,7 +110,7 @@ export default function TripSettingsPage() {
     try {
       await deleteTrip(tripId, token);
       alert('Trip deleted successfully');
-      router.push('/trips');
+      router.push('/profile');
     } catch (error) {
       console.error('Failed to delete trip:', error);
       alert('Failed to delete trip');

@@ -13,7 +13,7 @@ export default function AuthPage() {
 
   useEffect(() => {
     if (user) {
-      router.push('/trips');
+      router.push('/profile');
     }
   }, [user, router]);
 

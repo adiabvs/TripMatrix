@@ -340,7 +340,7 @@ export default function TripDetailPage() {
           The trip you&apos;re looking for doesn&apos;t exist or you don&apos;t have access to it.
         </p>
         <Link
-          href="/trips"
+          href="/profile"
           className="px-6 py-3 bg-[#1976d2] text-white rounded-xl font-medium hover:bg-[#1565c0] transition-all duration-200 shadow-lg hover:shadow-xl"
         >
           Back to Trips
