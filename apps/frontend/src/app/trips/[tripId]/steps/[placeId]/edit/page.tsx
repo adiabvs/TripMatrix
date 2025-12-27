@@ -5,15 +5,15 @@ import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useEffect, useState, useRef } from 'react';
 import dynamic from 'next/dynamic';
-import { getTrip, getTripPlaces, updatePlace, createExpense, uploadImage, getTripExpenses, deleteExpense } from '@/lib/api';
-import type { Trip, TripPlace, ModeOfTravel, TripParticipant } from '@tripmatrix/types';
+import { getTrip, getTripPlaces, updatePlace, createExpense, uploadImage, getTripExpenses, deleteExpense, getPlaceComments, addPlaceComment } from '@/lib/api';
+import type { Trip, TripPlace, ModeOfTravel, TripParticipant, PlaceComment } from '@tripmatrix/types';
 import { toDate, formatDateTimeLocalForInput, parseDateTimeLocalToUTC } from '@/lib/dateUtils';
 import { format } from 'date-fns';
 import type L from 'leaflet';
 import ExpenseForm from '@/components/ExpenseForm';
 import { db } from '@/lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
-import { MdArrowBack, MdCameraAlt, MdAdd, MdRemove, MdSearch, MdRefresh, MdMyLocation, MdClose } from 'react-icons/md';
+import { MdArrowBack, MdCameraAlt, MdAdd, MdRemove, MdSearch, MdRefresh, MdMyLocation, MdClose, MdComment } from 'react-icons/md';
 
 // Dynamically import PlaceMapSelector with SSR disabled
 const PlaceMapSelector = dynamic(() => import('@/components/PlaceMapSelector'), {
@@ -136,6 +136,10 @@ export default function EditStepPage() {
   const [placeCountry, setPlaceCountry] = useState<string | undefined>(undefined);
   const [expenses, setExpenses] = useState<any[]>([]);
   const [userNamesMap, setUserNamesMap] = useState<Record<string, string>>({});
+  const [comments, setComments] = useState<PlaceComment[]>([]);
+  const [commentText, setCommentText] = useState('');
+  const [addingComment, setAddingComment] = useState(false);
+  const [commentUserNamesMap, setCommentUserNamesMap] = useState<Record<string, string>>({});
   
   // Map search state
   const [searchQuery, setSearchQuery] = useState('');
@@ -170,10 +174,11 @@ export default function EditStepPage() {
   const loadTripData = async () => {
     try {
       const token = await getIdToken();
-      const [tripData, placesData, expensesData] = await Promise.all([
+      const [tripData, placesData, expensesData, commentsData] = await Promise.all([
         getTrip(tripId, token),
         getTripPlaces(tripId, token),
         getTripExpenses(tripId, token),
+        getPlaceComments(placeId, token),
       ]);
 
       setTrip(tripData);
@@ -181,6 +186,24 @@ export default function EditStepPage() {
       // Filter expenses for this place
       const placeExpenses = expensesData.filter((e: any) => e.placeId === placeId);
       setExpenses(placeExpenses);
+      
+      // Load comments
+      setComments(commentsData);
+      
+      // Load user names for comment authors
+      const uniqueUserIds = [...new Set(commentsData.map((c: PlaceComment) => c.userId))];
+      const userNames: Record<string, string> = {};
+      for (const uid of uniqueUserIds) {
+        try {
+          const userDoc = await getDoc(doc(db, 'users', uid));
+          if (userDoc.exists()) {
+            userNames[uid] = userDoc.data().name || 'Unknown User';
+          }
+        } catch (error) {
+          console.error(`Failed to fetch user ${uid}:`, error);
+        }
+      }
+      setCommentUserNamesMap(userNames);
       
       // Find the current place
       const currentPlace = placesData.find(p => p.placeId === placeId);
@@ -474,6 +497,30 @@ export default function EditStepPage() {
     } catch (error: any) {
       console.error('Failed to add expense:', error);
       alert(`Failed to add expense: ${error.message || 'Unknown error'}`);
+    }
+  };
+
+  const handleAddComment = async () => {
+    if (!commentText.trim() || !token) return;
+    
+    setAddingComment(true);
+    try {
+      const newComment = await addPlaceComment(placeId, commentText.trim(), token);
+      setComments([newComment, ...comments]);
+      setCommentText('');
+      
+      // Load user name for the new comment
+      if (user) {
+        setCommentUserNamesMap(prev => ({
+          ...prev,
+          [user.uid]: user.name,
+        }));
+      }
+    } catch (error: any) {
+      console.error('Failed to add comment:', error);
+      alert(`Failed to add comment: ${error.message || 'Unknown error'}`);
+    } finally {
+      setAddingComment(false);
     }
   };
 
@@ -815,6 +862,63 @@ export default function EditStepPage() {
               )}
             </div>
           )}
+
+          {/* Comments Section */}
+          <div className="mb-6">
+            <h3 className="text-[12px] font-semibold text-white mb-3 flex items-center gap-2">
+              <MdComment className="w-4 h-4" />
+              Comments
+            </h3>
+            
+            {/* Add Comment Form */}
+            {user && (
+              <div className="mb-4 bg-[#616161] rounded-lg p-3">
+                <textarea
+                  value={commentText}
+                  onChange={(e) => setCommentText(e.target.value)}
+                  placeholder="Add a comment..."
+                  className="w-full bg-[#757575] text-white rounded-lg p-2 text-[12px] resize-none mb-2"
+                  rows={3}
+                  disabled={addingComment}
+                />
+                <button
+                  onClick={handleAddComment}
+                  disabled={!commentText.trim() || addingComment}
+                  className="w-full bg-[#1976d2] text-white py-2 px-4 rounded-lg text-[12px] font-medium disabled:opacity-50 hover:bg-[#1565c0] transition-colors"
+                >
+                  {addingComment ? 'Adding...' : 'Add Comment'}
+                </button>
+              </div>
+            )}
+
+            {/* Comments List */}
+            <div className="space-y-3">
+              {comments.length === 0 ? (
+                <p className="text-[12px] text-gray-400 text-center py-4">No comments yet</p>
+              ) : (
+                comments.map((comment) => (
+                  <div key={comment.commentId} className="bg-[#616161] rounded-lg p-3">
+                    <div className="flex items-start gap-2 mb-2">
+                      <div className="w-8 h-8 rounded-full bg-[#1976d2] flex items-center justify-center flex-shrink-0">
+                        <span className="text-[10px] text-white font-semibold">
+                          {commentUserNamesMap[comment.userId]?.charAt(0).toUpperCase() || 'U'}
+                        </span>
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-[11px] font-semibold text-white">
+                          {commentUserNamesMap[comment.userId] || 'Loading...'}
+                        </p>
+                        <p className="text-[10px] text-gray-400">
+                          {format(toDate(comment.createdAt), 'MMM dd, yyyy HH:mm')}
+                        </p>
+                      </div>
+                    </div>
+                    <p className="text-[12px] text-gray-200 ml-10">{comment.text}</p>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
 
           {/* Submit Button - Only show if can edit */}
           {canEdit && (

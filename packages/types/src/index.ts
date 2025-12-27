@@ -6,6 +6,8 @@ export interface User {
   photoUrl?: string;
   country?: string; // ISO country code (e.g., 'US', 'IN', 'GB')
   defaultCurrency?: string; // ISO currency code (e.g., 'USD', 'INR', 'GBP')
+  isProfilePublic?: boolean; // Whether profile is public (default: false)
+  follows?: string[]; // Array of user UIDs that this user follows
   createdAt: Date | string;
 }
 
@@ -65,6 +67,14 @@ export interface ImageMetadata {
   isPublic: boolean;
 }
 
+export interface PlaceComment {
+  commentId: string;
+  placeId: string;
+  userId: string; // User UID who made the comment
+  text: string;
+  createdAt: Date | string;
+}
+
 export interface TripPlace {
   placeId: string;
   tripId: string;
@@ -83,6 +93,7 @@ export interface TripPlace {
   distanceFromPrevious?: number; // in meters
   timeFromPrevious?: number; // in seconds
   country?: string; // Country code
+  comments?: PlaceComment[]; // Comments on this place
   createdAt: Date | string;
 }
 

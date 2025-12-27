@@ -9,6 +9,7 @@ import type {
   ApiResponse,
   User,
   TravelDiary,
+  PlaceComment,
 } from '@tripmatrix/types';
 
 // Normalize API URL - remove port from HTTPS URLs (Railway uses default HTTPS port)
@@ -158,20 +159,35 @@ export async function getPublicTrips(search?: string): Promise<Trip[]> {
   return result.data;
 }
 
-export async function getPublicTripsWithData(limit: number = 50): Promise<{
+export async function getPublicTripsWithData(
+  limit: number = 20,
+  lastTripId?: string,
+  token?: string | null
+): Promise<{
   trips: Trip[];
   placesByTrip: Record<string, TripPlace[]>;
   routesByTrip: Record<string, TripRoute[]>;
   creators: Record<string, User>;
+  hasMore: boolean;
+  lastTripId: string | null;
 }> {
   const url = new URL(`${API_URL}/api/trips/public/list/with-data`);
   url.searchParams.append('limit', limit.toString());
+  if (lastTripId) {
+    url.searchParams.append('lastTripId', lastTripId);
+  }
+  
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
   
   const response = await fetch(url.toString(), {
     method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers,
   });
   
   if (!response.ok) {
@@ -184,11 +200,66 @@ export async function getPublicTripsWithData(limit: number = 50): Promise<{
     placesByTrip: Record<string, TripPlace[]>;
     routesByTrip: Record<string, TripRoute[]>;
     creators: Record<string, User>;
+    hasMore: boolean;
+    lastTripId: string | null;
   }> = await response.json();
   
   if (!result.success || !result.data) {
     throw new Error(result.error || 'Failed to fetch public trips with data');
   }
+  return result.data;
+}
+
+// Search trips by user, place, or keyword
+export async function searchTrips(
+  query: string,
+  type?: 'user' | 'place' | 'trip' | 'all',
+  limit: number = 20,
+  lastTripId?: string,
+  token?: string | null
+): Promise<{
+  trips: Trip[];
+  hasMore: boolean;
+  lastTripId: string | null;
+}> {
+  const url = new URL(`${API_URL}/api/trips/search`);
+  url.searchParams.append('q', query);
+  if (type) {
+    url.searchParams.append('type', type);
+  }
+  url.searchParams.append('limit', limit.toString());
+  if (lastTripId) {
+    url.searchParams.append('lastTripId', lastTripId);
+  }
+  
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  
+  const response = await fetch(url.toString(), {
+    method: 'GET',
+    headers,
+  });
+  
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+    throw new Error(error.error || 'Failed to search trips');
+  }
+  
+  const result: ApiResponse<{
+    trips: Trip[];
+    hasMore: boolean;
+    lastTripId: string | null;
+  }> = await response.json();
+  
+  if (!result.success || !result.data) {
+    throw new Error(result.error || 'Failed to search trips');
+  }
+  
   return result.data;
 }
 
@@ -375,7 +446,7 @@ export async function searchUsers(query: string, token: string | null): Promise<
 }
 
 export async function updateUser(
-  updates: { country?: string; defaultCurrency?: string },
+  updates: { country?: string; defaultCurrency?: string; isProfilePublic?: boolean },
   token: string | null
 ): Promise<User> {
   const response = await fetchWithAuth('/api/users/me', {
@@ -385,6 +456,70 @@ export async function updateUser(
   const result: ApiResponse<User> = await response.json();
   if (!result.success || !result.data) {
     throw new Error(result.error || 'Failed to update user');
+  }
+  return result.data;
+}
+
+export async function followUser(userId: string, token: string | null): Promise<void> {
+  const response = await fetchWithAuth(`/api/users/${userId}/follow`, {
+    method: 'POST',
+  }, token);
+  const result: ApiResponse<{ message: string }> = await response.json();
+  if (!result.success) {
+    throw new Error(result.error || 'Failed to follow user');
+  }
+}
+
+export async function unfollowUser(userId: string, token: string | null): Promise<void> {
+  const response = await fetchWithAuth(`/api/users/${userId}/unfollow`, {
+    method: 'POST',
+  }, token);
+  const result: ApiResponse<{ message: string }> = await response.json();
+  if (!result.success) {
+    throw new Error(result.error || 'Failed to unfollow user');
+  }
+}
+
+export async function getFollowing(token: string | null): Promise<User[]> {
+  const response = await fetchWithAuth('/api/users/me/following', {}, token);
+  const result: ApiResponse<User[]> = await response.json();
+  if (!result.success || !result.data) {
+    throw new Error(result.error || 'Failed to get following list');
+  }
+  return result.data;
+}
+
+export async function getUser(userId: string, token: string | null): Promise<User> {
+  const response = await fetchWithAuth(`/api/users/${userId}`, {}, token);
+  const result: ApiResponse<User> = await response.json();
+  if (!result.success || !result.data) {
+    throw new Error(result.error || 'Failed to get user');
+  }
+  return result.data;
+}
+
+// Comment APIs
+export async function addPlaceComment(
+  placeId: string,
+  text: string,
+  token: string | null
+): Promise<PlaceComment> {
+  const response = await fetchWithAuth(`/api/places/${placeId}/comments`, {
+    method: 'POST',
+    body: JSON.stringify({ text }),
+  }, token);
+  const result: ApiResponse<PlaceComment> = await response.json();
+  if (!result.success || !result.data) {
+    throw new Error(result.error || 'Failed to add comment');
+  }
+  return result.data;
+}
+
+export async function getPlaceComments(placeId: string, token: string | null): Promise<PlaceComment[]> {
+  const response = await fetchWithAuth(`/api/places/${placeId}/comments`, {}, token);
+  const result: ApiResponse<PlaceComment[]> = await response.json();
+  if (!result.success || !result.data) {
+    throw new Error(result.error || 'Failed to get comments');
   }
   return result.data;
 }

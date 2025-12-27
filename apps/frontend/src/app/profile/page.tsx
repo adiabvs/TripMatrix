@@ -6,15 +6,18 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { toDate } from '@/lib/dateUtils';
-import { getUserTrips } from '@/lib/api';
-import type { Trip } from '@tripmatrix/types';
-import { MdHome, MdArrowBack, MdLogout, MdPerson, MdMap, MdCheckCircle, MdTrendingUp } from 'react-icons/md';
+import { getUserTrips, updateUser, getFollowing, unfollowUser } from '@/lib/api';
+import type { Trip, User } from '@tripmatrix/types';
+import { MdHome, MdArrowBack, MdLogout, MdPerson, MdMap, MdCheckCircle, MdTrendingUp, MdPublic, MdLock, MdClose } from 'react-icons/md';
 
 export default function ProfilePage() {
   const { user, firebaseUser, loading: authLoading, signOut, getIdToken } = useAuth();
   const router = useRouter();
   const [trips, setTrips] = useState<Trip[]>([]);
   const [loading, setLoading] = useState(true);
+  const [following, setFollowing] = useState<User[]>([]);
+  const [isProfilePublic, setIsProfilePublic] = useState(user?.isProfilePublic || false);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -25,6 +28,8 @@ export default function ProfilePage() {
   useEffect(() => {
     if (user) {
       loadUserTrips();
+      loadFollowing();
+      setIsProfilePublic(user.isProfilePublic || false);
     }
   }, [user]);
 
@@ -39,6 +44,47 @@ export default function ProfilePage() {
       console.error('Failed to load trips:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadFollowing = async () => {
+    try {
+      const token = await getIdToken();
+      if (token) {
+        const followingList = await getFollowing(token);
+        setFollowing(followingList);
+      }
+    } catch (error) {
+      console.error('Failed to load following:', error);
+    }
+  };
+
+  const handleToggleProfilePrivacy = async () => {
+    try {
+      setSaving(true);
+      const token = await getIdToken();
+      if (token) {
+        await updateUser({ isProfilePublic: !isProfilePublic }, token);
+        setIsProfilePublic(!isProfilePublic);
+      }
+    } catch (error) {
+      console.error('Failed to update profile privacy:', error);
+      alert('Failed to update profile privacy');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleUnfollow = async (userId: string) => {
+    try {
+      const token = await getIdToken();
+      if (token) {
+        await unfollowUser(userId, token);
+        setFollowing(following.filter(u => u.uid !== userId));
+      }
+    } catch (error) {
+      console.error('Failed to unfollow user:', error);
+      alert('Failed to unfollow user');
     }
   };
 
@@ -115,6 +161,82 @@ export default function ProfilePage() {
               <span>Sign Out</span>
             </button>
           </div>
+        </div>
+
+        {/* Profile Privacy Settings */}
+        <div className="bg-[#616161] rounded-lg p-4 border border-gray-600 mb-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              {isProfilePublic ? (
+                <MdPublic className="w-4 h-4 text-[#1976d2]" />
+              ) : (
+                <MdLock className="w-4 h-4 text-gray-400" />
+              )}
+              <div>
+                <p className="text-[12px] font-semibold text-white">Profile Privacy</p>
+                <p className="text-[10px] text-gray-300">
+                  {isProfilePublic ? 'Your profile is public' : 'Your profile is private'}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={handleToggleProfilePrivacy}
+              disabled={saving}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                isProfilePublic ? 'bg-[#1976d2]' : 'bg-[#757575]'
+              } ${saving ? 'opacity-50' : ''}`}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  isProfilePublic ? 'translate-x-6' : 'translate-x-1'
+                }`}
+              />
+            </button>
+          </div>
+        </div>
+
+        {/* Following List */}
+        <div className="mb-6">
+          <h2 className="text-xs font-semibold text-white mb-3">Following</h2>
+          {following.length === 0 ? (
+            <div className="bg-[#616161] rounded-lg p-4 border border-gray-600">
+              <p className="text-[12px] text-gray-300 text-center">You're not following anyone yet</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {following.map((followedUser) => (
+                <div
+                  key={followedUser.uid}
+                  className="bg-[#616161] rounded-lg p-3 border border-gray-600 flex items-center justify-between"
+                >
+                  <div className="flex items-center gap-3">
+                    {followedUser.photoUrl ? (
+                      <img
+                        src={followedUser.photoUrl}
+                        alt={followedUser.name}
+                        className="w-10 h-10 rounded-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center">
+                        <MdPerson className="text-xl text-white" />
+                      </div>
+                    )}
+                    <div>
+                      <p className="text-[12px] font-semibold text-white">{followedUser.name}</p>
+                      <p className="text-[10px] text-gray-400">{followedUser.email}</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleUnfollow(followedUser.uid)}
+                    className="p-2 hover:bg-[#757575] rounded-lg transition-colors"
+                    title="Unfollow"
+                  >
+                    <MdClose className="w-4 h-4 text-gray-300" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Stats */}

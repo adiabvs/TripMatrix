@@ -6,7 +6,7 @@ import { toDate } from '@/lib/dateUtils';
 import type { TripPlace, TripExpense, ModeOfTravel } from '@tripmatrix/types';
 import PhotoViewer from './PhotoViewer';
 import { formatCurrency } from '@/lib/currencyUtils';
-import { MdEdit, MdDelete, MdStar } from 'react-icons/md';
+import { MdEdit, MdDelete, MdStar, MdAttachMoney } from 'react-icons/md';
 
 interface StepCardProps {
   place: TripPlace;
@@ -197,8 +197,9 @@ export default function StepCard({
               <div className="mt-2 pt-2 border-t border-gray-200">
                 <p className="text-xs font-semibold text-gray-600 mb-1">Expenses:</p>
                 {totalByCurrency.map((t) => (
-                  <p key={t.currency} className="text-sm font-semibold text-black">
-                    {formatCurrency(t.total, t.currency)}
+                  <p key={t.currency} className="text-sm font-semibold text-black flex items-center gap-1">
+                    <MdAttachMoney className="w-4 h-4" />
+                    {formatCurrency(t.total, t.currency, false)}
                   </p>
                 ))}
               </div>
@@ -223,8 +224,9 @@ export default function StepCard({
                     <div className="flex justify-between items-start">
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
+                          <MdAttachMoney className="w-4 h-4 text-gray-700" />
                           <span className="font-medium text-gray-900">
-                            {formatCurrency(expense.amount, expense.currency || 'USD')}
+                            {formatCurrency(expense.amount, expense.currency || 'USD', false)}
                           </span>
                           {isCreator && (onEditExpense || onDeleteExpense) && (
                             <div className="flex items-center gap-1">

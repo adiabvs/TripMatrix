@@ -135,7 +135,7 @@ export default function CompactStepCard({
                 <MdAttachMoney className="text-[9px] text-white" />
                 <span className="text-[9px] text-white font-medium leading-tight">
                   {Object.entries(expensesByCurrency).map(([curr, total]) => 
-                    formatCurrency(total, curr)
+                    formatCurrency(total, curr, false)
                   ).join(', ')}
                 </span>
               </div>

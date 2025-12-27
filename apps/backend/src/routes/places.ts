@@ -2,7 +2,7 @@ import express from 'express';
 import { getFirestore } from '../config/firebase.js';
 import { OptionalAuthRequest } from '../middleware/optionalAuth.js';
 import { authenticateToken, AuthenticatedRequest } from '../middleware/auth.js';
-import type { TripPlace } from '@tripmatrix/types';
+import type { TripPlace, PlaceComment } from '@tripmatrix/types';
 
 const router = express.Router();
 
@@ -434,6 +434,148 @@ router.patch('/:placeId', authenticateToken, async (req: AuthenticatedRequest, r
     res.json({
       success: true,
       data: updatedPlace,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+// Add a comment to a place
+router.post('/:placeId/comments', authenticateToken, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { placeId } = req.params;
+    const { text } = req.body;
+    const uid = req.uid!;
+
+    if (!text || !text.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: 'Comment text is required',
+      });
+    }
+
+    const db = getDb();
+    const placeRef = db.collection('tripPlaces').doc(placeId);
+    const placeDoc = await placeRef.get();
+
+    if (!placeDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        error: 'Place not found',
+      });
+    }
+
+    const place = placeDoc.data() as TripPlace;
+    
+    // Check if trip is public or user has access
+    const tripDoc = await db.collection('trips').doc(place.tripId).get();
+    if (!tripDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        error: 'Trip not found',
+      });
+    }
+
+    const trip = tripDoc.data()!;
+    
+    // Allow comments if trip is public, or if user is creator/participant
+    if (!trip.isPublic) {
+      if (trip.creatorId !== uid && 
+          !trip.participants?.some((p: any) => p.uid === uid)) {
+        return res.status(403).json({
+          success: false,
+          error: 'Not authorized to comment on this place',
+        });
+      }
+    }
+
+    // Create comment
+    const commentId = db.collection('placeComments').doc().id;
+    const comment: PlaceComment = {
+      commentId,
+      placeId,
+      userId: uid,
+      text: text.trim(),
+      createdAt: new Date(),
+    };
+
+    await db.collection('placeComments').doc(commentId).set(comment);
+
+    res.json({
+      success: true,
+      data: comment,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+// Get comments for a place
+router.get('/:placeId/comments', async (req: OptionalAuthRequest, res) => {
+  try {
+    const { placeId } = req.params;
+    const db = getDb();
+
+    const placeRef = db.collection('tripPlaces').doc(placeId);
+    const placeDoc = await placeRef.get();
+
+    if (!placeDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        error: 'Place not found',
+      });
+    }
+
+    const place = placeDoc.data() as TripPlace;
+    
+    // Check if trip is public or user has access
+    const tripDoc = await db.collection('trips').doc(place.tripId).get();
+    if (!tripDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        error: 'Trip not found',
+      });
+    }
+
+    const trip = tripDoc.data()!;
+    
+    // Allow viewing comments if trip is public, or if user is authenticated and has access
+    if (!trip.isPublic) {
+      if (!req.uid) {
+        return res.status(401).json({
+          success: false,
+          error: 'Authentication required',
+        });
+      }
+      if (trip.creatorId !== req.uid && 
+          !trip.participants?.some((p: any) => p.uid === req.uid)) {
+        return res.status(403).json({
+          success: false,
+          error: 'Not authorized to view comments',
+        });
+      }
+    }
+
+    // Get all comments for this place
+    const commentsSnapshot = await db.collection('placeComments')
+      .where('placeId', '==', placeId)
+      .orderBy('createdAt', 'desc')
+      .get();
+
+    const comments = commentsSnapshot.docs.map((doc) => ({
+      commentId: doc.id,
+      ...doc.data(),
+    })) as PlaceComment[];
+
+    res.json({
+      success: true,
+      data: comments,
     });
   } catch (error: any) {
     res.status(500).json({
