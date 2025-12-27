@@ -87,8 +87,7 @@ export default function CompactStepCard({
           </h3>
           {/* Delete Button - Inside title banner */}
           {isCreator && onDelete && (
-            <button
-              type="button"
+            <div
               onClick={(e) => {
                 e.stopPropagation();
                 e.preventDefault();
@@ -96,13 +95,24 @@ export default function CompactStepCard({
                   onDelete(place);
                 }
               }}
-              className="px-2 py-1 rounded bg-red-600 hover:bg-red-700 flex items-center justify-center gap-1 mr-2 flex-shrink-0 transition-colors text-white text-[8px] font-semibold"
+              className="bg-black/30 hover:bg-black/50 rounded-full flex items-center justify-center mr-2 flex-shrink-0 transition-colors cursor-pointer"
               title="Delete step"
-              aria-label="Delete step"
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  if (confirm(`Are you sure you want to delete "${place.name}"?`)) {
+                    onDelete(place);
+                  }
+                }
+              }}
+              style={{ width: '20px', height: '20px' }}
             >
-              <MdDelete className="w-3 h-3" />
-              <span>Delete</span>
-            </button>
+              <div className="w-4 h-4 rounded-full border-2 border-[#800000] flex items-center justify-center">
+                <MdDelete className="w-3 h-3 text-white" />
+              </div>
+            </div>
           )}
         </div>
         

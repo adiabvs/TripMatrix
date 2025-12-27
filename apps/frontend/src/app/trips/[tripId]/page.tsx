@@ -443,7 +443,7 @@ export default function TripDetailPage() {
         <MdMap className="text-6xl mb-4 text-gray-400" />
         <h2 className="text-lg font-semibold text-white mb-2">Trip not found</h2>
         <p className="text-gray-400 text-sm text-center mb-6">
-          The trip you're looking for doesn't exist or you don't have access to it.
+          The trip you&apos;re looking for doesn&apos;t exist or you don&apos;t have access to it.
         </p>
         <Link
           href="/trips"
