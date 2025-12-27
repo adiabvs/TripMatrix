@@ -664,6 +664,37 @@ export default function TripDetailPage() {
                   )}
                 </React.Fragment>
               ))}
+              
+              {/* Expense Summary - At the end of steps */}
+              {trip.status === 'completed' && expenseSummary && (
+                <div className="w-full mt-6 mb-4">
+                  <div className="bg-gradient-to-br from-[#616161] to-[#424242] rounded-xl p-5 shadow-lg border border-gray-600/50">
+                    <div className="flex items-center gap-2 mb-3">
+                      <MdAttachMoney className="text-xl text-white" />
+                      <h3 className="text-xs font-bold text-white">Expense Summary</h3>
+                    </div>
+                    <p className="text-2xl font-bold text-white mb-4">
+                      ${expenseSummary.totalSpent.toFixed(2)}
+                    </p>
+                    {expenseSummary.settlements.length > 0 && (
+                      <div className="pt-4 border-t border-gray-500/50">
+                        <p className="text-xs font-semibold text-white/90 mb-3">Settlements:</p>
+                        <div className="space-y-2">
+                          {expenseSummary.settlements.map((settlement, idx) => (
+                            <div key={idx} className="bg-gray-700/50 rounded-lg p-2.5">
+                              <p className="text-xs text-gray-200">
+                                <span className="font-medium">{settlement.from.substring(0, 8)}...</span> owes{' '}
+                                <span className="font-semibold text-white">${settlement.amount.toFixed(2)}</span> to{' '}
+                                <span className="font-medium">{settlement.to.substring(0, 8)}...</span>
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         ) : (
@@ -682,37 +713,6 @@ export default function TripDetailPage() {
                 <span>Add Your First Step</span>
               </Link>
             )}
-          </div>
-        )}
-
-        {/* Expense Summary */}
-        {trip.status === 'completed' && expenseSummary && (
-          <div className="px-4 pb-6 flex-shrink-0">
-            <div className="bg-gradient-to-br from-[#616161] to-[#424242] rounded-xl p-5 shadow-lg border border-gray-600/50">
-              <div className="flex items-center gap-2 mb-3">
-                <MdAttachMoney className="text-xl" />
-                <h3 className="text-xs font-bold text-white">Expense Summary</h3>
-              </div>
-              <p className="text-2xl font-bold text-white mb-4">
-                ${expenseSummary.totalSpent.toFixed(2)}
-              </p>
-              {expenseSummary.settlements.length > 0 && (
-                <div className="pt-4 border-t border-gray-500/50">
-                  <p className="text-xs font-semibold text-white/90 mb-3">Settlements:</p>
-                  <div className="space-y-2">
-                    {expenseSummary.settlements.map((settlement, idx) => (
-                      <div key={idx} className="bg-gray-700/50 rounded-lg p-2.5">
-                        <p className="text-xs text-gray-200">
-                          <span className="font-medium">{settlement.from.substring(0, 8)}...</span> owes{' '}
-                          <span className="font-semibold text-white">${settlement.amount.toFixed(2)}</span> to{' '}
-                          <span className="font-medium">{settlement.to.substring(0, 8)}...</span>
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
           </div>
         )}
       </div>
