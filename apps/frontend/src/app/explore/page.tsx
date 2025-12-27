@@ -50,7 +50,7 @@ export default function ExplorePage() {
         query,
         undefined, // Search all types by default
         20,
-        loadMore ? lastTripId : undefined,
+        loadMore && lastTripId ? lastTripId : undefined,
         token
       );
 
