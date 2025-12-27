@@ -64,7 +64,7 @@ export default function CompactStepCard({
           getPlaceLikes(place.placeId, token).catch(() => ({ likeCount: 0, isLiked: false })),
           getPlaceComments(place.placeId, token).catch(() => []),
         ]);
-        setLikes(likesData);
+        setLikes({ count: likesData.likeCount, isLiked: likesData.isLiked });
         setCommentCount(comments.length);
       } catch (error) {
         console.error('Failed to load likes/comments:', error);
