@@ -53,16 +53,16 @@ export default function TripParticipants({
     } else if (trip.status === 'completed') {
       return `These ${totalCount === 1 ? 'person' : 'people'} enjoyed the trip`;
     } else {
-      return `Following ${totalCount === 1 ? 'person is' : 'people are'} enjoying the trip`;
+      return `${totalCount} ${totalCount === 1 ? 'person is' : 'people are'} on this trip`;
     }
   };
 
   return (
     <div className={`mt-4 pt-4 border-t border-gray-800 ${className}`}>
-      <p className="text-gray-400 text-xs mb-3">
+      <p className="text-gray-400 text-xs mb-3 font-medium">
         {getStatusMessage()}
       </p>
-      <div className="flex flex-wrap items-center gap-3 mb-4">
+      <div className="flex flex-wrap items-center gap-3">
         {/* Creator */}
         {creator && (
           <Link
