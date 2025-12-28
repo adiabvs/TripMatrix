@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import type { TripRoute, RoutePoint } from '@tripmatrix/types';
+import { getModeIconSVG } from '@/lib/iconUtils';
 
 // Fix for default marker icons in Next.js
 if (typeof window !== 'undefined') {
@@ -20,7 +21,7 @@ interface TripMapProps {
   places?: Array<{ 
     coordinates: { lat: number; lng: number }; 
     name: string;
-    modeOfTravel?: string;
+    modeOfTravel?: string | null;
   }>;
   currentLocation?: { lat: number; lng: number };
   height?: string;
@@ -35,22 +36,14 @@ const modeColors: Record<string, string> = {
   flight: '#ec4899',
 };
 
-const modeIcons: Record<string, string> = {
-  walk: '🚶',
-  bike: '🚴',
-  car: '🚗',
-  train: '🚂',
-  bus: '🚌',
-  flight: '✈️',
-};
 
 const modeLabels: Record<string, string> = {
-  walk: 'Walk',
-  bike: 'Bike',
+  walk: 'Walking',
+  bike: 'Bicycle',
   car: 'Car',
   train: 'Train',
   bus: 'Bus',
-  flight: 'Flight',
+  flight: 'Airplane',
 };
 
 export default function TripMap({
@@ -71,9 +64,12 @@ export default function TripMap({
 
     // Add OpenStreetMap tiles
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap contributors',
+      attribution: '',
       maxZoom: 19,
     }).addTo(map);
+
+    // Remove Leaflet attribution control
+    map.attributionControl.remove();
 
     mapRef.current = map;
 
@@ -112,16 +108,42 @@ export default function TripMap({
 
       bounds.extend(polyline.getBounds());
 
-      // Add start marker
+      // Add start marker (circular)
       const startPoint = route.points[0];
-      const startMarker = L.marker([startPoint.lat, startPoint.lng])
+      const startCircleIcon = L.divIcon({
+        className: 'start-marker',
+        html: `<div style="
+          width: 10px;
+          height: 10px;
+          border-radius: 50%;
+          background-color: #22c55e;
+          border: 2px solid white;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        "></div>`,
+        iconSize: [10, 10],
+        iconAnchor: [5, 5],
+      });
+      const startMarker = L.marker([startPoint.lat, startPoint.lng], { icon: startCircleIcon })
         .addTo(map)
         .bindPopup(`Start: ${route.modeOfTravel}`);
       layersRef.current.push(startMarker);
 
-      // Add end marker
+      // Add end marker (circular)
       const endPoint = route.points[route.points.length - 1];
-      const endMarker = L.marker([endPoint.lat, endPoint.lng])
+      const endCircleIcon = L.divIcon({
+        className: 'end-marker',
+        html: `<div style="
+          width: 10px;
+          height: 10px;
+          border-radius: 50%;
+          background-color: #ef4444;
+          border: 2px solid white;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        "></div>`,
+        iconSize: [10, 10],
+        iconAnchor: [5, 5],
+      });
+      const endMarker = L.marker([endPoint.lat, endPoint.lng], { icon: endCircleIcon })
         .addTo(map)
         .bindPopup(`End: ${route.modeOfTravel}`);
       layersRef.current.push(endMarker);
@@ -134,7 +156,7 @@ export default function TripMap({
       
       if (nextPlace.modeOfTravel) {
         const color = modeColors[nextPlace.modeOfTravel] || '#3b82f6';
-        const icon = modeIcons[nextPlace.modeOfTravel] || '📍';
+        const iconHTML = getModeIconSVG(nextPlace.modeOfTravel, color);
         const label = modeLabels[nextPlace.modeOfTravel] || 'Travel';
         
         // Draw line between places
@@ -158,7 +180,7 @@ export default function TripMap({
         const midLat = (currentPlace.coordinates.lat + nextPlace.coordinates.lat) / 2;
         const midLng = (currentPlace.coordinates.lng + nextPlace.coordinates.lng) / 2;
         
-        // Create custom icon with emoji
+        // Create custom icon with react-icons
         const modeIcon = L.divIcon({
           className: 'mode-travel-icon',
           html: `<div style="
@@ -170,9 +192,9 @@ export default function TripMap({
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 18px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-          ">${icon}</div>`,
+            color: ${color};
+          ">${iconHTML}</div>`,
           iconSize: [32, 32],
           iconAnchor: [16, 16],
         });
@@ -201,24 +223,44 @@ export default function TripMap({
       }
     }
 
-    // Add place markers
+    // Add place markers (circular)
     places.forEach((place) => {
-      const marker = L.marker([place.coordinates.lat, place.coordinates.lng])
+      const circleIcon = L.divIcon({
+        className: 'place-marker',
+        html: `<div style="
+          width: 12px;
+          height: 12px;
+          border-radius: 50%;
+          background-color: #1976d2;
+          border: 2px solid white;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        "></div>`,
+        iconSize: [12, 12],
+        iconAnchor: [6, 6],
+      });
+      const marker = L.marker([place.coordinates.lat, place.coordinates.lng], { icon: circleIcon })
         .addTo(map)
         .bindPopup(place.name);
       layersRef.current.push(marker);
       bounds.extend([place.coordinates.lat, place.coordinates.lng]);
     });
 
-    // Add current location marker
+    // Add current location marker (circular)
     if (currentLocation) {
-      const currentMarker = L.marker([currentLocation.lat, currentLocation.lng], {
-        icon: L.icon({
-          iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
-          iconSize: [25, 41],
-          iconAnchor: [12, 41],
-        }),
-      })
+      const currentCircleIcon = L.divIcon({
+        className: 'current-location-marker',
+        html: `<div style="
+          width: 14px;
+          height: 14px;
+          border-radius: 50%;
+          background-color: #3b82f6;
+          border: 3px solid white;
+          box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+        "></div>`,
+        iconSize: [14, 14],
+        iconAnchor: [7, 7],
+      });
+      const currentMarker = L.marker([currentLocation.lat, currentLocation.lng], { icon: currentCircleIcon })
         .addTo(map)
         .bindPopup('Current Location');
       layersRef.current.push(currentMarker);
@@ -235,7 +277,7 @@ export default function TripMap({
     <div
       ref={mapContainerRef}
       style={{ height, width: '100%' }}
-      className="rounded-lg border border-gray-300"
+      className="rounded-xl border border-gray-200 overflow-hidden"
     />
   );
 }

@@ -24,7 +24,7 @@ interface AuthContextType {
   loading: boolean;
   signIn: () => Promise<void>;
   signOut: () => Promise<void>;
-  getIdToken: () => Promise<string | null>;
+  getIdToken: (forceRefresh?: boolean) => Promise<string | null>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -43,46 +43,86 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [showCountrySelector, setShowCountrySelector] = useState(false);
 
   useEffect(() => {
+    // Only run on client side and when auth is initialized
+    if (typeof window === 'undefined' || !auth || !db) {
+      setLoading(false);
+      return;
+    }
+
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      setFirebaseUser(user);
-      if (user) {
-        // Fetch or create user document
-        const userDocRef = doc(db, 'users', user.uid);
-        const userDoc = await getDoc(userDocRef);
-        
-        if (userDoc.exists()) {
-          const userData = userDoc.data() as UserType;
-          setUser(userData);
-          // Check if country is missing - show country selector
-          if (!userData.country) {
+      try {
+        setFirebaseUser(user);
+        if (user) {
+          // Fetch or create user document
+          const userDocRef = doc(db, 'users', user.uid);
+          const userDoc = await getDoc(userDocRef);
+          
+          if (userDoc.exists()) {
+            const userData = userDoc.data() as UserType;
+            setUser(userData);
+            // Check if country is missing - show country selector
+            if (!userData.country) {
+              setShowCountrySelector(true);
+            }
+          } else {
+            // Create new user document (country will be set by CountrySelectorModal)
+            const newUser: UserType = {
+              uid: user.uid,
+              name: user.displayName || '',
+              email: user.email || '',
+              photoUrl: user.photoURL || '',
+              createdAt: new Date(),
+            };
+            await setDoc(userDocRef, newUser);
+            setUser(newUser);
+            // Show country selector for new users
             setShowCountrySelector(true);
           }
         } else {
-          // Create new user document (country will be set by CountrySelectorModal)
-          const newUser: UserType = {
-            uid: user.uid,
-            name: user.displayName || '',
-            email: user.email || '',
-            photoUrl: user.photoURL || '',
-            createdAt: new Date(),
-          };
-          await setDoc(userDocRef, newUser);
-          setUser(newUser);
-          // Show country selector for new users
-          setShowCountrySelector(true);
+          setUser(null);
         }
-      } else {
-        setUser(null);
+      } catch (error) {
+        console.error('Error in auth state change:', error);
+        // Don't clear user on error - only clear if Firebase explicitly signs out
+        // This prevents accidental logouts due to network errors
+        if (!user) {
+          setUser(null);
+        }
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     });
 
     return () => unsubscribe();
   }, []);
 
   const signIn = async () => {
-    const provider = new GoogleAuthProvider();
-    await signInWithPopup(auth, provider);
+    if (!auth) {
+      console.error('Firebase Auth is not initialized. Please check your Firebase configuration.');
+      alert('Authentication is not available. Please check your Firebase configuration in .env.local');
+      return;
+    }
+
+    try {
+      const provider = new GoogleAuthProvider();
+      // Add scopes if needed
+      provider.addScope('profile');
+      provider.addScope('email');
+      await signInWithPopup(auth, provider);
+    } catch (error: any) {
+      console.error('Sign in error:', error);
+      
+      // Provide helpful error messages
+      if (error.code === 'auth/configuration-not-found') {
+        alert('Firebase configuration error. Please check:\n1. Your Firebase project is set up correctly\n2. Authorized domains include ' + window.location.hostname + '\n3. Google Sign-In is enabled in Firebase Console');
+      } else if (error.code === 'auth/popup-closed-by-user') {
+        // User closed the popup, don't show error
+        return;
+      } else {
+        alert('Failed to sign in: ' + (error.message || 'Unknown error'));
+      }
+      throw error;
+    }
   };
 
   const signOut = async () => {
@@ -90,9 +130,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   };
 
-  const getIdToken = async () => {
+  const getIdToken = async (forceRefresh = false) => {
     if (!firebaseUser) return null;
-    return await firebaseUser.getIdToken();
+    try {
+      // Force refresh if requested, otherwise use cached token
+      return await firebaseUser.getIdToken(forceRefresh);
+    } catch (error) {
+      console.error('Failed to get ID token:', error);
+      // Don't throw - return null instead to allow graceful degradation
+      // This prevents automatic logout on token errors
+      return null;
+    }
   };
 
   const handleCountrySelect = async (countryCode: string, currency: string) => {

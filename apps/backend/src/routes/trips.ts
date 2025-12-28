@@ -1,6 +1,5 @@
 import express from 'express';
 import { getFirestore } from '../config/firebase.js';
-import { AuthenticatedRequest } from '../middleware/auth.js';
 import { OptionalAuthRequest } from '../middleware/optionalAuth.js';
 import type { Trip, TripParticipant, TripPlace } from '@tripmatrix/types';
 
@@ -29,7 +28,7 @@ router.post('/', async (req: OptionalAuthRequest, res) => {
       });
     }
 
-    const initialStatus = status === 'completed' ? 'completed' : 'in_progress';
+    const initialStatus = status === 'completed' ? 'completed' : status === 'upcoming' ? 'upcoming' : 'in_progress';
     const initialEndTime = status === 'completed'
       ? endTime
         ? new Date(endTime)
@@ -526,6 +525,527 @@ router.get('/public/list', async (req, res) => {
     res.status(500).json({
       success: false,
       error: error.message,
+    });
+  }
+});
+
+// Get public trips with essential data (places, routes, creators) - optimized endpoint
+// Prioritizes trips from followed users if user is authenticated
+// Supports pagination with lastTripId
+router.get('/public/list/with-data', async (req: OptionalAuthRequest, res) => {
+  try {
+    const { limit = '20', lastTripId } = req.query;
+    const db = getDb();
+    
+    // Get user's followed list if authenticated
+    let followedUserIds: string[] = [];
+    if (req.uid) {
+      const userDoc = await db.collection('users').doc(req.uid).get();
+      if (userDoc.exists) {
+        followedUserIds = userDoc.data()?.follows || [];
+      }
+    }
+    
+    // Get all public trips (fetch without orderBy to avoid composite index requirement)
+    const snapshot = await db.collection('trips')
+      .where('isPublic', '==', true)
+      .get();
+
+    let trips = snapshot.docs.map((doc) => ({
+      tripId: doc.id,
+      ...doc.data(),
+    })) as Trip[];
+
+    // Sort: followed users first, then by createdAt
+    trips.sort((a, b) => {
+      const aIsFollowed = followedUserIds.includes(a.creatorId);
+      const bIsFollowed = followedUserIds.includes(b.creatorId);
+      
+      // If one is followed and the other isn't, prioritize followed
+      if (aIsFollowed && !bIsFollowed) return -1;
+      if (!aIsFollowed && bIsFollowed) return 1;
+      
+      // Otherwise sort by createdAt (newest first)
+      const aTime = new Date(a.createdAt).getTime();
+      const bTime = new Date(b.createdAt).getTime();
+      return bTime - aTime;
+    });
+
+    // Handle pagination in memory
+    if (lastTripId && typeof lastTripId === 'string') {
+      const lastIndex = trips.findIndex(t => t.tripId === lastTripId);
+      if (lastIndex >= 0) {
+        trips = trips.slice(lastIndex + 1);
+      }
+    }
+
+    // Apply limit after sorting and pagination
+    const limitNum = Number(limit);
+    const totalAfterPagination = trips.length;
+    const hasMore = totalAfterPagination > limitNum;
+    trips = trips.slice(0, limitNum);
+
+    const tripIds = trips.map(t => t.tripId);
+    
+    // Batch fetch all places for all trips
+    const placesPromises = tripIds.map(async (tripId) => {
+      const placesSnapshot = await db.collection('tripPlaces')
+        .where('tripId', '==', tripId)
+        .get();
+      return placesSnapshot.docs.map(doc => ({
+        placeId: doc.id,
+        ...doc.data(),
+      }));
+    });
+
+    // Batch fetch all routes for all trips
+    const routesPromises = tripIds.map(async (tripId) => {
+      const routesSnapshot = await db.collection('tripRoutes')
+        .where('tripId', '==', tripId)
+        .get();
+      return routesSnapshot.docs.map(doc => ({
+        routeId: doc.id,
+        ...doc.data(),
+      }));
+    });
+
+    // Fetch all in parallel
+    const [placesResults, routesResults] = await Promise.all([
+      Promise.all(placesPromises),
+      Promise.all(routesPromises),
+    ]);
+
+    // Organize places and routes by tripId
+    const placesByTrip: Record<string, any[]> = {};
+    const routesByTrip: Record<string, any[]> = {};
+    
+    tripIds.forEach((tripId, index) => {
+      placesByTrip[tripId] = placesResults[index] || [];
+      routesByTrip[tripId] = routesResults[index] || [];
+    });
+
+    // Get unique creator IDs
+    const creatorIds = [...new Set(trips.map(t => t.creatorId))];
+    
+    // Batch fetch creator info
+    const creatorPromises = creatorIds.map(async (creatorId) => {
+      try {
+        const creatorDoc = await db.collection('users').doc(creatorId).get();
+        if (creatorDoc.exists) {
+          return { uid: creatorId, user: creatorDoc.data() };
+        }
+      } catch (error) {
+        console.error(`Failed to load creator ${creatorId}:`, error);
+      }
+      return null;
+    });
+
+    const creatorResults = await Promise.all(creatorPromises);
+    const creatorMap: Record<string, any> = {};
+    creatorResults.forEach(result => {
+      if (result) {
+        creatorMap[result.uid] = result.user;
+      }
+    });
+
+    // Calculate pagination info
+    const nextLastTripId = trips.length > 0 ? trips[trips.length - 1].tripId : null;
+
+    // Build response with trips, places, routes, and creators
+    res.json({
+      success: true,
+      data: {
+        trips,
+        placesByTrip,
+        routesByTrip,
+        creators: creatorMap,
+        hasMore,
+        lastTripId: nextLastTripId,
+      },
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+// Search trips by user, place, or keyword
+router.get('/search', async (req: OptionalAuthRequest, res) => {
+  try {
+    const { q, type, limit = '20', lastTripId } = req.query;
+    const db = getDb();
+    
+    if (!q || typeof q !== 'string') {
+      return res.status(400).json({
+        success: false,
+        error: 'Query parameter "q" is required',
+      });
+    }
+
+    const searchType = type || 'all'; // 'user', 'place', 'trip', 'all'
+    const searchLower = q.toLowerCase();
+    let trips: Trip[] = [];
+
+    if (searchType === 'user' || searchType === 'all') {
+      // Search by user name/email
+      const usersSnapshot = await db.collection('users')
+        .where('name', '>=', searchLower)
+        .where('name', '<=', searchLower + '\uf8ff')
+        .limit(10)
+        .get();
+      
+      const userIds = usersSnapshot.docs.map(doc => doc.id);
+      
+      if (userIds.length > 0) {
+        // Get trips by these users
+        const tripsPromises = userIds.map(async (userId) => {
+          const tripsSnapshot = await db.collection('trips')
+            .where('creatorId', '==', userId)
+            .where('isPublic', '==', true)
+            .get();
+          return tripsSnapshot.docs.map(doc => ({
+            tripId: doc.id,
+            ...doc.data(),
+          })) as Trip[];
+        });
+        
+        const userTrips = await Promise.all(tripsPromises);
+        trips.push(...userTrips.flat());
+      }
+    }
+
+    if (searchType === 'trip' || searchType === 'all') {
+      // Search by trip title/description
+      const allTripsSnapshot = await db.collection('trips')
+        .where('isPublic', '==', true)
+        .get();
+      
+      const allTrips = allTripsSnapshot.docs.map((doc) => ({
+        tripId: doc.id,
+        ...doc.data(),
+      })) as Trip[];
+      
+      const matchingTrips = allTrips.filter((trip) => {
+        if (trip.title.toLowerCase().includes(searchLower)) return true;
+        if (trip.description?.toLowerCase().includes(searchLower)) return true;
+        return false;
+      });
+      
+      trips.push(...matchingTrips);
+    }
+
+    if (searchType === 'place' || searchType === 'all') {
+      // Search by place name
+      const placesSnapshot = await db.collection('tripPlaces')
+        .where('name', '>=', searchLower)
+        .where('name', '<=', searchLower + '\uf8ff')
+        .limit(50)
+        .get();
+      
+      const placeDocs = placesSnapshot.docs;
+      const tripIds = [...new Set(placeDocs.map(doc => doc.data().tripId))];
+      
+      if (tripIds.length > 0) {
+        const tripsPromises = tripIds.map(async (tripId) => {
+          const tripDoc = await db.collection('trips').doc(tripId).get();
+          if (tripDoc.exists) {
+            const tripData = tripDoc.data();
+            if (tripData && tripData.isPublic) {
+              return { tripId: tripDoc.id, ...tripData } as Trip;
+            }
+          }
+          return null;
+        });
+        
+        const placeTrips = await Promise.all(tripsPromises);
+        trips.push(...placeTrips.filter(t => t !== null) as Trip[]);
+      }
+    }
+
+    // Remove duplicates
+    const uniqueTrips = Array.from(
+      new Map(trips.map(trip => [trip.tripId, trip])).values()
+    );
+
+    // Sort by createdAt
+    uniqueTrips.sort((a, b) => {
+      const aTime = new Date(a.createdAt).getTime();
+      const bTime = new Date(b.createdAt).getTime();
+      return bTime - aTime;
+    });
+
+    // Apply pagination
+    let paginatedTrips = uniqueTrips;
+    if (lastTripId && typeof lastTripId === 'string') {
+      const lastIndex = paginatedTrips.findIndex(t => t.tripId === lastTripId);
+      if (lastIndex >= 0) {
+        paginatedTrips = paginatedTrips.slice(lastIndex + 1);
+      }
+    }
+    paginatedTrips = paginatedTrips.slice(0, Number(limit));
+
+    const hasMore = paginatedTrips.length === Number(limit) && 
+                    uniqueTrips.length > paginatedTrips.length;
+    const newLastTripId = paginatedTrips.length > 0 
+      ? paginatedTrips[paginatedTrips.length - 1].tripId 
+      : null;
+
+    res.json({
+      success: true,
+      data: {
+        trips: paginatedTrips,
+        hasMore,
+        lastTripId: newLastTripId,
+      },
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+// Like a trip
+router.post('/:tripId/like', async (req: OptionalAuthRequest, res) => {
+  try {
+    if (!req.uid) {
+      return res.status(401).json({
+        success: false,
+        error: 'Authentication required',
+      });
+    }
+    const { tripId } = req.params;
+    const uid = req.uid;
+    const db = getDb();
+
+    const tripRef = db.collection('trips').doc(tripId);
+    const tripDoc = await tripRef.get();
+
+    if (!tripDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        error: 'Trip not found',
+      });
+    }
+
+    const trip = tripDoc.data() as Trip;
+    
+    // Check if trip is public or user has access
+    if (!trip.isPublic) {
+      if (trip.creatorId !== uid && 
+          !trip.participants?.some((p) => p.uid === uid)) {
+        return res.status(403).json({
+          success: false,
+          error: 'Not authorized to like this trip',
+        });
+      }
+    }
+
+    // Check if already liked
+    const likeDoc = await db.collection('tripLikes')
+      .where('tripId', '==', tripId)
+      .where('userId', '==', uid)
+      .limit(1)
+      .get();
+
+    if (!likeDoc.empty) {
+      return res.json({
+        success: true,
+        data: { liked: true, message: 'Already liked' },
+      });
+    }
+
+    // Add like
+    await db.collection('tripLikes').add({
+      tripId,
+      userId: uid,
+      createdAt: new Date(),
+    });
+
+    res.json({
+      success: true,
+      data: { liked: true, message: 'Trip liked' },
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+// Unlike a trip
+router.delete('/:tripId/like', async (req: OptionalAuthRequest, res) => {
+  try {
+    if (!req.uid) {
+      return res.status(401).json({
+        success: false,
+        error: 'Authentication required',
+      });
+    }
+    const { tripId } = req.params;
+    const uid = req.uid;
+    const db = getDb();
+
+    // Find and delete like
+    const likeSnapshot = await db.collection('tripLikes')
+      .where('tripId', '==', tripId)
+      .where('userId', '==', uid)
+      .limit(1)
+      .get();
+
+    if (likeSnapshot.empty) {
+      return res.json({
+        success: true,
+        data: { liked: false, message: 'Not liked' },
+      });
+    }
+
+    await likeSnapshot.docs[0].ref.delete();
+
+    res.json({
+      success: true,
+      data: { liked: false, message: 'Trip unliked' },
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+// Get like status and count for a trip
+router.get('/:tripId/likes', async (req: OptionalAuthRequest, res) => {
+  try {
+    const { tripId } = req.params;
+    const uid = req.uid;
+    const db = getDb();
+
+    // Verify trip exists
+    const tripDoc = await db.collection('trips').doc(tripId).get();
+    if (!tripDoc.exists) {
+      return res.json({
+        success: true,
+        data: {
+          likeCount: 0,
+          isLiked: false,
+        },
+      });
+    }
+
+    // Get all likes for this trip
+    let likeCount = 0;
+    let isLiked = false;
+
+    try {
+      const likesSnapshot = await db.collection('tripLikes')
+        .where('tripId', '==', tripId)
+        .get();
+
+      likeCount = likesSnapshot.size;
+      isLiked = uid ? likesSnapshot.docs.some(doc => doc.data().userId === uid) : false;
+    } catch (queryError: any) {
+      // If query fails (e.g., collection doesn't exist), return defaults
+      console.warn('Error querying tripLikes:', queryError.message);
+      likeCount = 0;
+      isLiked = false;
+    }
+
+    res.json({
+      success: true,
+      data: {
+        likeCount,
+        isLiked,
+      },
+    });
+  } catch (error: any) {
+    console.error('Error getting trip likes:', error);
+    // Return defaults instead of error to prevent UI issues
+    res.json({
+      success: true,
+      data: {
+        likeCount: 0,
+        isLiked: false,
+      },
+    });
+  }
+});
+
+// Get comment count for a trip
+router.get('/:tripId/comments/count', async (req: OptionalAuthRequest, res) => {
+  try {
+    const { tripId } = req.params;
+    const db = getDb();
+
+    // Verify trip exists
+    const tripDoc = await db.collection('trips').doc(tripId).get();
+    if (!tripDoc.exists) {
+      return res.json({
+        success: true,
+        data: { commentCount: 0 },
+      });
+    }
+
+    // Get all comments for places in this trip
+    const placesSnapshot = await db.collection('tripPlaces')
+      .where('tripId', '==', tripId)
+      .get();
+
+    const placeIds = placesSnapshot.docs.map(doc => doc.id);
+    
+    if (placeIds.length === 0) {
+      return res.json({
+        success: true,
+        data: { commentCount: 0 },
+      });
+    }
+
+    // Get comment count for all places in this trip
+    // Use a single query with 'in' operator if possible, or batch queries
+    let totalCommentCount = 0;
+    
+    try {
+      // Firestore 'in' operator supports up to 10 items, so we need to batch if more
+      if (placeIds.length <= 10) {
+        // Single query for all place IDs
+        const commentsSnapshot = await db.collection('placeComments')
+          .where('placeId', 'in', placeIds)
+          .get();
+        totalCommentCount = commentsSnapshot.size;
+      } else {
+        // Batch queries for more than 10 places
+        const batches = [];
+        for (let i = 0; i < placeIds.length; i += 10) {
+          const batch = placeIds.slice(i, i + 10);
+          batches.push(
+            db.collection('placeComments')
+              .where('placeId', 'in', batch)
+              .get()
+          );
+        }
+        const results = await Promise.all(batches);
+        totalCommentCount = results.reduce((sum, snapshot) => sum + snapshot.size, 0);
+      }
+    } catch (queryError: any) {
+      // If query fails (e.g., collection doesn't exist), return 0
+      console.warn('Error querying placeComments:', queryError.message);
+      totalCommentCount = 0;
+    }
+
+    res.json({
+      success: true,
+      data: { commentCount: totalCommentCount },
+    });
+  } catch (error: any) {
+    console.error('Error getting comment count:', error);
+    // Return 0 instead of error to prevent UI issues
+    res.json({
+      success: true,
+      data: { commentCount: 0 },
     });
   }
 });

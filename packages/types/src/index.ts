@@ -6,11 +6,13 @@ export interface User {
   photoUrl?: string;
   country?: string; // ISO country code (e.g., 'US', 'IN', 'GB')
   defaultCurrency?: string; // ISO currency code (e.g., 'USD', 'INR', 'GBP')
+  isProfilePublic?: boolean; // Whether profile is public (default: false)
+  follows?: string[]; // Array of user UIDs that this user follows
   createdAt: Date | string;
 }
 
 // Trip Types
-export type TripStatus = 'in_progress' | 'completed';
+export type TripStatus = 'upcoming' | 'in_progress' | 'completed';
 export type ModeOfTravel = 'walk' | 'bike' | 'car' | 'train' | 'bus' | 'flight';
 
 export interface TripParticipant {
@@ -60,6 +62,19 @@ export interface TripRoute {
 }
 
 // Place Types
+export interface ImageMetadata {
+  url: string;
+  isPublic: boolean;
+}
+
+export interface PlaceComment {
+  commentId: string;
+  placeId: string;
+  userId: string; // User UID who made the comment
+  text: string;
+  createdAt: Date | string;
+}
+
 export interface TripPlace {
   placeId: string;
   tripId: string;
@@ -69,23 +84,22 @@ export interface TripPlace {
     lng: number;
   };
   visitedAt: Date | string;
-  rating?: number; // 1-5
   comment?: string;
   rewrittenComment?: string;
-  modeOfTravel?: ModeOfTravel; // How they got here from previous place
+  rating?: number; // 1-5
+  imageMetadata?: ImageMetadata[];
+  images?: string[]; // Legacy support
+  modeOfTravel?: ModeOfTravel | null;
   distanceFromPrevious?: number; // in meters
   timeFromPrevious?: number; // in seconds
-  images?: string[]; // Array of image URLs (deprecated, use imageMetadata)
-  imageMetadata?: Array<{
-    url: string;
-    isPublic: boolean; // true = public, false = private to trip members
-  }>;
+  country?: string; // Country code
+  comments?: PlaceComment[]; // Comments on this place
   createdAt: Date | string;
 }
 
 // Expense Types
 export interface ExpenseShare {
-  userId: string;
+  participant: string; // uid or guestName
   amount: number;
 }
 
@@ -93,25 +107,48 @@ export interface TripExpense {
   expenseId: string;
   tripId: string;
   amount: number;
-  currency: string; // ISO currency code (e.g., 'USD', 'INR', 'GBP')
+  currency: string;
   paidBy: string; // uid or guestName
-  splitBetween: string[]; // uids or guestNames
-  calculatedShares: Record<string, number>; // userId/guestName -> amount
+  splitBetween: string[]; // Array of uids or guestNames
+  calculatedShares: Record<string, number>; // Map of participant to share amount
   description?: string;
-  placeId?: string; // If linked to a place
+  placeId?: string; // Optional: link expense to a place
   createdAt: Date | string;
 }
 
-// AI Rewrite Types
-export type RewriteTone = 'friendly' | 'professional' | 'travel-blog';
+// Public Trip View (for public trip pages)
+export interface PublicTripView extends Trip {
+  places: TripPlace[];
+  expenses: TripExpense[];
+}
+
+export interface ExpenseSummary {
+  totalSpent: number;
+  expensePerPlace: Record<string, number>;
+  expensePerCategory: Record<string, number>;
+  splitDue: Record<string, number>;
+  settlements: Settlement[];
+}
+
+export interface Settlement {
+  from: string; // uid or guestName
+  to: string; // uid or guestName
+  amount: number;
+}
+
+// AI Types
+export type RewriteTone = 'casual' | 'formal' | 'poetic' | 'humorous' | 'friendly';
 
 export interface RewriteRequest {
   text: string;
-  tone: RewriteTone;
+  style?: RewriteTone;
+  tone?: RewriteTone; // Legacy support
 }
 
 export interface RewriteResponse {
-  rewrittenText: string;
+  original: string;
+  rewritten: string;
+  rewrittenText?: string; // Legacy support
 }
 
 // API Response Types
@@ -121,37 +158,52 @@ export interface ApiResponse<T> {
   error?: string;
 }
 
-// Public Trip View Types
-export interface PublicTripView extends Trip {
-  creator: User;
-  routes: TripRoute[];
-  places: TripPlace[];
-  expenses: TripExpense[];
-}
+// Book/Diary Types
+export type DiaryPlatform = 'canva' | 'pdf';
 
-// Expense Summary Types
-export interface ExpenseSummary {
-  totalSpent: number;
-  expensePerPlace: Record<string, number>;
-  expensePerCategory: Record<string, number>;
-  splitDue: Record<string, number>; // userId/guestName -> amount owed
-  settlements: Settlement[];
-}
-
-export interface Settlement {
-  from: string;
-  to: string;
-  amount: number;
-}
-
-// Trip Summary Types
-export interface TripSummary {
+export interface TravelDiary {
+  diaryId: string;
   tripId: string;
-  totalDistance: number;
-  totalDuration: number; // in seconds
-  totalExpenses: number;
-  travelTimeline: RoutePoint[];
-  placesVisited: TripPlace[];
-  expenseSummary: ExpenseSummary;
+  title: string;
+  description?: string;
+  coverImageUrl?: string;
+  platform?: DiaryPlatform; // Which platform was used to create the diary
+  // Canva fields
+  canvaDesignId?: string; // Canva design ID
+  canvaDesignUrl?: string; // Canva design view URL
+  canvaEditorUrl?: string; // Canva editor URL for editing
+  // PDF fields
+  pdfUrl?: string; // PDF file URL (Supabase URL if uploaded successfully)
+  pdfFileName?: string; // PDF file name
+  pdfDownloadUrl?: string; // Download endpoint URL (if Supabase upload failed due to size)
+  designData?: {
+    cover: {
+      title: string;
+      description?: string;
+      coverImage?: string;
+    };
+    pages: Array<{
+      placeName: string;
+      description: string;
+      rating?: number;
+      images: string[];
+      modeOfTravel?: string;
+    }>;
+  }; // Design data structure for Canva
+  videoUrl?: string; // Video of book opening (future feature)
+  createdAt: Date | string;
+  updatedAt: Date | string;
 }
 
+export interface DiaryPage {
+  pageNumber: number;
+  type: 'cover' | 'chapter' | 'photo' | 'closing';
+  content: {
+    title?: string;
+    text?: string;
+    images?: string[];
+    modeOfTravel?: ModeOfTravel;
+    fromPlace?: string;
+    toPlace?: string;
+  };
+}

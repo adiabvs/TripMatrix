@@ -8,6 +8,8 @@ import type {
   ExpenseSummary,
   ApiResponse,
   User,
+  TravelDiary,
+  PlaceComment,
 } from '@tripmatrix/types';
 
 // Normalize API URL - remove port from HTTPS URLs (Railway uses default HTTPS port)
@@ -44,7 +46,10 @@ async function fetchWithAuth(
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ error: 'Unknown error' }));
-    throw new Error(error.error || `HTTP ${response.status}`);
+    const errorMessage = error.error || `HTTP ${response.status}`;
+    const errorObj = new Error(errorMessage);
+    (errorObj as any).status = response.status;
+    throw errorObj;
   }
 
   return response;
@@ -152,6 +157,149 @@ export async function getPublicTrips(search?: string): Promise<Trip[]> {
     throw new Error(result.error || 'Failed to fetch public trips');
   }
   return result.data;
+}
+
+export async function getPublicTripsWithData(
+  limit: number = 20,
+  lastTripId?: string,
+  token?: string | null
+): Promise<{
+  trips: Trip[];
+  placesByTrip: Record<string, TripPlace[]>;
+  routesByTrip: Record<string, TripRoute[]>;
+  creators: Record<string, User>;
+  hasMore: boolean;
+  lastTripId: string | null;
+}> {
+  const url = new URL(`${API_URL}/api/trips/public/list/with-data`);
+  url.searchParams.append('limit', limit.toString());
+  if (lastTripId) {
+    url.searchParams.append('lastTripId', lastTripId);
+  }
+  
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  
+  const response = await fetch(url.toString(), {
+    method: 'GET',
+    headers,
+  });
+  
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+    throw new Error(error.error || 'Failed to fetch public trips with data');
+  }
+  
+  const result: ApiResponse<{
+    trips: Trip[];
+    placesByTrip: Record<string, TripPlace[]>;
+    routesByTrip: Record<string, TripRoute[]>;
+    creators: Record<string, User>;
+    hasMore: boolean;
+    lastTripId: string | null;
+  }> = await response.json();
+  
+  if (!result.success || !result.data) {
+    throw new Error(result.error || 'Failed to fetch public trips with data');
+  }
+  return result.data;
+}
+
+// Search trips by user, place, or keyword
+export async function searchTrips(
+  query: string,
+  type?: 'user' | 'place' | 'trip' | 'all',
+  limit: number = 20,
+  lastTripId?: string,
+  token?: string | null
+): Promise<{
+  trips: Trip[];
+  hasMore: boolean;
+  lastTripId: string | null;
+}> {
+  const url = new URL(`${API_URL}/api/trips/search`);
+  url.searchParams.append('q', query);
+  if (type) {
+    url.searchParams.append('type', type);
+  }
+  url.searchParams.append('limit', limit.toString());
+  if (lastTripId) {
+    url.searchParams.append('lastTripId', lastTripId);
+  }
+  
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  
+  const response = await fetch(url.toString(), {
+    method: 'GET',
+    headers,
+  });
+  
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+    throw new Error(error.error || 'Failed to search trips');
+  }
+  
+  const result: ApiResponse<{
+    trips: Trip[];
+    hasMore: boolean;
+    lastTripId: string | null;
+  }> = await response.json();
+  
+  if (!result.success || !result.data) {
+    throw new Error(result.error || 'Failed to search trips');
+  }
+  
+  return result.data;
+}
+
+// Trip Like APIs
+export async function likeTrip(tripId: string, token: string | null): Promise<void> {
+  const response = await fetchWithAuth(`/api/trips/${tripId}/like`, {
+    method: 'POST',
+  }, token);
+  const result: ApiResponse<{ liked: boolean; message: string }> = await response.json();
+  if (!result.success) {
+    throw new Error(result.error || 'Failed to like trip');
+  }
+}
+
+export async function unlikeTrip(tripId: string, token: string | null): Promise<void> {
+  const response = await fetchWithAuth(`/api/trips/${tripId}/like`, {
+    method: 'DELETE',
+  }, token);
+  const result: ApiResponse<{ liked: boolean; message: string }> = await response.json();
+  if (!result.success) {
+    throw new Error(result.error || 'Failed to unlike trip');
+  }
+}
+
+export async function getTripLikes(tripId: string, token: string | null): Promise<{ likeCount: number; isLiked: boolean }> {
+  const response = await fetchWithAuth(`/api/trips/${tripId}/likes`, {}, token);
+  const result: ApiResponse<{ likeCount: number; isLiked: boolean }> = await response.json();
+  if (!result.success || !result.data) {
+    throw new Error(result.error || 'Failed to get trip likes');
+  }
+  return result.data;
+}
+
+export async function getTripCommentCount(tripId: string, token: string | null): Promise<number> {
+  const response = await fetchWithAuth(`/api/trips/${tripId}/comments/count`, {}, token);
+  const result: ApiResponse<{ commentCount: number }> = await response.json();
+  if (!result.success || !result.data) {
+    throw new Error(result.error || 'Failed to get comment count');
+  }
+  return result.data.commentCount;
 }
 
 // Place APIs
@@ -337,7 +485,7 @@ export async function searchUsers(query: string, token: string | null): Promise<
 }
 
 export async function updateUser(
-  updates: { country?: string; defaultCurrency?: string },
+  updates: { country?: string; defaultCurrency?: string; isProfilePublic?: boolean },
   token: string | null
 ): Promise<User> {
   const response = await fetchWithAuth('/api/users/me', {
@@ -347,6 +495,175 @@ export async function updateUser(
   const result: ApiResponse<User> = await response.json();
   if (!result.success || !result.data) {
     throw new Error(result.error || 'Failed to update user');
+  }
+  return result.data;
+}
+
+export async function followUser(userId: string, token: string | null): Promise<void> {
+  const response = await fetchWithAuth(`/api/users/${userId}/follow`, {
+    method: 'POST',
+  }, token);
+  const result: ApiResponse<{ message: string }> = await response.json();
+  if (!result.success) {
+    throw new Error(result.error || 'Failed to follow user');
+  }
+}
+
+export async function unfollowUser(userId: string, token: string | null): Promise<void> {
+  const response = await fetchWithAuth(`/api/users/${userId}/unfollow`, {
+    method: 'POST',
+  }, token);
+  const result: ApiResponse<{ message: string }> = await response.json();
+  if (!result.success) {
+    throw new Error(result.error || 'Failed to unfollow user');
+  }
+}
+
+export async function getFollowing(token: string | null): Promise<User[]> {
+  const response = await fetchWithAuth('/api/users/me/following', {}, token);
+  const result: ApiResponse<User[]> = await response.json();
+  if (!result.success || !result.data) {
+    throw new Error(result.error || 'Failed to get following list');
+  }
+  return result.data;
+}
+
+export async function getUser(userId: string, token: string | null): Promise<User> {
+  const response = await fetchWithAuth(`/api/users/${userId}`, {}, token);
+  const result: ApiResponse<User> = await response.json();
+  if (!result.success || !result.data) {
+    throw new Error(result.error || 'Failed to get user');
+  }
+  return result.data;
+}
+
+// Comment APIs
+export async function addPlaceComment(
+  placeId: string,
+  text: string,
+  token: string | null
+): Promise<PlaceComment> {
+  const response = await fetchWithAuth(`/api/places/${placeId}/comments`, {
+    method: 'POST',
+    body: JSON.stringify({ text }),
+  }, token);
+  const result: ApiResponse<PlaceComment> = await response.json();
+  if (!result.success || !result.data) {
+    throw new Error(result.error || 'Failed to add comment');
+  }
+  return result.data;
+}
+
+export async function getPlaceComments(placeId: string, token: string | null): Promise<PlaceComment[]> {
+  const response = await fetchWithAuth(`/api/places/${placeId}/comments`, {}, token);
+  const result: ApiResponse<PlaceComment[]> = await response.json();
+  if (!result.success || !result.data) {
+    throw new Error(result.error || 'Failed to get comments');
+  }
+  return result.data;
+}
+
+// Place Like APIs
+export async function likePlace(placeId: string, token: string | null): Promise<void> {
+  const response = await fetchWithAuth(`/api/places/${placeId}/like`, {
+    method: 'POST',
+  }, token);
+  const result: ApiResponse<{ liked: boolean; message: string }> = await response.json();
+  if (!result.success) {
+    throw new Error(result.error || 'Failed to like place');
+  }
+}
+
+export async function unlikePlace(placeId: string, token: string | null): Promise<void> {
+  const response = await fetchWithAuth(`/api/places/${placeId}/like`, {
+    method: 'DELETE',
+  }, token);
+  const result: ApiResponse<{ liked: boolean; message: string }> = await response.json();
+  if (!result.success) {
+    throw new Error(result.error || 'Failed to unlike place');
+  }
+}
+
+export async function getPlaceLikes(placeId: string, token: string | null): Promise<{ likeCount: number; isLiked: boolean }> {
+  const response = await fetchWithAuth(`/api/places/${placeId}/likes`, {}, token);
+  const result: ApiResponse<{ likeCount: number; isLiked: boolean }> = await response.json();
+  if (!result.success || !result.data) {
+    throw new Error(result.error || 'Failed to get place likes');
+  }
+  return result.data;
+}
+
+// Diary APIs
+export async function generateDiary(
+  tripId: string,
+  token: string | null,
+  platform: 'canva' | 'pdf' = 'canva'
+): Promise<TravelDiary> {
+  const response = await fetchWithAuth(`/api/diary/generate/${tripId}`, {
+    method: 'POST',
+    body: JSON.stringify({ platform }),
+  }, token);
+  const result: ApiResponse<TravelDiary> = await response.json();
+  if (!result.success || !result.data) {
+    throw new Error(result.error || 'Failed to generate diary');
+  }
+  return result.data;
+}
+
+export async function getDiary(
+  tripId: string,
+  token: string | null
+): Promise<TravelDiary | null> {
+  const response = await fetchWithAuth(`/api/diary/trip/${tripId}`, {}, token);
+  const result: ApiResponse<TravelDiary> = await response.json();
+  if (!result.success) {
+    if (response.status === 404) {
+      return null;
+    }
+    throw new Error(result.error || 'Failed to fetch diary');
+  }
+  return result.data || null;
+}
+
+export async function deleteDiary(
+  diaryId: string,
+  token: string | null
+): Promise<void> {
+  const response = await fetchWithAuth(`/api/diary/${diaryId}`, {
+    method: 'DELETE',
+  }, token);
+  const result: ApiResponse<void> = await response.json();
+  if (!result.success) {
+    throw new Error(result.error || 'Failed to delete diary');
+  }
+}
+
+export async function updateDiary(
+  diaryId: string,
+  updates: Partial<TravelDiary>,
+  token: string | null
+): Promise<TravelDiary> {
+  const response = await fetchWithAuth(`/api/diary/${diaryId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(updates),
+  }, token);
+  const result: ApiResponse<TravelDiary> = await response.json();
+  if (!result.success || !result.data) {
+    throw new Error(result.error || 'Failed to update diary');
+  }
+  return result.data;
+}
+
+export async function regenerateDesignData(
+  diaryId: string,
+  token: string | null
+): Promise<TravelDiary> {
+  const response = await fetchWithAuth(`/api/diary/${diaryId}/regenerate-design-data`, {
+    method: 'POST',
+  }, token);
+  const result: ApiResponse<TravelDiary> = await response.json();
+  if (!result.success || !result.data) {
+    throw new Error(result.error || 'Failed to regenerate design data');
   }
   return result.data;
 }

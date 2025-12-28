@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react';
 import { getTrip, createExpense } from '@/lib/api';
 import type { Trip, TripExpense } from '@tripmatrix/types';
 import ExpenseForm from '@/components/ExpenseForm';
+import { MdArrowBack } from 'react-icons/md';
 
 export default function NewExpensePage() {
   const { user, loading: authLoading, getIdToken } = useAuth();
@@ -92,32 +93,31 @@ export default function NewExpensePage() {
   if (!isCreator && !trip.participants.some(p => p.uid === user?.uid)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-lg text-gray-700">You don't have permission to add expenses to this trip</div>
+        <div className="text-lg text-gray-700">You don&apos;t have permission to add expenses to this trip</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="h-screen bg-white flex flex-col overflow-hidden">
       {/* Navigation */}
-      <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-100">
+      <nav className="flex-shrink-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-100">
         <div className="max-w-4xl mx-auto px-6 py-4 flex justify-between items-center">
           <Link
             href={`/trips/${tripId}`}
             className="text-gray-700 hover:text-gray-900 transition-colors text-sm font-medium flex items-center gap-2"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-            </svg>
+            <MdArrowBack className="w-4 h-4" />
             Back to Trip
           </Link>
         </div>
       </nav>
 
       {/* Main Content */}
-      <div className="max-w-4xl mx-auto px-6 py-12">
+      <div className="flex-1 overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
+        <div className="max-w-4xl mx-auto px-6 py-12">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Add Expense</h1>
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">Add Expense</h1>
           <p className="text-gray-600">Add an expense to {trip.title}</p>
         </div>
 
@@ -129,6 +129,7 @@ export default function NewExpensePage() {
           placeId={placeId}
           placeCountry={placeCountry}
         />
+        </div>
       </div>
     </div>
   );

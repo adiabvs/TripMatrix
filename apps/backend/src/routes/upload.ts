@@ -45,7 +45,7 @@ router.post('/image', upload.single('image'), async (req: AuthenticatedRequest, 
     // Note: If you get RLS errors, you need to either:
     // 1. Disable RLS on the 'images' bucket in Supabase Dashboard > Storage > Policies
     // 2. Create policies allowing service_role to INSERT/UPDATE
-    const { data, error } = await supabase.storage
+    const { error } = await supabase.storage
       .from('images')
       .upload(filePath, req.file.buffer, {
         contentType: req.file.mimetype,

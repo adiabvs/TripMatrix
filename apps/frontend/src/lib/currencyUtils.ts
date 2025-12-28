@@ -99,8 +99,11 @@ export function getCurrencySymbol(currencyCode: string): string {
 /**
  * Format amount with currency
  */
-export function formatCurrency(amount: number, currencyCode: string): string {
-  const symbol = getCurrencySymbol(currencyCode);
-  return `${symbol}${amount.toFixed(2)}`;
+export function formatCurrency(amount: number, currencyCode: string, showSymbol: boolean = true): string {
+  if (showSymbol) {
+    const symbol = getCurrencySymbol(currencyCode);
+    return `${symbol}${amount.toFixed(2)}`;
+  }
+  return amount.toFixed(2);
 }
 

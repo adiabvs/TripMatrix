@@ -2,7 +2,7 @@ import express from 'express';
 import { getFirestore } from '../config/firebase.js';
 import { OptionalAuthRequest } from '../middleware/optionalAuth.js';
 import { calculateExpenseShares } from '@tripmatrix/utils';
-import type { TripExpense, ExpenseSummary } from '@tripmatrix/types';
+import type { TripExpense } from '@tripmatrix/types';
 
 const router = express.Router();
 

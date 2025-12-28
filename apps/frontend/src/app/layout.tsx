@@ -13,21 +13,25 @@ const roboto = Roboto({
 export const metadata: Metadata = {
   title: 'TripMatrix - Trip Logging & Social Travel Tracking',
   description: 'Create trips, track navigation, log places, split expenses, and share your travel experiences',
-  themeColor: '#6750A4',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
     title: 'TripMatrix',
   },
   manifest: '/manifest.json',
+  other: {
+    'mobile-web-app-capable': 'yes',
+  }
 };
 
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
+  minimumScale: 1,
   userScalable: false,
   viewportFit: 'cover',
+  themeColor: '#6750A4',
 };
 
 export default function RootLayout({
@@ -36,11 +40,23 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body className={roboto.className}>
-        <ThemeProvider>
-          <AuthProvider>{children}</AuthProvider>
-        </ThemeProvider>
+    <html lang="en" suppressHydrationWarning>
+      <body className={roboto.className} suppressHydrationWarning>
+        <div id="app-root" style={{ 
+          position: 'fixed', 
+          top: 0, 
+          left: 0, 
+          right: 0, 
+          bottom: 0, 
+          width: '100%', 
+          height: '100dvh',
+          overflow: 'hidden',
+          overscrollBehavior: 'none'
+        }}>
+          <ThemeProvider>
+            <AuthProvider>{children}</AuthProvider>
+          </ThemeProvider>
+        </div>
       </body>
     </html>
   );

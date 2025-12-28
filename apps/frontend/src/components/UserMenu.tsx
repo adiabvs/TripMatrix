@@ -59,34 +59,29 @@ export default function UserMenu() {
         sx={{
           display: 'flex',
           alignItems: 'center',
-          gap: 1,
-          p: 0.5,
+          justifyContent: 'center',
+          p: 0,
+          color: 'white',
+          minWidth: 'auto',
         }}
       >
         <Avatar
           src={user.photoUrl || undefined}
-          sx={{ width: 40, height: 40 }}
+          sx={{ width: 24, height: 24 }}
         >
           {!user.photoUrl && user.name.charAt(0).toUpperCase()}
         </Avatar>
-        <ExpandMoreIcon
-          sx={{
-            color: 'text.secondary',
-            transform: open ? 'rotate(180deg)' : 'rotate(0deg)',
-            transition: 'transform 0.2s',
-          }}
-        />
       </IconButton>
       <Menu
         anchorEl={anchorEl}
         open={open}
         onClose={handleClose}
         onClick={handleClose}
-        transformOrigin={{ horizontal: 'right', vertical: 'top' }}
-        anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
+        transformOrigin={{ horizontal: 'right', vertical: 'bottom' }}
+        anchorOrigin={{ horizontal: 'right', vertical: 'top' }}
         PaperProps={{
           sx: {
-            mt: 1.5,
+            mb: 1.5,
             minWidth: 200,
             borderRadius: 2,
             boxShadow: '0px 4px 8px rgba(0, 0, 0, 0.12)',

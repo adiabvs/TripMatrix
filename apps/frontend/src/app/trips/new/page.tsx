@@ -7,6 +7,8 @@ import { useEffect, useState } from 'react';
 import { createTrip, uploadImage } from '@/lib/api';
 import type { Trip, TripParticipant } from '@tripmatrix/types';
 import ParticipantSelector from '@/components/ParticipantSelector';
+import { parseDateTimeLocalToUTC } from '@/lib/dateUtils';
+import { MdArrowBack, MdClose, MdCheck, MdPublic } from 'react-icons/md';
 
 export default function NewTripPage() {
   const { user, loading: authLoading, getIdToken } = useAuth();
@@ -22,7 +24,7 @@ export default function NewTripPage() {
     startTime: new Date().toISOString().slice(0, 16),
     endTime: '',
     isPublic: false,
-    isCompleted: false,
+    status: 'upcoming' as 'upcoming' | 'in_progress' | 'completed',
   });
 
   useEffect(() => {
@@ -47,7 +49,7 @@ export default function NewTripPage() {
       alert('Title is required');
       return;
     }
-    if (formData.isCompleted && formData.endTime) {
+    if (formData.status === 'completed' && formData.endTime) {
       const start = new Date(formData.startTime).getTime();
       const end = new Date(formData.endTime).getTime();
       if (end < start) {
@@ -59,12 +61,16 @@ export default function NewTripPage() {
     setLoading(true);
     try {
       const token = await getIdToken();
+      // Convert local datetime to UTC for storage
+      const startTimeUTC = parseDateTimeLocalToUTC(formData.startTime);
+      const endTimeUTC = formData.endTime ? parseDateTimeLocalToUTC(formData.endTime) : undefined;
+      
       const trip = await createTrip(
         {
           ...formData,
-          startTime: new Date(formData.startTime),
-          endTime: formData.endTime ? new Date(formData.endTime) : undefined,
-          status: formData.isCompleted ? 'completed' : 'in_progress',
+          startTime: startTimeUTC.toISOString(),
+          endTime: endTimeUTC?.toISOString(),
+          status: formData.status,
           participants,
           coverImage: coverImage || undefined,
         },
@@ -81,31 +87,78 @@ export default function NewTripPage() {
 
   if (authLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-lg">Loading...</div>
+      <div className="min-h-screen flex items-center justify-center bg-[#424242]">
+        <div className="text-sm text-white">Loading...</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-white">
-      <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-100">
-        <div className="max-w-4xl mx-auto px-6 py-4">
-          <Link href="/trips" className="text-gray-700 hover:text-gray-900 transition-colors flex items-center gap-2">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-            <span className="text-sm font-medium">Back</span>
-          </Link>
-        </div>
-      </nav>
+    <div className="h-screen bg-[#424242] flex flex-col overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-600 flex-shrink-0">
+        <Link href="/profile" className="w-10 h-10 flex items-center justify-center">
+          <MdArrowBack className="text-white text-xl" />
+        </Link>
+        <h1 className="text-xs font-semibold text-white">New Trip</h1>
+        <div className="w-10" />
+      </div>
 
-      <div className="max-w-2xl mx-auto px-6 py-12">
-        <h1 className="text-4xl font-bold mb-8 text-gray-900">Create New Trip</h1>
-        
+      <div className="flex-1 overflow-y-auto px-4 py-4 pb-24" style={{ WebkitOverflowScrolling: 'touch' }}>
         <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Cover Image Section */}
           <div>
-            <label htmlFor="title" className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-[12px] font-semibold text-[#bdbdbd] mb-2">
+              Cover Image (Optional)
+            </label>
+            {coverImage ? (
+              <div className="relative rounded-lg overflow-hidden mt-2">
+                <img
+                  src={coverImage}
+                  alt="Cover preview"
+                  className="w-full h-48 object-cover"
+                />
+                <button
+                  type="button"
+                  onClick={() => setCoverImage(null)}
+                  className="absolute top-2 right-2 w-8 h-8 bg-black/60 rounded-full flex items-center justify-center"
+                >
+                  <MdClose className="text-white text-lg" />
+                </button>
+              </div>
+            ) : (
+              <label className="flex flex-col items-center justify-center border-2 border-dashed border-[#616161] rounded-lg p-4 mt-2 cursor-pointer hover:border-[#757575] transition-colors">
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file || !token) return;
+                    setUploadingCover(true);
+                    try {
+                      const uploaded = await uploadImage(file, token, true);
+                      setCoverImage(uploaded.url);
+                    } catch (error) {
+                      console.error('Failed to upload cover image:', error);
+                      alert('Failed to upload cover image');
+                    } finally {
+                      setUploadingCover(false);
+                    }
+                  }}
+                  className="hidden"
+                  disabled={uploadingCover}
+                />
+                <span className="text-2xl mb-2">📷</span>
+                <span className="text-[14px] text-[#9e9e9e]">
+                  {uploadingCover ? 'Uploading...' : 'Add Cover Image'}
+                </span>
+              </label>
+            )}
+          </div>
+
+          {/* Trip Title */}
+          <div>
+            <label htmlFor="title" className="block text-[12px] font-semibold text-[#bdbdbd] mb-2">
               Trip Title *
             </label>
             <input
@@ -113,13 +166,15 @@ export default function NewTripPage() {
               id="title"
               value={formData.title}
               onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent"
+              className="w-full bg-transparent px-0 py-3 text-[14px] text-white border-0 border-b border-[#9e9e9e] focus:outline-none focus:border-[#1976d2] rounded-none"
+              placeholder="Enter trip title"
               required
             />
           </div>
 
+          {/* Description */}
           <div>
-            <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="description" className="block text-[12px] font-semibold text-[#bdbdbd] mb-2">
               Description
             </label>
             <textarea
@@ -127,140 +182,120 @@ export default function NewTripPage() {
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               rows={4}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent"
-              placeholder="Describe your trip..."
+              className="w-full bg-transparent px-0 py-3 text-[14px] text-white border-0 border-b border-[#9e9e9e] focus:outline-none focus:border-[#1976d2] rounded-none min-h-[100px]"
+              placeholder="Enter trip description (optional)"
             />
           </div>
 
+          {/* Start Date/Time */}
           <div>
-            <label htmlFor="coverImage" className="block text-sm font-medium text-gray-700 mb-2">
-              Cover Image (Optional)
-            </label>
-            <input
-              type="file"
-              id="coverImage"
-              accept="image/*"
-              onChange={async (e) => {
-                const file = e.target.files?.[0];
-                if (!file || !token) return;
-                setUploadingCover(true);
-                try {
-                  const uploaded = await uploadImage(file, token, true); // Public cover image
-                  setCoverImage(uploaded.url);
-                } catch (error) {
-                  console.error('Failed to upload cover image:', error);
-                  alert('Failed to upload cover image');
-                } finally {
-                  setUploadingCover(false);
-                }
-              }}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent"
-              disabled={uploadingCover}
-            />
-            {coverImage && (
-              <div className="mt-4">
-                <img
-                  src={coverImage}
-                  alt="Cover preview"
-                  className="w-full h-64 object-cover rounded-lg border border-gray-200"
-                />
-                <button
-                  type="button"
-                  onClick={() => setCoverImage(null)}
-                  className="mt-2 text-sm text-red-600 hover:text-red-700"
-                >
-                  Remove cover image
-                </button>
-              </div>
-            )}
-            {uploadingCover && (
-              <p className="mt-2 text-sm text-gray-500">Uploading cover image...</p>
-            )}
-          </div>
-
-          <div>
-            <label htmlFor="startTime" className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="startTime" className="block text-[12px] font-semibold text-[#bdbdbd] mb-2">
               Start Date & Time *
             </label>
-            <input
-              type="datetime-local"
-              id="startTime"
-              value={formData.startTime}
-              onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent"
-              required
-            />
-          </div>
-
-          <div>
-            <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
-              <input
-                type="checkbox"
-                checked={formData.isCompleted}
-                onChange={(e) => setFormData({ ...formData, isCompleted: e.target.checked })}
-                className="w-4 h-4"
-              />
-              This trip already happened (completed)
-            </label>
-          </div>
-
-          {formData.isCompleted && (
-            <div>
-              <label htmlFor="endTime" className="block text-sm font-medium text-gray-700 mb-2">
-                End Date & Time (optional)
-              </label>
+            <div className="flex items-center gap-3 px-0 py-3 border-0 border-b border-[#616161]">
+              <span className="text-xl">📅</span>
               <input
                 type="datetime-local"
-                id="endTime"
-                value={formData.endTime}
-                onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent"
+                id="startTime"
+                value={formData.startTime}
+                onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
+                className="flex-1 bg-transparent text-[14px] text-white focus:outline-none"
+                required
               />
-              <p className="text-xs text-gray-500 mt-1">
-                If left empty, the trip will be marked completed at the current time.
-              </p>
             </div>
-          )}
-
-          <div>
-            <ParticipantSelector
-              participants={participants}
-              onParticipantsChange={setParticipants}
-              token={token}
-            />
           </div>
 
+          {/* Status */}
           <div>
-            <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+            <label className="block text-[12px] font-semibold text-[#bdbdbd] mb-2">
+              Status
+            </label>
+            <div className="flex gap-2 mt-2">
+              <button
+                type="button"
+                onClick={() => setFormData({ ...formData, status: 'upcoming' })}
+                className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-lg border ${
+                  formData.status === 'upcoming'
+                    ? 'bg-purple-500 border-purple-500 text-white'
+                    : 'bg-transparent border-[#616161] text-white'
+                }`}
+              >
+                <span>📅</span>
+                <span className="text-[14px] font-medium">Upcoming</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setFormData({ ...formData, status: 'in_progress' })}
+                className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-lg border ${
+                  formData.status === 'in_progress'
+                    ? 'bg-[#1976d2] border-[#1976d2] text-white'
+                    : 'bg-transparent border-[#616161] text-white'
+                }`}
+              >
+                <span>▶️</span>
+                <span className="text-[14px] font-medium">Active</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setFormData({ ...formData, status: 'completed' })}
+                className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-lg border ${
+                  formData.status === 'completed'
+                    ? 'bg-[#1976d2] border-[#1976d2] text-white'
+                    : 'bg-transparent border-[#616161] text-white'
+                }`}
+              >
+                <MdCheck className="w-4 h-4" />
+                <span className="text-[14px] font-medium">Completed</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Public/Private Toggle */}
+          <div className="flex items-center justify-between py-2">
+            <div className="flex items-center gap-3">
+              <MdPublic className="text-xl text-white" />
+              <div>
+                <label className="block text-[12px] font-semibold text-white mb-0.5">
+                  Public Trip
+                </label>
+                <p className="text-[10px] text-[#9e9e9e]">
+                  Allow others to discover and view this trip
+                </p>
+              </div>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
               <input
                 type="checkbox"
                 checked={formData.isPublic}
                 onChange={(e) => setFormData({ ...formData, isPublic: e.target.checked })}
-                className="w-4 h-4"
+                className="sr-only peer"
               />
-              Make this trip public
+              <div className="w-11 h-6 bg-[#616161] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#1976d2]"></div>
             </label>
           </div>
 
-          <div className="flex gap-4 pt-4">
-            <button
-              type="submit"
-              disabled={loading}
-              className="flex-1 bg-black text-white py-3 px-6 rounded-full font-semibold hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              {loading ? 'Creating...' : 'Create Trip'}
-            </button>
-            <button
-              type="button"
-              onClick={() => router.back()}
-              className="px-6 py-3 border border-gray-300 rounded-full hover:bg-gray-50 transition-colors"
-            >
-              Cancel
-            </button>
-          </div>
+          {/* Participants */}
+          {token && (
+            <div>
+              <ParticipantSelector
+                participants={participants}
+                onParticipantsChange={setParticipants}
+                token={token}
+              />
+            </div>
+          )}
+
+          {/* Create Button */}
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full flex items-center justify-center gap-2 py-4 bg-[#1976d2] text-white rounded-lg text-[14px] font-semibold disabled:opacity-50 active:scale-[0.98] active:bg-[#1565c0] transition-all mt-4 mb-8"
+          >
+            <MdCheck className="w-4 h-4" />
+            <span>{loading ? 'Creating...' : 'Create Trip'}</span>
+          </button>
         </form>
       </div>
     </div>
   );
 }
-

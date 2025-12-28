@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { MdClose, MdChevronLeft, MdChevronRight } from 'react-icons/md';
 
 interface PhotoViewerProps {
   images: Array<{ url: string; isPublic?: boolean }> | string[]; // Support both formats
@@ -59,9 +60,7 @@ export default function PhotoViewer({ images, initialIndex = 0, onClose }: Photo
         onClick={onClose}
         className="absolute top-4 right-4 z-10 w-10 h-10 rounded-full bg-black/50 hover:bg-black/70 text-white flex items-center justify-center transition-colors"
       >
-        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-        </svg>
+        <MdClose className="w-6 h-6" />
       </button>
 
       {/* Previous button */}
@@ -73,9 +72,7 @@ export default function PhotoViewer({ images, initialIndex = 0, onClose }: Photo
           }}
           className="absolute left-4 z-10 w-12 h-12 rounded-full bg-black/50 hover:bg-black/70 text-white flex items-center justify-center transition-colors"
         >
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-          </svg>
+          <MdChevronLeft className="w-6 h-6" />
         </button>
       )}
 
@@ -88,9 +85,7 @@ export default function PhotoViewer({ images, initialIndex = 0, onClose }: Photo
           }}
           className="absolute right-4 z-10 w-12 h-12 rounded-full bg-black/50 hover:bg-black/70 text-white flex items-center justify-center transition-colors"
         >
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-          </svg>
+          <MdChevronRight className="w-6 h-6" />
         </button>
       )}
 
