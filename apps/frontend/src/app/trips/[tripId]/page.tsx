@@ -443,12 +443,12 @@ export default function TripDetailPage() {
     <div className="h-full overflow-y-auto bg-black flex flex-col">
       <TripHeader title={trip.title} canEdit={canEdit} tripId={tripId} />
 
-      {/* Map Section - 30% height */}
-      <div className="relative flex-shrink-0" style={{ height: '30vh' }}>
+      {/* Map Section - 25% height */}
+      <div className="relative flex-shrink-0" style={{ height: '25vh' }}>
         <TripMapbox 
           places={places} 
           routes={routes}
-          height="30vh"
+          height="25vh"
           highlightedStepIndex={visibleStepIndex}
           sortedPlaces={sortedPlaces}
           autoPlay={false}
@@ -458,7 +458,7 @@ export default function TripDetailPage() {
       </div>
 
       {/* Instagram-like Feed */}
-      <main className="max-w-[600px] mx-auto pb-20 flex-1" ref={stepsContainerRef}>
+      <main className="w-full md:max-w-[600px] md:mx-auto pb-20 flex-1" ref={stepsContainerRef}>
         <TripInfoCard
           trip={trip}
           creator={creator}
@@ -478,6 +478,7 @@ export default function TripDetailPage() {
           onDeletePlace={handleDeletePlace}
           onEditPlace={(place) => router.push(`/trips/${tripId}/steps/${place.placeId}/edit`)}
           isUpcoming={isUpcoming}
+          trip={trip}
         />
       </main>
 

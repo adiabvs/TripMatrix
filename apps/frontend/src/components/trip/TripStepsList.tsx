@@ -1,8 +1,9 @@
 import Link from 'next/link';
 import React from 'react';
 import { MdAdd, MdLocationOn } from 'react-icons/md';
-import type { TripPlace, User } from '@tripmatrix/types';
+import type { TripPlace, Trip, User } from '@tripmatrix/types';
 import CompactStepCard from '@/components/CompactStepCard';
+import CountdownTimer from './CountdownTimer';
 import { VEHICLE_TYPE_LABELS } from '@/constants/tripConstants';
 
 interface TripStepsListProps {
@@ -14,6 +15,7 @@ interface TripStepsListProps {
   onDeletePlace: (placeId: string) => Promise<void>;
   onEditPlace: (place: TripPlace) => void;
   isUpcoming?: boolean;
+  trip?: Trip | null;
 }
 
 export default function TripStepsList({
@@ -25,12 +27,26 @@ export default function TripStepsList({
   onDeletePlace,
   onEditPlace,
   isUpcoming = false,
+  trip,
 }: TripStepsListProps) {
   const sortedPlaces = [...places].sort((a, b) => {
     return new Date(a.visitedAt).getTime() - new Date(b.visitedAt).getTime();
   });
 
   if (isUpcoming) {
+    // Show countdown timer for upcoming trips with no steps
+    if (trip?.startTime && places.length === 0) {
+      return (
+        <div className="flex flex-col items-center justify-center py-20 px-4">
+          <CountdownTimer startTime={trip.startTime} />
+          <p className="text-gray-400 text-sm text-center mt-4 italic">
+            Stay tuned for updates
+          </p>
+        </div>
+      );
+    }
+    
+    // Show message if upcoming but has steps or no start time
     return (
       <div className="flex flex-col items-center justify-center py-20 px-4">
         <MdLocationOn className="w-16 h-16 text-gray-600 mb-4" />

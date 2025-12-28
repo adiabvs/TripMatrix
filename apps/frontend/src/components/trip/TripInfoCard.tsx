@@ -175,13 +175,10 @@ export default function TripInfoCard({
             <p className="text-gray-300 text-sm mb-4 whitespace-pre-wrap">{trip.description}</p>
           )}
           
-          {/* Upcoming Trip Countdown - Show for upcoming trips with no steps */}
-          {isUpcoming && trip.startTime && placesCount === 0 && (
+          {/* Upcoming Trip Countdown - Show for upcoming trips with steps (countdown for no steps is shown in TripStepsList) */}
+          {isUpcoming && trip.startTime && placesCount > 0 && (
             <div className="mb-4">
               <CountdownTimer startTime={trip.startTime} />
-              <p className="text-gray-400 text-sm text-center mt-3 italic">
-                Stay tuned for updates
-              </p>
             </div>
           )}
           

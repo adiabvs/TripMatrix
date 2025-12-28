@@ -1,17 +1,27 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { getTrip, getTripRoutes, getTripExpenses } from '@/lib/api';
+import dynamic from 'next/dynamic';
 import { db } from '@/lib/firebase';
 import { collection, query, where, onSnapshot, doc, getDoc } from 'firebase/firestore';
 import type { Trip, TripRoute, TripPlace, TripExpense, User } from '@tripmatrix/types';
-import TripMap from '@/components/TripMap';
-import { formatDistance, formatDuration } from '@tripmatrix/utils';
-import { format } from 'date-fns';
-import { toDate } from '@/lib/dateUtils';
-import { MdArrowBack } from 'react-icons/md';
+import TripHeader from '@/components/trip/TripHeader';
+import TripInfoCard from '@/components/trip/TripInfoCard';
+import TripStepsList from '@/components/trip/TripStepsList';
+import { useTripPermissions } from '@/hooks/useTripPermissions';
+import { MdMap } from 'react-icons/md';
+
+// Dynamically import TripMapbox with SSR disabled
+const TripMapbox = dynamic(() => import('@/components/TripMapbox'), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-full flex items-center justify-center bg-black">
+      <div className="text-sm text-white">Loading map...</div>
+    </div>
+  ),
+});
 
 export default function PublicTripViewPage() {
   const params = useParams();
@@ -19,10 +29,15 @@ export default function PublicTripViewPage() {
 
   const [trip, setTrip] = useState<Trip | null>(null);
   const [creator, setCreator] = useState<User | null>(null);
+  const [participants, setParticipants] = useState<User[]>([]);
   const [routes, setRoutes] = useState<TripRoute[]>([]);
   const [places, setPlaces] = useState<TripPlace[]>([]);
   const [expenses, setExpenses] = useState<TripExpense[]>([]);
   const [loading, setLoading] = useState(true);
+  const [visibleStepIndex, setVisibleStepIndex] = useState<number>(0);
+  const [scrollProgress, setScrollProgress] = useState<number>(0);
+  const stepsContainerRef = useRef<HTMLDivElement>(null);
+  const observerRef = useRef<IntersectionObserver | null>(null);
 
   useEffect(() => {
     if (tripId) {
@@ -50,6 +65,23 @@ export default function PublicTripViewPage() {
       const creatorDoc = await getDoc(doc(db, 'users', tripData.creatorId));
       if (creatorDoc.exists()) {
         setCreator(creatorDoc.data() as User);
+      }
+
+      // Load participants
+      if (tripData.participants && tripData.participants.length > 0) {
+        const participantUids = tripData.participants
+          .filter((p: any) => !p.isGuest && p.uid)
+          .map((p: any) => p.uid);
+        
+        if (participantUids.length > 0) {
+          const participantDocs = await Promise.all(
+            participantUids.map((uid: string) => getDoc(doc(db, 'users', uid)))
+          );
+          const participantsData = participantDocs
+            .filter(doc => doc.exists())
+            .map(doc => doc.data() as User);
+          setParticipants(participantsData);
+        }
       }
 
       // Load routes (public endpoint)
@@ -91,178 +123,149 @@ export default function PublicTripViewPage() {
     }
   };
 
+  // Sort places chronologically for map display
+  const sortedPlaces = [...places].sort((a, b) => {
+    return new Date(a.visitedAt).getTime() - new Date(b.visitedAt).getTime();
+  });
+
+  // Set up intersection observer to track visible step cards (same as trip details)
+  useEffect(() => {
+    if (sortedPlaces.length === 0) return;
+
+    if (observerRef.current) {
+      observerRef.current.disconnect();
+    }
+
+    observerRef.current = new IntersectionObserver(
+      (entries) => {
+        let maxRatio = 0;
+        let mostVisibleIndex = 0;
+        let mostVisibleEntry: IntersectionObserverEntry | null = null;
+
+        for (const entry of entries) {
+          const stepIndex = parseInt(entry.target.getAttribute('data-step-index') || '0', 10);
+          const rect = entry.boundingClientRect;
+          const viewportCenter = window.innerHeight / 2;
+          const cardCenter = rect.top + rect.height / 2;
+          const distanceFromCenter = Math.abs(cardCenter - viewportCenter);
+          
+          const centerWeight = 1 / (1 + distanceFromCenter / 100);
+          const weightedRatio = entry.intersectionRatio * centerWeight;
+          
+          if (weightedRatio > maxRatio && entry.intersectionRatio > 0.2) {
+            maxRatio = weightedRatio;
+            mostVisibleIndex = stepIndex;
+            mostVisibleEntry = entry;
+          }
+        }
+
+        if (mostVisibleEntry !== null && maxRatio > 0) {
+          setVisibleStepIndex(mostVisibleIndex);
+          
+          const entry: IntersectionObserverEntry = mostVisibleEntry;
+          const rect = entry.boundingClientRect;
+          const viewportHeight = window.innerHeight;
+          const viewportCenter = viewportHeight / 2;
+          const cardCenter = rect.top + rect.height / 2;
+          
+          const normalizedProgress = Math.max(0, Math.min(1, (cardCenter - viewportCenter + viewportHeight / 4) / (viewportHeight / 2)));
+          setScrollProgress(normalizedProgress);
+        }
+      },
+      {
+        root: null,
+        rootMargin: '-30% 0px -30% 0px',
+        threshold: [0, 0.2, 0.4, 0.6, 0.8, 1.0],
+      }
+    );
+
+    const timeoutId = setTimeout(() => {
+      const stepCards = document.querySelectorAll('[data-step-index]');
+      stepCards.forEach((card) => {
+        observerRef.current?.observe(card);
+      });
+    }, 100);
+
+    return () => {
+      clearTimeout(timeoutId);
+      if (observerRef.current) {
+        observerRef.current.disconnect();
+      }
+    };
+  }, [sortedPlaces.length]);
+
+  const { isUpcoming } = useTripPermissions(trip, null);
+  const canShare = trip ? trip.isPublic : false;
+
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-lg">Loading...</div>
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-[#424242] to-[#1a1a1a]">
+        <div className="w-16 h-16 border-4 border-gray-600 border-t-[#1976d2] rounded-full animate-spin mb-4" />
+        <p className="text-white text-sm font-medium animate-pulse">Loading trip...</p>
       </div>
     );
   }
 
   if (!trip) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-lg">Trip not found or is private</div>
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-[#424242] to-[#1a1a1a] px-4">
+        <MdMap className="text-6xl mb-4 text-gray-400" />
+        <h2 className="text-lg font-semibold text-white mb-2">Trip not found</h2>
+        <p className="text-gray-400 text-sm text-center mb-6">
+          The trip you&apos;re looking for doesn&apos;t exist or is private.
+        </p>
+        <Link
+          href="/trips/public"
+          className="px-6 py-3 bg-[#1976d2] text-white rounded-xl font-medium hover:bg-[#1565c0] transition-all duration-200 shadow-lg hover:shadow-xl"
+        >
+          Back to Public Trips
+        </Link>
       </div>
     );
   }
 
-  const allRoutePoints = routes.flatMap((r) => r.points);
-  const totalDistance = trip.totalDistance || 0;
-  const totalDuration =
-    trip.endTime && trip.startTime
-      ? Math.floor(
-          (toDate(trip.endTime).getTime() - toDate(trip.startTime).getTime()) / 1000
-        )
-      : 0;
-
   return (
-    <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
-      <nav className="bg-white shadow-sm flex-shrink-0">
-        <div className="container mx-auto px-4 py-4">
-          <Link href="/trips/public" className="text-blue-600 hover:text-blue-700 flex items-center gap-2">
-            <MdArrowBack className="w-4 h-4" />
-            <span>Back to Public Trips</span>
-          </Link>
-        </div>
-      </nav>
+    <div className="h-full overflow-y-auto bg-black flex flex-col">
+      <TripHeader title={trip.title} canEdit={false} tripId={tripId} />
 
-      <div className="flex-1 overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
-        <div className="container mx-auto px-4 py-8">
-        {/* Trip Header */}
-        <div className="bg-white rounded-xl shadow-lg p-6 mb-8 border border-gray-200">
-          <div className="flex items-start justify-between mb-4">
-            <div>
-              <h1 className="text-xl font-bold text-gray-900 mb-2">{trip.title}</h1>
-              {trip.description && (
-                <p className="text-gray-600 mb-4">{trip.description}</p>
-              )}
-              {creator && (
-                <p className="text-sm text-gray-500">
-                  By {creator.name || creator.email}
-                </p>
-              )}
-            </div>
-            <span
-              className={`px-3 py-1 rounded text-sm font-semibold ${
-                trip.status === 'completed'
-                  ? 'bg-green-100 text-green-800'
-                  : 'bg-blue-100 text-blue-800'
-              }`}
-            >
-              {trip.status === 'completed' ? 'Completed' : 'In Progress'}
-            </span>
-          </div>
-
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-            <div>
-              <p className="text-gray-500">Started</p>
-              <p className="font-semibold">{format(toDate(trip.startTime), 'MMM d, yyyy')}</p>
-            </div>
-            {trip.endTime && (
-              <div>
-                <p className="text-gray-500">Ended</p>
-                <p className="font-semibold">{format(toDate(trip.endTime), 'MMM d, yyyy')}</p>
-              </div>
-            )}
-            {totalDistance > 0 && (
-              <div>
-                <p className="text-gray-500">Distance</p>
-                <p className="font-semibold">{formatDistance(totalDistance)}</p>
-              </div>
-            )}
-            {totalDuration > 0 && (
-              <div>
-                <p className="text-gray-500">Duration</p>
-                <p className="font-semibold">{formatDuration(totalDuration)}</p>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Map */}
-        {routes.length > 0 || places.length > 0 ? (
-          <div className="bg-white rounded-xl shadow-lg p-6 mb-8 border border-gray-200">
-            <h2 className="text-xl font-bold mb-4">Route Map</h2>
-            <TripMap 
-              routes={routes} 
-              places={places.map(p => ({
-                coordinates: p.coordinates,
-                name: p.name,
-                modeOfTravel: p.modeOfTravel ?? undefined,
-              }))} 
-              height="500px" 
-            />
-          </div>
-        ) : null}
-
-        {/* Places */}
-        <div className="bg-white rounded-xl shadow-lg p-6 mb-8 border border-gray-200">
-          <h2 className="text-xl font-bold mb-4">Places Visited ({places.length})</h2>
-          {places.length === 0 ? (
-            <p className="text-gray-500">No places visited yet</p>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {places.map((place) => (
-                <div key={place.placeId} className="border border-gray-200 rounded-xl p-6 bg-white shadow-lg">
-                  <h3 className="font-semibold text-sm mb-3">{place.name}</h3>
-                  {place.rating && (
-                    <div className="mb-2">
-                      {'★'.repeat(place.rating)}{'☆'.repeat(5 - place.rating)}
-                    </div>
-                  )}
-                  {place.rewrittenComment && (
-                    <p className="text-gray-700 mb-2">{place.rewrittenComment}</p>
-                  )}
-                  {place.comment && !place.rewrittenComment && (
-                    <p className="text-gray-700 mb-2">{place.comment}</p>
-                  )}
-                  <p className="text-sm text-gray-500">
-                    {format(toDate(place.visitedAt), 'MMM d, yyyy HH:mm')}
-                  </p>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Participants */}
-        <div className="bg-white rounded-xl shadow-lg p-6 mb-8 border border-gray-200">
-          <h2 className="text-xl font-bold mb-4">Participants</h2>
-          <div className="flex flex-wrap gap-2">
-            {trip.participants.map((participant, idx) => (
-              <span
-                key={idx}
-                className="px-3 py-1 bg-gray-100 rounded-full text-sm"
-              >
-                {participant.isGuest ? participant.guestName : `User ${participant.uid?.substring(0, 8)}`}
-              </span>
-            ))}
-          </div>
-        </div>
-
-        {/* Expenses (if allowed) */}
-        {trip.totalExpense !== undefined && (
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <h2 className="text-xl font-bold mb-4">
-              Total Expenses: ${trip.totalExpense.toFixed(2)}
-            </h2>
-            {expenses.length > 0 && (
-              <div className="space-y-2">
-                {expenses.map((expense) => (
-                  <div key={expense.expenseId} className="border border-gray-200 rounded-lg p-3">
-                    <p className="font-semibold">${expense.amount.toFixed(2)}</p>
-                    {expense.description && (
-                      <p className="text-sm text-gray-600">{expense.description}</p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-        </div>
+      {/* Map Section - 25% height */}
+      <div className="relative flex-shrink-0" style={{ height: '25vh' }}>
+        <TripMapbox 
+          places={places} 
+          routes={routes}
+          height="25vh"
+          highlightedStepIndex={visibleStepIndex}
+          sortedPlaces={sortedPlaces}
+          autoPlay={false}
+          animationSpeed={1.0}
+          scrollProgress={scrollProgress}
+        />
       </div>
+
+      {/* Instagram-like Feed */}
+      <main className="w-full md:max-w-[600px] md:mx-auto pb-20 flex-1" ref={stepsContainerRef}>
+        <TripInfoCard
+          trip={trip}
+          creator={creator}
+          participants={participants}
+          isUpcoming={isUpcoming}
+          placesCount={places.length}
+          canShare={canShare}
+          className="mb-8"
+        />
+
+        <TripStepsList
+          places={places}
+          canEdit={false}
+          tripId={tripId}
+          expenses={expenses}
+          creator={creator || undefined}
+          onDeletePlace={async () => {}}
+          onEditPlace={() => {}}
+          isUpcoming={isUpcoming}
+          trip={trip}
+        />
+      </main>
     </div>
   );
 }
