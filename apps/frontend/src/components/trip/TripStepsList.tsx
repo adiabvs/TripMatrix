@@ -34,7 +34,8 @@ export default function TripStepsList({
     return (
       <div className="flex flex-col items-center justify-center py-20 px-4">
         <MdLocationOn className="w-16 h-16 text-gray-600 mb-4" />
-        <p className="text-gray-400 text-center mb-4">Trip hasn&apos;t started yet. Steps will appear here once the trip begins.</p>
+        <p className="text-gray-400 text-center mb-2">Trip hasn&apos;t started yet.</p>
+        <p className="text-gray-500 text-center text-sm italic">Steps will appear here once the trip begins.</p>
       </div>
     );
   }

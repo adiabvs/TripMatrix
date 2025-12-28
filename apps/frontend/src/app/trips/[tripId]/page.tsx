@@ -47,7 +47,11 @@ export default function TripDetailPage() {
     setExpenses,
   } = useTripData(tripId);
 
-  const { canEdit, isUpcoming } = useTripPermissions(trip, user);
+  const { canEdit, isUpcoming, isCreator, isParticipant } = useTripPermissions(trip, user);
+  
+  // User can share if trip is public OR user is creator/participant
+  // If trip is public, anyone viewing can share (even if not logged in)
+  const canShare = trip ? (trip.isPublic || isCreator || isParticipant) : false;
 
   const [token, setToken] = useState<string | null>(null);
   const [visibleStepIndex, setVisibleStepIndex] = useState<number>(0);
@@ -461,6 +465,7 @@ export default function TripDetailPage() {
           participants={participants}
           isUpcoming={isUpcoming}
           placesCount={places.length}
+          canShare={canShare}
           className="mb-8"
         />
 

@@ -30,8 +30,11 @@ export default function CountdownTimer({ startTime, className = '' }: CountdownT
 
   return (
     <div className={`p-4 bg-gradient-to-r from-blue-900/50 to-purple-900/50 rounded-lg border border-blue-700/50 ${className}`}>
-      <p className="text-white font-semibold text-sm mb-2 text-center">
-        Stay tuned, trip will start in {formatTimeLeft()}
+      <p className="text-white font-semibold text-sm mb-1 text-center">
+        Trip starting in {formatTimeLeft()}
+      </p>
+      <p className="text-gray-300 text-xs text-center">
+        {format(toDate(startTime), 'MMM dd, yyyy • h:mm a')}
       </p>
     </div>
   );
