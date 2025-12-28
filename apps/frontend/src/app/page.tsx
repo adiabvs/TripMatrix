@@ -170,18 +170,16 @@ export default function Home() {
       <header className="sticky top-0 z-50 bg-black border-b border-gray-800">
         <div className="max-w-[600px] mx-auto px-4 py-3 flex items-center justify-between">
           <h1 className="text-xl font-semibold text-white">TripMatrix</h1>
-          <div className="flex items-center gap-4">
-            {user ? (
-              <UserMenu />
-            ) : (
+          {!user && (
+            <div className="flex items-center gap-4">
               <Link 
                 href="/auth"
                 className="text-white text-sm font-medium"
               >
                 Sign In
               </Link>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       </header>
 

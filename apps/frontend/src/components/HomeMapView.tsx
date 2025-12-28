@@ -151,16 +151,20 @@ export default function HomeMapView({
           tripWithCoords.startLocationCoords.lat !== 0 && 
           tripWithCoords.startLocationCoords.lng !== 0) {
         const coords = tripWithCoords.startLocationCoords;
-        // Create circular marker
+        // Create circular marker (navy blue for following) - responsive across devices
         const circleIcon = L.divIcon({
           className: 'trip-marker',
           html: `<div style="
             width: 14px;
             height: 14px;
+            min-width: 14px;
+            min-height: 14px;
             border-radius: 50%;
-            background-color: #ef4444;
+            background-color: #001f3f;
             border: 2px solid white;
             box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            display: block;
+            position: relative;
           "></div>`,
           iconSize: [14, 14],
           iconAnchor: [7, 7],

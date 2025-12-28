@@ -29,13 +29,13 @@ export default function ProfilePage() {
   }, [user, authLoading, router]);
 
   useEffect(() => {
-    if (user) {
+    if (user && firebaseUser) {
       loadUserTrips();
       loadFollowing();
       loadFollowers();
       setIsProfilePublic(user.isProfilePublic || false);
     }
-  }, [user]);
+  }, [user, firebaseUser]);
 
   const loadUserTrips = async () => {
     try {
@@ -91,13 +91,49 @@ export default function ProfilePage() {
 
   const loadFollowing = async () => {
     try {
-      const token = await getIdToken();
+      if (!firebaseUser) {
+        setFollowing([]);
+        return;
+      }
+      
+      // Try to get token, force refresh if needed
+      let token = await getIdToken();
+      
+      // If no token, try to force refresh
+      if (!token) {
+        token = await getIdToken(true);
+      }
+      
       if (token) {
-        const followingList = await getFollowing(token);
-        setFollowing(followingList);
+        try {
+          const followingList = await getFollowing(token);
+          setFollowing(followingList);
+        } catch (apiError: any) {
+          // If we get a 401, try refreshing the token once more
+          if (apiError?.status === 401 || (apiError?.message && apiError.message.includes('token'))) {
+            const refreshedToken = await getIdToken(true);
+            if (refreshedToken) {
+              try {
+                const followingList = await getFollowing(refreshedToken);
+                setFollowing(followingList);
+              } catch (retryError) {
+                console.error('Failed to load following after token refresh:', retryError);
+                setFollowing([]);
+              }
+            } else {
+              console.error('Failed to refresh token');
+              setFollowing([]);
+            }
+          } else {
+            throw apiError;
+          }
+        }
+      } else {
+        setFollowing([]);
       }
     } catch (error) {
       console.error('Failed to load following:', error);
+      setFollowing([]);
     }
   };
 
@@ -176,11 +212,17 @@ export default function ProfilePage() {
       {/* Header */}
       <header className="sticky top-0 z-50 bg-black border-b border-gray-800">
         <div className="max-w-[600px] mx-auto px-4 py-3 flex items-center justify-between">
-          <Link href="/" className="text-white">
+          <Link 
+            href="/" 
+            className="text-white hover:bg-gray-900 active:bg-gray-800 rounded-lg p-1.5 transition-all duration-200 active:scale-95 focus:outline-none focus:ring-2 focus:ring-gray-600 focus:ring-offset-2 focus:ring-offset-black"
+          >
             <MdArrowBack className="w-6 h-6" />
           </Link>
           <h1 className="text-xl font-semibold text-white">{user.name}</h1>
-          <Link href="/profile/settings" className="text-white">
+          <Link 
+            href="/profile/settings" 
+            className="text-white hover:bg-gray-900 active:bg-gray-800 rounded-lg p-1.5 transition-all duration-200 active:scale-95 focus:outline-none focus:ring-2 focus:ring-gray-600 focus:ring-offset-2 focus:ring-offset-black"
+          >
             <MdSettings className="w-6 h-6" />
           </Link>
         </div>
@@ -226,11 +268,11 @@ export default function ProfilePage() {
 
           {/* Profile Privacy Settings */}
           <div className="flex items-center justify-between pt-4 border-t border-gray-800">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3">
               {isProfilePublic ? (
-                <MdPublic className="w-5 h-5 text-blue-500" />
+                <MdPublic className="w-6 h-6 text-blue-500" />
               ) : (
-                <MdLock className="w-5 h-5 text-gray-400" />
+                <MdLock className="w-6 h-6 text-gray-400" />
               )}
               <div>
                 <p className="text-sm font-semibold text-white">Profile Privacy</p>
@@ -239,19 +281,27 @@ export default function ProfilePage() {
                 </p>
               </div>
             </div>
-            <button
-              onClick={handleToggleProfilePrivacy}
-              disabled={saving}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                isProfilePublic ? 'bg-blue-500' : 'bg-gray-700'
-              } ${saving ? 'opacity-50' : ''}`}
-            >
-              <span
-                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                  isProfilePublic ? 'translate-x-6' : 'translate-x-1'
-                }`}
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={isProfilePublic}
+                onChange={(e) => {
+                  if (!saving) {
+                    handleToggleProfilePrivacy();
+                  }
+                }}
+                disabled={saving}
+                className="sr-only peer"
               />
-            </button>
+              <div className={`
+                w-11 h-6 bg-[#616161] peer-focus:outline-none rounded-full peer 
+                peer-checked:after:translate-x-full peer-checked:after:border-white 
+                after:content-[''] after:absolute after:top-[2px] after:left-[2px] 
+                after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all 
+                peer-checked:bg-[#1976d2]
+                ${saving ? 'opacity-50 cursor-not-allowed' : ''}
+              `}></div>
+            </label>
           </div>
         </div>
 
@@ -322,10 +372,10 @@ export default function ProfilePage() {
                   </div>
                   <button
                     onClick={() => handleUnfollow(followedUser.uid)}
-                    className="p-2 hover:bg-gray-900 rounded-lg transition-colors"
+                    className="p-2 hover:bg-gray-900 active:bg-gray-800 rounded-lg transition-all duration-200 active:scale-95 focus:outline-none focus:ring-2 focus:ring-gray-600 focus:ring-offset-2 focus:ring-offset-black"
                     title="Unfollow"
                   >
-                    <MdClose className="w-4 h-4 text-gray-400" />
+                    <MdClose className="w-4 h-4 text-gray-400 hover:text-white transition-colors" />
                   </button>
                 </div>
               ))}
@@ -342,7 +392,7 @@ export default function ProfilePage() {
               <p className="text-gray-400 text-center mb-4">No trips yet</p>
               <Link
                 href="/trips/new"
-                className="px-6 py-2 bg-[#1976d2] text-white rounded-lg font-medium hover:bg-[#1565c0] transition-colors"
+                className="px-6 py-2 bg-[#1976d2] text-white rounded-lg font-medium hover:bg-[#1565c0] active:bg-[#0d47a1] transition-all duration-200 active:scale-95 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-black shadow-md hover:shadow-lg"
               >
                 Create Your First Trip
               </Link>
@@ -380,7 +430,7 @@ export default function ProfilePage() {
                         </p>
                       </div>
                     </div>
-                    <button className="text-white">
+                    <button className="text-white hover:bg-gray-900 active:bg-gray-800 rounded-lg p-1 transition-all duration-200 active:scale-95 focus:outline-none focus:ring-2 focus:ring-gray-600 focus:ring-offset-2 focus:ring-offset-black">
                       <MdMoreVert className="w-5 h-5" />
                     </button>
                   </div>
@@ -447,11 +497,14 @@ export default function ProfilePage() {
                             console.error('Failed to toggle like:', error);
                           }
                         }}
-                        className="text-white hover:opacity-70"
+                        className="text-white hover:bg-gray-900 active:bg-gray-800 rounded-lg p-1.5 transition-all duration-200 active:scale-95 focus:outline-none focus:ring-2 focus:ring-gray-600 focus:ring-offset-2 focus:ring-offset-black"
                       >
-                        <MdFavorite className={`w-6 h-6 ${likes[trip.tripId]?.isLiked ? 'text-red-500 fill-red-500' : ''}`} />
+                        <MdFavorite className={`w-6 h-6 transition-all duration-200 ${likes[trip.tripId]?.isLiked ? 'text-red-500 fill-red-500' : ''}`} />
                       </button>
-                      <Link href={`/trips/${trip.tripId}`} className="text-white hover:opacity-70 flex items-center gap-1">
+                      <Link 
+                        href={`/trips/${trip.tripId}`} 
+                        className="text-white hover:bg-gray-900 active:bg-gray-800 rounded-lg p-1.5 flex items-center gap-1 transition-all duration-200 active:scale-95 focus:outline-none focus:ring-2 focus:ring-gray-600 focus:ring-offset-2 focus:ring-offset-black"
+                      >
                         <MdChatBubbleOutline className="w-6 h-6" />
                       </Link>
                     </div>

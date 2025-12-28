@@ -12,7 +12,7 @@ export interface User {
 }
 
 // Trip Types
-export type TripStatus = 'in_progress' | 'completed';
+export type TripStatus = 'upcoming' | 'in_progress' | 'completed';
 export type ModeOfTravel = 'walk' | 'bike' | 'car' | 'train' | 'bus' | 'flight';
 
 export interface TripParticipant {

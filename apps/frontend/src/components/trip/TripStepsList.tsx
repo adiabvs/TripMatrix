@@ -78,7 +78,7 @@ export default function TripStepsList({
             )}
 
             {/* Step Card */}
-            <div>
+            <div data-step-index={index}>
               <CompactStepCard
                 place={place}
                 index={index}

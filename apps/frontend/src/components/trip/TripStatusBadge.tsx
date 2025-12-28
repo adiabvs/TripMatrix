@@ -18,3 +18,7 @@ export default function TripStatusBadge({ status, isUpcoming = false, className 
 }
 
 
+
+
+
+

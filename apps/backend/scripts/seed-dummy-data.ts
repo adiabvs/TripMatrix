@@ -661,8 +661,10 @@ async function createDummyLikesAndComments(trips: Trip[], places: TripPlace[], u
   let tripLikeIndex = 0;
   let placeLikeIndex = 0;
   let commentIndex = 0;
+  const batchSize = 500;
 
-  // Create trip likes - each trip gets 5-50 likes from random users
+  // Collect all trip likes first
+  const tripLikes: Array<{ tripId: string; userId: string; createdAt: admin.firestore.Timestamp }> = [];
   for (const trip of trips) {
     const numLikes = Math.floor(Math.random() * 46) + 5; // 5-50 likes
     const likedBy = new Set<string>();
@@ -674,20 +676,30 @@ async function createDummyLikesAndComments(trips: Trip[], places: TripPlace[], u
       // Don't like own trips
       if (userId !== trip.creatorId && !likedBy.has(userId)) {
         likedBy.add(userId);
-        
-        await db.collection('tripLikes').add({
+        tripLikes.push({
           tripId: trip.tripId,
           userId,
           createdAt: admin.firestore.Timestamp.now(),
         });
-        tripLikeIndex++;
       }
     }
   }
 
-  console.log(`   Created ${tripLikeIndex} trip likes...`);
+  // Write trip likes in batches
+  for (let i = 0; i < tripLikes.length; i += batchSize) {
+    const batch = db.batch();
+    const batchLikes = tripLikes.slice(i, i + batchSize);
+    batchLikes.forEach((like) => {
+      const likeRef = db.collection('tripLikes').doc();
+      batch.set(likeRef, like);
+    });
+    await batch.commit();
+    tripLikeIndex += batchLikes.length;
+    console.log(`   Created ${tripLikeIndex}/${tripLikes.length} trip likes...`);
+  }
 
-  // Create place likes - each place gets 2-20 likes from random users
+  // Collect all place likes first
+  const placeLikes: Array<{ placeId: string; userId: string; createdAt: admin.firestore.Timestamp }> = [];
   for (const place of places) {
     const numLikes = Math.floor(Math.random() * 19) + 2; // 2-20 likes
     const likedBy = new Set<string>();
@@ -703,27 +715,33 @@ async function createDummyLikesAndComments(trips: Trip[], places: TripPlace[], u
       // Don't like own places
       if (userId !== creatorId && !likedBy.has(userId)) {
         likedBy.add(userId);
-        
-        await db.collection('placeLikes').add({
+        placeLikes.push({
           placeId: place.placeId,
           userId,
           createdAt: admin.firestore.Timestamp.now(),
         });
-        placeLikeIndex++;
       }
     }
   }
 
-  console.log(`   Created ${placeLikeIndex} place likes...`);
+  // Write place likes in batches
+  for (let i = 0; i < placeLikes.length; i += batchSize) {
+    const batch = db.batch();
+    const batchLikes = placeLikes.slice(i, i + batchSize);
+    batchLikes.forEach((like) => {
+      const likeRef = db.collection('placeLikes').doc();
+      batch.set(likeRef, like);
+    });
+    await batch.commit();
+    placeLikeIndex += batchLikes.length;
+    console.log(`   Created ${placeLikeIndex}/${placeLikes.length} place likes...`);
+  }
 
-  // Create place comments - each place gets 1-10 comments from random users
+  // Collect all comments first
+  const comments: PlaceComment[] = [];
   for (const place of places) {
     const numComments = Math.floor(Math.random() * 10) + 1; // 1-10 comments
     const commentedBy = new Set<string>();
-    
-    // Get trip to find creator
-    const trip = trips.find(t => t.tripId === place.tripId);
-    const creatorId = trip?.creatorId || '';
     
     while (commentedBy.size < numComments && commentedBy.size < users.length) {
       const userIndex = Math.floor(Math.random() * users.length);
@@ -731,23 +749,31 @@ async function createDummyLikesAndComments(trips: Trip[], places: TripPlace[], u
       
       if (!commentedBy.has(userId)) {
         commentedBy.add(userId);
-        
-        const comment: PlaceComment = {
+        comments.push({
           commentId: `comment-${commentIndex + 1}`,
           placeId: place.placeId,
           userId,
           text: COMMENT_TEXTS[Math.floor(Math.random() * COMMENT_TEXTS.length)],
           createdAt: new Date(),
-        };
-        
-        await db.collection('placeComments').doc(comment.commentId).set(comment);
+        });
         commentIndex++;
       }
     }
   }
 
-  console.log(`   Created ${commentIndex} place comments...`);
-  console.log(`✅ Created ${tripLikeIndex} trip likes, ${placeLikeIndex} place likes, and ${commentIndex} comments\n`);
+  // Write comments in batches
+  for (let i = 0; i < comments.length; i += batchSize) {
+    const batch = db.batch();
+    const batchComments = comments.slice(i, i + batchSize);
+    batchComments.forEach((comment) => {
+      const commentRef = db.collection('placeComments').doc(comment.commentId);
+      batch.set(commentRef, comment);
+    });
+    await batch.commit();
+    console.log(`   Created ${Math.min(i + batchSize, comments.length)}/${comments.length} comments...`);
+  }
+
+  console.log(`✅ Created ${tripLikeIndex} trip likes, ${placeLikeIndex} place likes, and ${comments.length} comments\n`);
 }
 
 async function main() {

@@ -43,6 +43,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [showCountrySelector, setShowCountrySelector] = useState(false);
 
   useEffect(() => {
+    // Only run on client side and when auth is initialized
+    if (typeof window === 'undefined' || !auth || !db) {
+      setLoading(false);
+      return;
+    }
+
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       try {
         setFirebaseUser(user);
@@ -91,8 +97,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signIn = async () => {
-    const provider = new GoogleAuthProvider();
-    await signInWithPopup(auth, provider);
+    if (!auth) {
+      console.error('Firebase Auth is not initialized. Please check your Firebase configuration.');
+      alert('Authentication is not available. Please check your Firebase configuration in .env.local');
+      return;
+    }
+
+    try {
+      const provider = new GoogleAuthProvider();
+      // Add scopes if needed
+      provider.addScope('profile');
+      provider.addScope('email');
+      await signInWithPopup(auth, provider);
+    } catch (error: any) {
+      console.error('Sign in error:', error);
+      
+      // Provide helpful error messages
+      if (error.code === 'auth/configuration-not-found') {
+        alert('Firebase configuration error. Please check:\n1. Your Firebase project is set up correctly\n2. Authorized domains include ' + window.location.hostname + '\n3. Google Sign-In is enabled in Firebase Console');
+      } else if (error.code === 'auth/popup-closed-by-user') {
+        // User closed the popup, don't show error
+        return;
+      } else {
+        alert('Failed to sign in: ' + (error.message || 'Unknown error'));
+      }
+      throw error;
+    }
   };
 
   const signOut = async () => {

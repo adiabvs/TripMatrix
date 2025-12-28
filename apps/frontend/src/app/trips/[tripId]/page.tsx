@@ -54,6 +54,7 @@ export default function TripDetailPage() {
   const [scrollProgress, setScrollProgress] = useState<number>(0);
   const stepsContainerRef = useRef<HTMLDivElement>(null);
   const stepCardRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const observerRef = useRef<IntersectionObserver | null>(null);
 
   // Draggable state
   const [modalHeight, setModalHeight] = useState(50); // Start at 50vh
@@ -322,6 +323,89 @@ export default function TripDetailPage() {
     return new Date(a.visitedAt).getTime() - new Date(b.visitedAt).getTime();
   });
 
+  // Set up intersection observer to track visible step cards
+  useEffect(() => {
+    if (sortedPlaces.length === 0) return;
+
+    // Clean up previous observer
+    if (observerRef.current) {
+      observerRef.current.disconnect();
+    }
+
+    // Create new intersection observer using viewport as root
+    observerRef.current = new IntersectionObserver(
+      (entries) => {
+        // Find the entry with the highest intersection ratio that's in the center of viewport
+        let maxRatio = 0;
+        let mostVisibleIndex = 0;
+        let mostVisibleEntry: IntersectionObserverEntry | null = null;
+
+        entries.forEach((entry) => {
+          const stepIndex = parseInt(entry.target.getAttribute('data-step-index') || '0', 10);
+          // Prefer entries that are more centered in the viewport
+          const rect = entry.boundingClientRect;
+          const viewportCenter = window.innerHeight / 2;
+          const cardCenter = rect.top + rect.height / 2;
+          const distanceFromCenter = Math.abs(cardCenter - viewportCenter);
+          
+          // Weight intersection ratio by proximity to center
+          const centerWeight = 1 / (1 + distanceFromCenter / 100);
+          const weightedRatio = entry.intersectionRatio * centerWeight;
+          
+          if (weightedRatio > maxRatio && entry.intersectionRatio > 0.2) {
+            maxRatio = weightedRatio;
+            mostVisibleIndex = stepIndex;
+            mostVisibleEntry = entry;
+          }
+        });
+
+        // Update visible step index
+        if (mostVisibleEntry && maxRatio > 0) {
+          setVisibleStepIndex(mostVisibleIndex);
+          
+          // Calculate scroll progress: how far through the current step we are
+          const rect = mostVisibleEntry.boundingClientRect;
+          const viewportHeight = window.innerHeight;
+          const viewportCenter = viewportHeight / 2;
+          const cardCenter = rect.top + rect.height / 2;
+          
+          // Progress: 0 when card center is at viewport top, 1 when at bottom
+          // Normalize to 0-1 range
+          const normalizedProgress = Math.max(0, Math.min(1, (cardCenter - viewportCenter + viewportHeight / 4) / (viewportHeight / 2)));
+          setScrollProgress(normalizedProgress);
+        }
+      },
+      {
+        root: null, // Use viewport as root
+        rootMargin: '-30% 0px -30% 0px', // Trigger when card is in center 40% of viewport
+        threshold: [0, 0.2, 0.4, 0.6, 0.8, 1.0],
+      }
+    );
+
+    // Observe all step cards after a short delay to ensure DOM is ready
+    const timeoutId = setTimeout(() => {
+      const stepCards = document.querySelectorAll('[data-step-index]');
+      stepCards.forEach((card) => {
+        observerRef.current?.observe(card);
+      });
+    }, 100);
+
+    return () => {
+      clearTimeout(timeoutId);
+      if (observerRef.current) {
+        observerRef.current.disconnect();
+      }
+    };
+  }, [sortedPlaces.length]);
+
+  // Update step card refs when places change
+  useEffect(() => {
+    if (stepsContainerRef.current) {
+      const stepCards = stepsContainerRef.current.querySelectorAll('[data-step-index]');
+      stepCardRefs.current = Array.from(stepCards) as HTMLDivElement[];
+    }
+  }, [sortedPlaces]);
+
   if (authLoading || loading) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-[#424242] to-[#1a1a1a]">
@@ -368,7 +452,7 @@ export default function TripDetailPage() {
       </div>
 
       {/* Instagram-like Feed */}
-      <main className="max-w-[600px] mx-auto pb-20 flex-1">
+      <main className="max-w-[600px] mx-auto pb-20 flex-1" ref={stepsContainerRef}>
         <TripInfoCard
           trip={trip}
           creator={creator}

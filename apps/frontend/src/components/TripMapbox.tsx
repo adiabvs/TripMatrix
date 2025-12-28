@@ -375,7 +375,8 @@ export default function TripMapbox({
         );
         const startIndex = startPlace ? sortedPlacesData.indexOf(startPlace) : -1;
         const endIndex = startIndex >= 0 ? startIndex + 1 : -1;
-        const isActive = endIndex === highlightedStepIndex;
+        // Route is active if it starts at the highlighted step (going from current to next)
+        const isActive = startIndex === highlightedStepIndex;
 
         const sourceId = `route-${routeIndex}`;
         const layerId = `route-layer-${routeIndex}`;
@@ -398,20 +399,27 @@ export default function TripMapbox({
           },
         });
 
-        map.addLayer({
-          id: layerId,
-          type: 'line',
-          source: sourceId,
-          layout: {
-            'line-join': 'round',
-            'line-cap': 'round',
-          },
-          paint: {
-            'line-color': isActive ? '#ffc107' : color,
-            'line-width': isActive ? 4 : 3,
-            'line-opacity': 0.8,
-          },
-        });
+        // Check if layer already exists and update it, otherwise add new layer
+        if (map.getLayer(layerId)) {
+          // Update existing layer
+          map.setPaintProperty(layerId, 'line-color', isActive ? '#ffc107' : color);
+          map.setPaintProperty(layerId, 'line-width', isActive ? 4 : 3);
+        } else {
+          map.addLayer({
+            id: layerId,
+            type: 'line',
+            source: sourceId,
+            layout: {
+              'line-join': 'round',
+              'line-cap': 'round',
+            },
+            paint: {
+              'line-color': isActive ? '#ffc107' : color,
+              'line-width': isActive ? 4 : 3,
+              'line-opacity': 0.8,
+            },
+          });
+        }
 
         routesRef.current.push({ 
           sourceId, 
@@ -452,7 +460,8 @@ export default function TripMapbox({
           // Mode of travel should come from the destination step (next)
           const mode = next.modeOfTravel;
           const color = getModeColor(mode);
-          const isActive = i === highlightedStepIndex - 1;
+          // Route is active if it starts at the highlighted step (going from current to next)
+          const isActive = i === highlightedStepIndex;
 
           const sourceId = `route-place-${i}`;
           const layerId = `route-layer-place-${i}`;
@@ -524,20 +533,27 @@ export default function TripMapbox({
             },
           });
 
-          map.addLayer({
-            id: layerId,
-            type: 'line',
-            source: sourceId,
-            layout: {
-              'line-join': 'round',
-              'line-cap': 'round',
-            },
-            paint: {
-              'line-color': isActive ? '#ffc107' : color,
-              'line-width': isActive ? 4 : 3,
-              'line-opacity': 0.8,
-            },
-          });
+          // Check if layer already exists and update it, otherwise add new layer
+          if (map.getLayer(layerId)) {
+            // Update existing layer
+            map.setPaintProperty(layerId, 'line-color', isActive ? '#ffc107' : color);
+            map.setPaintProperty(layerId, 'line-width', isActive ? 4 : 3);
+          } else {
+            map.addLayer({
+              id: layerId,
+              type: 'line',
+              source: sourceId,
+              layout: {
+                'line-join': 'round',
+                'line-cap': 'round',
+              },
+              paint: {
+                'line-color': isActive ? '#ffc107' : color,
+                'line-width': isActive ? 4 : 3,
+                'line-opacity': 0.8,
+              },
+            });
+          }
 
           routesRef.current.push({ 
             sourceId, 
@@ -556,7 +572,25 @@ export default function TripMapbox({
       };
       createRoutes();
     }
-  }, [mapLoaded, sortedPlacesData, routes, highlightedStepIndex]);
+  }, [mapLoaded, sortedPlacesData, routes]);
+
+  // Update route colors when highlighted step changes
+  useEffect(() => {
+    if (!mapRef.current || !mapLoaded) return;
+
+    const map = mapRef.current;
+
+    // Update all route layers with correct active state
+    routesRef.current.forEach((route) => {
+      const isActive = route.startIndex === highlightedStepIndex;
+      const color = getModeColor(route.modeOfTravel);
+      
+      if (map.getLayer(route.layerId)) {
+        map.setPaintProperty(route.layerId, 'line-color', isActive ? '#ffc107' : color);
+        map.setPaintProperty(route.layerId, 'line-width', isActive ? 4 : 3);
+      }
+    });
+  }, [highlightedStepIndex, mapLoaded]);
 
   // Animate vehicle along active route using leafmap-style approach
   useEffect(() => {
@@ -586,9 +620,17 @@ export default function TripMapbox({
     );
     
     // If no route found and we're at the last step, try to find route ending at current step
-    if (!activeRoute && highlightedStepIndex === sortedPlacesData.length - 1) {
+    // (meaning we're at the destination, so show the route that led here)
+    if (!activeRoute && highlightedStepIndex === sortedPlacesData.length - 1 && highlightedStepIndex > 0) {
       activeRoute = routesRef.current.find(
         route => route.endIndex === highlightedStepIndex
+      );
+    }
+    
+    // If still no route found and we're at the first step, try to find the first route
+    if (!activeRoute && highlightedStepIndex === 0 && sortedPlacesData.length > 1) {
+      activeRoute = routesRef.current.find(
+        route => route.startIndex === 0 && route.endIndex === 1
       );
     }
     
@@ -717,9 +759,20 @@ export default function TripMapbox({
     // Update vehicle position directly based on scroll progress
     const updateVehiclePosition = () => {
       // If at last step, vehicle should be at destination (progress = 1)
-      const progress = highlightedStepIndex === sortedPlacesData.length - 1 ? 1 : Math.max(0, Math.min(1, scrollProgress));
+      let progress: number;
+      if (highlightedStepIndex === sortedPlacesData.length - 1) {
+        // At the last step, vehicle is at destination
+        progress = 1;
+      } else if (highlightedStepIndex === 0 && scrollProgress === 0) {
+        // At the first step with no scroll, vehicle is at start
+        progress = 0;
+      } else {
+        // Normalize scroll progress between 0 and 1
+        progress = Math.max(0, Math.min(1, scrollProgress));
+      }
+      
       const coordIndex = Math.floor(routeCoords.length * progress);
-      const targetIndex = Math.min(coordIndex, routeCoords.length - 1);
+      const targetIndex = Math.min(Math.max(0, coordIndex), routeCoords.length - 1);
       const [lng, lat] = routeCoords[targetIndex];
       
       if (vehicleMarkerRef.current) {
@@ -728,6 +781,23 @@ export default function TripMapbox({
     };
 
     updateVehiclePosition();
+    
+    // Also pan map to show the active route when highlighted step changes
+    if (activeRoute && activeRoute.coordinates && activeRoute.coordinates.length > 0) {
+      try {
+        const bounds = activeRoute.coordinates.reduce((bounds, coord) => {
+          return bounds.extend(coord);
+        }, new maplibregl.LngLatBounds(activeRoute.coordinates[0], activeRoute.coordinates[0]));
+        
+        map.fitBounds(bounds, {
+          padding: { top: 50, bottom: 50, left: 50, right: 50 },
+          duration: 500,
+          maxZoom: 12,
+        });
+      } catch (error) {
+        console.warn('Failed to fit bounds for active route:', error);
+      }
+    }
 
     return () => {
       if (animationFrameRef.current) {

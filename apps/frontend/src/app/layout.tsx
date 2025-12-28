@@ -40,8 +40,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body className={roboto.className}>
+    <html lang="en" suppressHydrationWarning>
+      <body className={roboto.className} suppressHydrationWarning>
         <div id="app-root" style={{ 
           position: 'fixed', 
           top: 0, 

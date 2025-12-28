@@ -136,51 +136,82 @@ export default function CompactStepCard({
         )}
 
         {/* Cover Image with Carousel */}
-        <Link href={`/trips/${tripId}/steps/${place.placeId}/edit`}>
-          <div 
-            className="relative aspect-square bg-gray-900 overflow-hidden"
-            onTouchStart={(e) => setTouchStart(e.targetTouches[0].clientX)}
-            onTouchMove={(e) => setTouchEnd(e.targetTouches[0].clientX)}
-            onTouchEnd={() => {
-              if (!touchStart || !touchEnd) return;
-              const distance = touchStart - touchEnd;
-              const isLeftSwipe = distance > 50;
-              const isRightSwipe = distance < -50;
-              
-              if (isLeftSwipe && currentImageIndex < imageList.length - 1) {
-                setCurrentImageIndex(currentImageIndex + 1);
-              }
-              if (isRightSwipe && currentImageIndex > 0) {
-                setCurrentImageIndex(currentImageIndex - 1);
-              }
-            }}
-          >
+        <div 
+          className="relative w-full aspect-square bg-gray-900 overflow-hidden cursor-pointer"
+          onTouchStart={(e) => {
+            e.stopPropagation();
+            setTouchStart(e.targetTouches[0].clientX);
+            setTouchEnd(0);
+          }}
+          onTouchMove={(e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            setTouchEnd(e.targetTouches[0].clientX);
+          }}
+          onTouchEnd={(e) => {
+            e.stopPropagation();
+            if (!touchStart || !touchEnd) {
+              setTouchStart(0);
+              setTouchEnd(0);
+              return;
+            }
+            const distance = touchStart - touchEnd;
+            const isLeftSwipe = distance > 50;
+            const isRightSwipe = distance < -50;
+            
+            if (isLeftSwipe && currentImageIndex < imageList.length - 1) {
+              setCurrentImageIndex(currentImageIndex + 1);
+            } else if (isRightSwipe && currentImageIndex > 0) {
+              setCurrentImageIndex(currentImageIndex - 1);
+            }
+            
+            // Reset touch values
+            setTouchStart(0);
+            setTouchEnd(0);
+          }}
+        >
             {imageList.length > 0 ? (
               <>
-                <div 
-                  className="flex transition-transform duration-300 ease-in-out h-full"
-                  style={{ 
-                    transform: `translateX(-${currentImageIndex * 100}%)`,
-                    width: `${imageList.length * 100}%`
-                  }}
-                >
+                <div className="relative h-full w-full">
                   {imageList.map((img, idx) => (
-                    <div key={idx} className="h-full flex-shrink-0" style={{ width: `${100 / imageList.length}%` }}>
-                      <img
-                        src={img}
-                        alt={`${place.name} - Image ${idx + 1}`}
-                        className="w-full h-full object-cover"
+                    <div
+                      key={idx}
+                      className="absolute inset-0 h-full w-full transition-opacity duration-300"
+                      style={{
+                        opacity: idx === currentImageIndex ? 1 : 0,
+                        zIndex: idx === currentImageIndex ? 1 : 0,
+                        pointerEvents: idx === currentImageIndex ? 'auto' : 'none'
+                      }}
+                    >
+                      <Link 
+                        href={`/trips/${tripId}/steps/${place.placeId}/edit`}
                         onClick={(e) => {
-                          e.preventDefault();
-                          handlePhotoClick(idx);
+                          // Only navigate if not swiping
+                          if (touchStart && touchEnd && Math.abs(touchStart - touchEnd) > 10) {
+                            e.preventDefault();
+                          }
                         }}
-                      />
+                        className="block w-full h-full"
+                      >
+                        <img
+                          src={img}
+                          alt={`${place.name} - Image ${idx + 1}`}
+                          className="w-full h-full object-cover select-none pointer-events-none"
+                          draggable={false}
+                          loading="lazy"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            handlePhotoClick(idx);
+                          }}
+                        />
+                      </Link>
                     </div>
                   ))}
                 </div>
                 {/* Carousel Dots */}
                 {imageList.length > 1 && (
-                  <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5 z-10">
+                  <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-0.5 z-10 pointer-events-none">
                     {imageList.map((_, idx) => (
                       <button
                         key={idx}
@@ -189,9 +220,17 @@ export default function CompactStepCard({
                           e.stopPropagation();
                           setCurrentImageIndex(idx);
                         }}
-                        className={`h-1.5 rounded-full transition-all ${
-                          idx === currentImageIndex ? 'bg-white w-6' : 'bg-white/50 w-1.5'
+                        className={`rounded-full transition-all pointer-events-auto ${
+                          idx === currentImageIndex ? 'bg-white' : 'bg-white/50'
                         }`}
+                        style={{
+                          width: idx === currentImageIndex ? '8px' : '4px',
+                          height: '4px',
+                          minWidth: '4px',
+                          minHeight: '4px',
+                          padding: 0
+                        }}
+                        aria-label={`Go to image ${idx + 1}`}
                       />
                     ))}
                   </div>
@@ -218,8 +257,7 @@ export default function CompactStepCard({
                 </div>
               </div>
             )}
-          </div>
-        </Link>
+        </div>
 
         {/* Actions */}
         <div className="px-4 py-3 space-y-2">

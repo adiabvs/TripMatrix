@@ -24,7 +24,7 @@ export default function NewTripPage() {
     startTime: new Date().toISOString().slice(0, 16),
     endTime: '',
     isPublic: false,
-    isCompleted: false,
+    status: 'upcoming' as 'upcoming' | 'in_progress' | 'completed',
   });
 
   useEffect(() => {
@@ -49,7 +49,7 @@ export default function NewTripPage() {
       alert('Title is required');
       return;
     }
-    if (formData.isCompleted && formData.endTime) {
+    if (formData.status === 'completed' && formData.endTime) {
       const start = new Date(formData.startTime).getTime();
       const end = new Date(formData.endTime).getTime();
       if (end < start) {
@@ -70,7 +70,7 @@ export default function NewTripPage() {
           ...formData,
           startTime: startTimeUTC.toISOString(),
           endTime: endTimeUTC?.toISOString(),
-          status: formData.isCompleted ? 'completed' : 'in_progress',
+          status: formData.status,
           participants,
           coverImage: coverImage || undefined,
         },
@@ -210,12 +210,24 @@ export default function NewTripPage() {
             <label className="block text-[12px] font-semibold text-[#bdbdbd] mb-2">
               Status
             </label>
-            <div className="flex gap-3 mt-2">
+            <div className="flex gap-2 mt-2">
               <button
                 type="button"
-                onClick={() => setFormData({ ...formData, isCompleted: false })}
+                onClick={() => setFormData({ ...formData, status: 'upcoming' })}
                 className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-lg border ${
-                  !formData.isCompleted
+                  formData.status === 'upcoming'
+                    ? 'bg-purple-500 border-purple-500 text-white'
+                    : 'bg-transparent border-[#616161] text-white'
+                }`}
+              >
+                <span>📅</span>
+                <span className="text-[14px] font-medium">Upcoming</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setFormData({ ...formData, status: 'in_progress' })}
+                className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-lg border ${
+                  formData.status === 'in_progress'
                     ? 'bg-[#1976d2] border-[#1976d2] text-white'
                     : 'bg-transparent border-[#616161] text-white'
                 }`}
@@ -225,9 +237,9 @@ export default function NewTripPage() {
               </button>
               <button
                 type="button"
-                onClick={() => setFormData({ ...formData, isCompleted: true })}
+                onClick={() => setFormData({ ...formData, status: 'completed' })}
                 className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-lg border ${
-                  formData.isCompleted
+                  formData.status === 'completed'
                     ? 'bg-[#1976d2] border-[#1976d2] text-white'
                     : 'bg-transparent border-[#616161] text-white'
                 }`}
