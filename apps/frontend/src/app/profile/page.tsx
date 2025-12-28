@@ -552,25 +552,25 @@ export default function ProfilePage() {
       </main>
 
       {/* Bottom Navigation */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-black border-t border-gray-800">
-        <div className="max-w-[600px] mx-auto flex items-center justify-around px-4 py-3">
-          <Link href="/" className="text-gray-400">
+      <nav className="fixed bottom-0 left-0 right-0 bg-black border-t border-gray-800 safe-area-inset-bottom">
+        <div className="max-w-[600px] mx-auto flex items-center justify-around px-4 py-3 pb-4">
+          <Link href="/" className="text-gray-400 flex items-center justify-center">
             <MdHome className="w-6 h-6" />
           </Link>
-          <Link href="/explore" className="text-gray-400">
+          <Link href="/explore" className="text-gray-400 flex items-center justify-center">
             <MdSearch className="w-6 h-6" />
           </Link>
           {user ? (
             <>
-              <Link href="/trips/new" className="text-gray-400">
+              <Link href="/trips/new" className="text-gray-400 flex items-center justify-center">
                 <MdAdd className="w-6 h-6" />
               </Link>
-              <div className="text-white">
+              <div className="text-white flex items-center justify-center">
                 <MdPerson className="w-6 h-6" />
               </div>
             </>
           ) : (
-            <Link href="/auth" className="text-gray-400">
+            <Link href="/auth" className="text-gray-400 flex items-center justify-center">
               <MdPerson className="w-6 h-6" />
             </Link>
           )}

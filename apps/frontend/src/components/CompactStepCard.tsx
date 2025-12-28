@@ -183,29 +183,46 @@ export default function CompactStepCard({
                         pointerEvents: idx === currentImageIndex ? 'auto' : 'none'
                       }}
                     >
-                      <Link 
-                        href={`/trips/${tripId}/steps/${place.placeId}/edit`}
-                        onClick={(e) => {
-                          // Only navigate if not swiping
-                          if (touchStart && touchEnd && Math.abs(touchStart - touchEnd) > 10) {
-                            e.preventDefault();
-                          }
-                        }}
-                        className="block w-full h-full"
-                      >
-                        <img
-                          src={img}
-                          alt={`${place.name} - Image ${idx + 1}`}
-                          className="w-full h-full object-cover select-none pointer-events-none"
-                          draggable={false}
-                          loading="lazy"
+                      {isCreator ? (
+                        <Link 
+                          href={`/trips/${tripId}/steps/${place.placeId}/edit`}
                           onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            handlePhotoClick(idx);
+                            // Only navigate if not swiping
+                            if (touchStart && touchEnd && Math.abs(touchStart - touchEnd) > 10) {
+                              e.preventDefault();
+                            }
                           }}
-                        />
-                      </Link>
+                          className="block w-full h-full"
+                        >
+                          <img
+                            src={img}
+                            alt={`${place.name} - Image ${idx + 1}`}
+                            className="w-full h-full object-cover select-none pointer-events-none"
+                            draggable={false}
+                            loading="lazy"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              handlePhotoClick(idx);
+                            }}
+                          />
+                        </Link>
+                      ) : (
+                        <div className="block w-full h-full">
+                          <img
+                            src={img}
+                            alt={`${place.name} - Image ${idx + 1}`}
+                            className="w-full h-full object-cover select-none pointer-events-none"
+                            draggable={false}
+                            loading="lazy"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              handlePhotoClick(idx);
+                            }}
+                          />
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -269,12 +286,25 @@ export default function CompactStepCard({
             >
               <MdFavorite className={`w-6 h-6 ${likes.isLiked ? 'text-red-500 fill-red-500' : ''}`} />
             </button>
-            <Link 
-              href={`/trips/${tripId}/steps/${place.placeId}/edit`} 
-              className="text-white hover:opacity-70 flex items-center gap-1"
-            >
-              <MdChatBubbleOutline className="w-6 h-6" />
-            </Link>
+            {isCreator ? (
+              <Link 
+                href={`/trips/${tripId}/steps/${place.placeId}/edit`} 
+                className="text-white hover:opacity-70 flex items-center gap-1"
+              >
+                <MdChatBubbleOutline className="w-6 h-6" />
+              </Link>
+            ) : (
+              <button
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handlePhotoClick(0);
+                }}
+                className="text-white hover:opacity-70 flex items-center gap-1"
+              >
+                <MdChatBubbleOutline className="w-6 h-6" />
+              </button>
+            )}
           </div>
           {(likes.count > 0 || commentCount > 0) && (
             <div className="flex items-center gap-4 text-sm">
@@ -283,25 +313,35 @@ export default function CompactStepCard({
                   {likes.count} {likes.count === 1 ? 'like' : 'likes'}
                 </span>
               )}
-              {commentCount > 0 && (
+              {commentCount > 0 && (isCreator ? (
                 <Link 
                   href={`/trips/${tripId}/steps/${place.placeId}/edit`} 
                   className="text-gray-400 hover:text-white"
                 >
                   {commentCount} {commentCount === 1 ? 'comment' : 'comments'}
                 </Link>
-              )}
+              ) : (
+                <span className="text-gray-400">
+                  {commentCount} {commentCount === 1 ? 'comment' : 'comments'}
+                </span>
+              ))}
             </div>
           )}
 
           {/* Place Info */}
           <div>
-            <Link
-              href={`/trips/${tripId}/steps/${place.placeId}/edit`}
-              className="text-white font-semibold text-sm hover:opacity-70"
-            >
-              {place.name}
-            </Link>
+            {isCreator ? (
+              <Link
+                href={`/trips/${tripId}/steps/${place.placeId}/edit`}
+                className="text-white font-semibold text-sm hover:opacity-70"
+              >
+                {place.name}
+              </Link>
+            ) : (
+              <span className="text-white font-semibold text-sm">
+                {place.name}
+              </span>
+            )}
             {place.comment && (
               <p className="text-gray-300 text-sm mt-1 line-clamp-2">
                 {place.comment}
