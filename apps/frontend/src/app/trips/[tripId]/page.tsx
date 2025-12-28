@@ -340,7 +340,7 @@ export default function TripDetailPage() {
         let mostVisibleIndex = 0;
         let mostVisibleEntry: IntersectionObserverEntry | null = null;
 
-        entries.forEach((entry) => {
+        for (const entry of entries) {
           const stepIndex = parseInt(entry.target.getAttribute('data-step-index') || '0', 10);
           // Prefer entries that are more centered in the viewport
           const rect = entry.boundingClientRect;
@@ -357,14 +357,16 @@ export default function TripDetailPage() {
             mostVisibleIndex = stepIndex;
             mostVisibleEntry = entry;
           }
-        });
+        }
 
         // Update visible step index
-        if (mostVisibleEntry && maxRatio > 0) {
+        if (mostVisibleEntry !== null && maxRatio > 0) {
           setVisibleStepIndex(mostVisibleIndex);
           
           // Calculate scroll progress: how far through the current step we are
-          const rect = mostVisibleEntry.boundingClientRect;
+          // TypeScript needs explicit type narrowing here
+          const entry: IntersectionObserverEntry = mostVisibleEntry;
+          const rect = entry.boundingClientRect;
           const viewportHeight = window.innerHeight;
           const viewportCenter = viewportHeight / 2;
           const cardCenter = rect.top + rect.height / 2;
