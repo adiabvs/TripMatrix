@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { toDate } from '@/lib/dateUtils';
 
 export interface CountdownTime {
   days: number;
@@ -16,7 +17,16 @@ export function useCountdown(targetDate: Date | string | null): CountdownTime | 
       return;
     }
 
-    const target = new Date(targetDate).getTime();
+    // Use toDate utility to properly parse Firestore timestamps and other date formats
+    const targetDateObj = toDate(targetDate);
+    const target = targetDateObj.getTime();
+    
+    // Check if date is valid
+    if (isNaN(target)) {
+      setTimeLeft(null);
+      return;
+    }
+
     const now = Date.now();
 
     // If target is in the past, return null
@@ -26,13 +36,25 @@ export function useCountdown(targetDate: Date | string | null): CountdownTime | 
     }
 
     const updateCountdown = () => {
-      const now = Date.now();
-      const diff = Math.max(0, target - now);
+      const currentTime = Date.now();
+      const diff = target - currentTime;
 
-      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-      const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-      const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+      // If time has passed, return null
+      if (diff <= 0) {
+        setTimeLeft(null);
+        return;
+      }
+
+      // Calculate time components correctly
+      const totalSeconds = Math.floor(diff / 1000);
+      const totalMinutes = Math.floor(totalSeconds / 60);
+      const totalHours = Math.floor(totalMinutes / 60);
+      const totalDays = Math.floor(totalHours / 24);
+
+      const days = totalDays;
+      const hours = totalHours % 24;
+      const minutes = totalMinutes % 60;
+      const seconds = totalSeconds % 60;
 
       setTimeLeft({ days, hours, minutes, seconds });
     };

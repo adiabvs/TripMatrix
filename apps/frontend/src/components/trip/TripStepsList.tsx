@@ -33,30 +33,72 @@ export default function TripStepsList({
     return new Date(a.visitedAt).getTime() - new Date(b.visitedAt).getTime();
   });
 
-  if (isUpcoming) {
-    // Show countdown timer for upcoming trips with no steps
-    if (trip?.startTime && places.length === 0) {
-      return (
-        <div className="flex flex-col items-center justify-center py-20 px-4">
-          <CountdownTimer startTime={trip.startTime} />
-          <p className="text-gray-400 text-sm text-center mt-4 italic">
-            Stay tuned for updates
-          </p>
-        </div>
-      );
+  // If no steps, check if it's an upcoming trip to show countdown
+  if (places.length === 0) {
+    // Get startTime from trip object
+    const startTime = trip?.startTime;
+    
+    // Check if trip is upcoming - prioritize isUpcoming prop (calculated from startTime)
+    // If isUpcoming is true, we know startTime exists and is in the future
+    const isTripUpcoming = isUpcoming || 
+      trip?.status === 'upcoming' || 
+      (startTime ? new Date(startTime).getTime() > Date.now() : false);
+    
+    // Debug: Log values to understand what's happening
+    // console.log('TripStepsList Debug:', { isUpcoming, tripStatus: trip?.status, hasStartTime: !!startTime, trip: !!trip });
+    
+    // Show countdown ONLY for viewers/non-editors (canEdit === false)
+    // Editors should see "Add steps" button instead
+    if (!canEdit) {
+      // Priority 1: If isUpcoming is true, trip must have startTime (from useTripPermissions)
+      if (isUpcoming && trip?.startTime) {
+        return (
+          <div className="flex flex-col items-center justify-center py-20 px-4">
+            <CountdownTimer startTime={trip.startTime} />
+            <p className="text-gray-400 text-sm text-center mt-4 italic">
+              Stay tuned for updates
+            </p>
+          </div>
+        );
+      }
+      
+      // Priority 2: Check trip status and startTime directly
+      if (trip?.status === 'upcoming' && trip?.startTime) {
+        return (
+          <div className="flex flex-col items-center justify-center py-20 px-4">
+            <CountdownTimer startTime={trip.startTime} />
+            <p className="text-gray-400 text-sm text-center mt-4 italic">
+              Stay tuned for updates
+            </p>
+          </div>
+        );
+      }
+      
+      // Priority 3: Check isTripUpcoming and startTime
+      if (isTripUpcoming && trip && startTime) {
+        return (
+          <div className="flex flex-col items-center justify-center py-20 px-4">
+            <CountdownTimer startTime={startTime} />
+            <p className="text-gray-400 text-sm text-center mt-4 italic">
+              Stay tuned for updates
+            </p>
+          </div>
+        );
+      }
+      
+      // If isUpcoming is true but trip object is missing or has no startTime, show message
+      if (isUpcoming || trip?.status === 'upcoming') {
+        return (
+          <div className="flex flex-col items-center justify-center py-20 px-4">
+            <MdLocationOn className="w-16 h-16 text-gray-600 mb-4" />
+            <p className="text-gray-400 text-center mb-2">Trip hasn&apos;t started yet.</p>
+            <p className="text-gray-500 text-center text-sm italic">Steps will appear here once the trip begins.</p>
+          </div>
+        );
+      }
     }
     
-    // Show message if upcoming but has steps or no start time
-    return (
-      <div className="flex flex-col items-center justify-center py-20 px-4">
-        <MdLocationOn className="w-16 h-16 text-gray-600 mb-4" />
-        <p className="text-gray-400 text-center mb-2">Trip hasn&apos;t started yet.</p>
-        <p className="text-gray-500 text-center text-sm italic">Steps will appear here once the trip begins.</p>
-      </div>
-    );
-  }
-
-  if (sortedPlaces.length === 0) {
+    // Show regular "No steps yet" for non-upcoming trips
     return (
       <div className="flex flex-col items-center justify-center py-20 px-4">
         <MdLocationOn className="w-16 h-16 text-gray-600 mb-4" />
@@ -69,6 +111,17 @@ export default function TripStepsList({
             Add Your First Step
           </Link>
         )}
+      </div>
+    );
+  }
+
+  // If upcoming trip but has steps, show message
+  if (isUpcoming) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 px-4">
+        <MdLocationOn className="w-16 h-16 text-gray-600 mb-4" />
+        <p className="text-gray-400 text-center mb-2">Trip hasn&apos;t started yet.</p>
+        <p className="text-gray-500 text-center text-sm italic">Steps will appear here once the trip begins.</p>
       </div>
     );
   }
