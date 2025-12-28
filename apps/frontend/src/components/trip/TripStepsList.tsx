@@ -106,7 +106,7 @@ export default function TripStepsList({
         {canEdit && (
           <Link
             href={`/trips/${tripId}/steps/new`}
-            className="px-6 py-2 bg-[#1976d2] text-white rounded-lg font-medium hover:bg-[#1565c0] transition-colors"
+            className="px-6 py-2 bg-[#1976d2] text-white rounded-lg font-medium hover:bg-[#1565c0] active:scale-95 active:bg-[#0d47a1] transition-all"
           >
             Add Your First Step
           </Link>
@@ -140,7 +140,7 @@ export default function TripStepsList({
                 <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-[30px] w-0.5 border-l-2 border-dashed border-gray-600" />
                 <Link
                   href={`/trips/${tripId}/steps/new`}
-                  className="relative z-10 w-8 h-8 rounded-full bg-[#1976d2] flex items-center justify-center hover:bg-[#1565c0] transition-colors shadow-lg"
+                  className="relative z-10 w-8 h-8 rounded-full bg-[#1976d2] flex items-center justify-center hover:bg-[#1565c0] active:scale-95 transition-all shadow-lg"
                 >
                   <MdAdd className="text-white text-lg" />
                 </Link>
@@ -193,7 +193,7 @@ export default function TripStepsList({
                 <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-[30px] w-0.5 border-l-2 border-dashed border-gray-600" />
                 <Link
                   href={`/trips/${tripId}/steps/new`}
-                  className="relative z-10 w-8 h-8 rounded-full bg-[#1976d2] flex items-center justify-center hover:bg-[#1565c0] transition-colors shadow-lg"
+                  className="relative z-10 w-8 h-8 rounded-full bg-[#1976d2] flex items-center justify-center hover:bg-[#1565c0] active:scale-95 transition-all shadow-lg"
                 >
                   <MdAdd className="text-white text-lg" />
                 </Link>

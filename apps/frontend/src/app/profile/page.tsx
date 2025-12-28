@@ -553,24 +553,24 @@ export default function ProfilePage() {
 
       {/* Bottom Navigation */}
       <nav className="fixed bottom-0 left-0 right-0 bg-black border-t border-gray-800 safe-area-inset-bottom">
-        <div className="max-w-[600px] mx-auto flex items-center justify-around px-4 py-3 pb-4">
-          <Link href="/" className="text-gray-400 flex items-center justify-center">
+        <div className="max-w-[600px] mx-auto flex items-center justify-around px-4 py-1.5">
+          <Link href="/" className="text-gray-400 flex items-center justify-center p-1.5 rounded-full active:scale-95 active:bg-gray-800 transition-all">
             <MdHome className="w-6 h-6" />
           </Link>
-          <Link href="/explore" className="text-gray-400 flex items-center justify-center">
+          <Link href="/explore" className="text-gray-400 flex items-center justify-center p-1.5 rounded-full active:scale-95 active:bg-gray-800 transition-all">
             <MdSearch className="w-6 h-6" />
           </Link>
           {user ? (
             <>
-              <Link href="/trips/new" className="text-gray-400 flex items-center justify-center">
+              <Link href="/trips/new" className="text-gray-400 flex items-center justify-center p-1.5 rounded-full active:scale-95 active:bg-gray-800 transition-all">
                 <MdAdd className="w-6 h-6" />
               </Link>
-              <div className="text-white flex items-center justify-center">
+              <div className="text-white flex items-center justify-center p-1.5 rounded-full active:scale-95 active:bg-gray-800 transition-all">
                 <MdPerson className="w-6 h-6" />
               </div>
             </>
           ) : (
-            <Link href="/auth" className="text-gray-400 flex items-center justify-center">
+            <Link href="/auth" className="text-gray-400 flex items-center justify-center p-1.5 rounded-full active:scale-95 active:bg-gray-800 transition-all">
               <MdPerson className="w-6 h-6" />
             </Link>
           )}

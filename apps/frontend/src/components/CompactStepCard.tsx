@@ -281,7 +281,7 @@ export default function CompactStepCard({
           <div className="flex items-center gap-4">
             <button 
               onClick={handleLike}
-              className="text-white hover:opacity-70"
+              className="text-white hover:opacity-70 active:scale-95 transition-transform p-1 rounded-full"
               disabled={loadingLikes || !user}
             >
               <MdFavorite className={`w-6 h-6 ${likes.isLiked ? 'text-red-500 fill-red-500' : ''}`} />
@@ -289,7 +289,7 @@ export default function CompactStepCard({
             {isCreator ? (
               <Link 
                 href={`/trips/${tripId}/steps/${place.placeId}/edit`} 
-                className="text-white hover:opacity-70 flex items-center gap-1"
+                className="text-white hover:opacity-70 active:scale-95 transition-transform p-1 rounded-full flex items-center gap-1"
               >
                 <MdChatBubbleOutline className="w-6 h-6" />
               </Link>
@@ -300,7 +300,7 @@ export default function CompactStepCard({
                   e.stopPropagation();
                   handlePhotoClick(0);
                 }}
-                className="text-white hover:opacity-70 flex items-center gap-1"
+                className="text-white hover:opacity-70 active:scale-95 transition-transform p-1 rounded-full flex items-center gap-1"
               >
                 <MdChatBubbleOutline className="w-6 h-6" />
               </button>

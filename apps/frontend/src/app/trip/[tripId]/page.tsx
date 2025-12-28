@@ -11,7 +11,8 @@ import TripHeader from '@/components/trip/TripHeader';
 import TripInfoCard from '@/components/trip/TripInfoCard';
 import TripStepsList from '@/components/trip/TripStepsList';
 import { useTripPermissions } from '@/hooks/useTripPermissions';
-import { MdMap } from 'react-icons/md';
+import { useAuth } from '@/lib/auth';
+import { MdMap, MdLogin, MdHome } from 'react-icons/md';
 
 // Dynamically import TripMapbox with SSR disabled
 const TripMapbox = dynamic(() => import('@/components/TripMapbox'), {
@@ -26,6 +27,7 @@ const TripMapbox = dynamic(() => import('@/components/TripMapbox'), {
 export default function PublicTripViewPage() {
   const params = useParams();
   const tripId = params.tripId as string;
+  const { user, loading: authLoading } = useAuth();
 
   const [trip, setTrip] = useState<Trip | null>(null);
   const [creator, setCreator] = useState<User | null>(null);
@@ -265,6 +267,39 @@ export default function PublicTripViewPage() {
           isUpcoming={isUpcoming}
           trip={trip}
         />
+
+        {/* Login Prompt for Non-Logged-In Users - Shown at the end */}
+        {!authLoading && !user && (
+          <div className="mt-8 mx-4 bg-gradient-to-r from-blue-900/30 to-purple-900/30 border border-blue-700/50 rounded-lg p-4">
+            <div className="flex items-start gap-3">
+              <div className="flex-shrink-0 mt-0.5">
+                <MdLogin className="w-5 h-5 text-blue-400" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-white font-semibold text-sm mb-1">Join TripMatrix</h3>
+                <p className="text-gray-300 text-xs mb-3">
+                  Sign in to create your own trips, share experiences, and connect with travelers around the world.
+                </p>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <Link
+                    href="/auth"
+                    className="flex items-center justify-center gap-2 px-4 py-2 bg-[#1976d2] text-white rounded-lg text-sm font-medium hover:bg-[#1565c0] active:scale-95 transition-all"
+                  >
+                    <MdLogin className="w-4 h-4" />
+                    <span>Sign In</span>
+                  </Link>
+                  <Link
+                    href="/"
+                    className="flex items-center justify-center gap-2 px-4 py-2 bg-gray-800 text-white rounded-lg text-sm font-medium hover:bg-gray-700 active:scale-95 transition-all border border-gray-700"
+                  >
+                    <MdHome className="w-4 h-4" />
+                    <span>Explore More</span>
+                  </Link>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );

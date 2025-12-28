@@ -148,14 +148,14 @@ export default function TripInfoCard({
                     <div className="absolute right-0 top-full mt-2 bg-gray-900 border border-gray-700 rounded-lg shadow-xl z-50 min-w-[180px]">
                       <button
                         onClick={handleWhatsAppShare}
-                        className="w-full px-4 py-3 text-left text-white hover:bg-gray-800 flex items-center gap-3 transition-colors first:rounded-t-lg"
+                        className="w-full px-4 py-3 text-left text-white hover:bg-gray-800 active:scale-[0.98] active:bg-gray-700 flex items-center gap-3 transition-all first:rounded-t-lg"
                       >
                         <MdShare className="w-5 h-5" />
                         <span className="text-sm">Share on WhatsApp</span>
                       </button>
                       <button
                         onClick={handleCopyLink}
-                        className="w-full px-4 py-3 text-left text-white hover:bg-gray-800 flex items-center gap-3 transition-colors last:rounded-b-lg border-t border-gray-700"
+                        className="w-full px-4 py-3 text-left text-white hover:bg-gray-800 active:scale-[0.98] active:bg-gray-700 flex items-center gap-3 transition-all last:rounded-b-lg border-t border-gray-700"
                       >
                         <MdContentCopy className="w-5 h-5" />
                         <span className="text-sm">Copy Link</span>
