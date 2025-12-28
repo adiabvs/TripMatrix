@@ -785,7 +785,7 @@ export default function TripMapbox({
     // Also pan map to show the active route when highlighted step changes
     if (activeRoute && activeRoute.coordinates && activeRoute.coordinates.length > 0) {
       try {
-        const bounds = activeRoute.coordinates.reduce((bounds, coord) => {
+        const bounds = activeRoute.coordinates.reduce((bounds: maplibregl.LngLatBounds, coord: [number, number]) => {
           return bounds.extend(coord);
         }, new maplibregl.LngLatBounds(activeRoute.coordinates[0], activeRoute.coordinates[0]));
         
