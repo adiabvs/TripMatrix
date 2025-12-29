@@ -16,11 +16,12 @@ export async function connectDB() {
   }
 
   try {
+    // Disable mongoose buffering to prevent timeout errors
+    mongoose.set('bufferCommands', false);
+    
     await mongoose.connect(mongoUri, {
       serverSelectionTimeoutMS: 30000, // 30 seconds
       socketTimeoutMS: 45000, // 45 seconds
-      bufferMaxEntries: 0, // Disable mongoose buffering
-      bufferCommands: false, // Disable mongoose buffering
     });
     isConnected = true;
     console.log('✅ MongoDB connected successfully');
