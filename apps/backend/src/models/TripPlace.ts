@@ -28,7 +28,7 @@ const TripPlaceSchema = new Schema<TripPlaceDocument>(
     tripId: {
       type: String,
       required: true,
-      index: true,
+      // Index defined below as compound index with visitedAt
     },
     name: {
       type: String,

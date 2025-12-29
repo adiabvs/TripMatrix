@@ -22,6 +22,7 @@ export async function connectDB() {
     await mongoose.connect(mongoUri, {
       serverSelectionTimeoutMS: 30000, // 30 seconds
       socketTimeoutMS: 45000, // 45 seconds
+      connectTimeoutMS: 30000, // 30 seconds
     });
     isConnected = true;
     console.log('✅ MongoDB connected successfully');
@@ -44,6 +45,19 @@ export async function connectDB() {
   } catch (error: any) {
     console.error('❌ MongoDB connection error:', error.message);
     isConnected = false;
+    
+    // Provide helpful error messages for common issues
+    if (error.message.includes('IP') || error.message.includes('whitelist')) {
+      console.error('');
+      console.error('📋 MongoDB Atlas IP Whitelist Issue:');
+      console.error('   1. Go to MongoDB Atlas → Network Access');
+      console.error('   2. Click "Add IP Address"');
+      console.error('   3. For Railway, add: 0.0.0.0/0 (allows all IPs)');
+      console.error('      OR add Railway\'s specific IP ranges');
+      console.error('   4. Wait a few minutes for changes to propagate');
+      console.error('');
+    }
+    
     // Don't throw - allow server to start so we can debug CORS and other issues
     // The route handlers will check connection status
   }

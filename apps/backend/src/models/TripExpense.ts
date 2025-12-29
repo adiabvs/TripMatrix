@@ -12,7 +12,7 @@ const TripExpenseSchema = new Schema<TripExpenseDocument>(
     tripId: {
       type: String,
       required: true,
-      index: true,
+      // Index defined below as compound index with createdAt
     },
     amount: {
       type: Number,

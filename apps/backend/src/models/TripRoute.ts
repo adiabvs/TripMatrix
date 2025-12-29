@@ -24,7 +24,7 @@ const TripRouteSchema = new Schema<TripRouteDocument>(
     tripId: {
       type: String,
       required: true,
-      index: true,
+      // Index defined below
     },
     points: {
       type: [RoutePointSchema],
