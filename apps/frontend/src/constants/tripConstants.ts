@@ -40,3 +40,5 @@ export const getTripStatusConfig = (status: TripStatus, isUpcoming: boolean = fa
 
 
 
+
+
