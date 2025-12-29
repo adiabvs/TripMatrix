@@ -6,6 +6,8 @@ export interface AuthenticatedRequest extends Request {
   user?: {
     uid: string;
     email?: string;
+    name?: string;
+    picture?: string;
   };
 }
 
@@ -34,6 +36,8 @@ export async function authenticateToken(
     req.user = {
       uid: decodedToken.uid,
       email: decodedToken.email,
+      name: decodedToken.name || undefined, // Google display name
+      picture: decodedToken.picture || undefined, // Google photo URL
     };
     
     next();

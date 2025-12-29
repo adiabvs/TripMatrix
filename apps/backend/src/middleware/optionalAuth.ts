@@ -6,6 +6,8 @@ export interface OptionalAuthRequest extends Request {
   user?: {
     uid: string;
     email?: string;
+    name?: string;
+    picture?: string;
   };
 }
 
@@ -27,6 +29,8 @@ export async function optionalAuth(
         req.user = {
           uid: decodedToken.uid,
           email: decodedToken.email,
+          name: decodedToken.name || undefined, // Google display name
+          picture: decodedToken.picture || undefined, // Google photo URL
         };
       } catch (error) {
         // Token is invalid, but continue without auth (for public routes)

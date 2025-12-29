@@ -2,6 +2,7 @@ import express from 'express';
 import { AuthenticatedRequest } from '../middleware/auth.js';
 import { OptionalAuthRequest } from '../middleware/optionalAuth.js';
 import { UserModel } from '../models/User.js';
+import { getAuth } from '../config/firebase.js';
 
 const router = express.Router();
 
@@ -59,14 +60,26 @@ router.get('/me', async (req: OptionalAuthRequest, res) => {
     const user = await UserModel.findOne({ uid });
 
     if (!user) {
-      // User doesn't exist yet, return basic info from Firebase token
+      // User doesn't exist yet, try to get info from Firebase user record
+      let displayName = req.user?.name || req.user?.email?.split('@')[0] || 'User';
+      let photoUrl = req.user?.picture || '';
+      
+      try {
+        const auth = getAuth();
+        const firebaseUser = await auth.getUser(uid);
+        displayName = firebaseUser.displayName || displayName;
+        photoUrl = firebaseUser.photoURL || photoUrl;
+      } catch (error) {
+        // If we can't fetch from Firebase, use token data
+      }
+      
       return res.json({
         success: true,
         data: {
           uid,
           email: req.user?.email || '',
-          name: '',
-          photoUrl: '',
+          name: displayName,
+          photoUrl: photoUrl,
           country: '',
           defaultCurrency: '',
           isProfilePublic: false,
@@ -105,12 +118,33 @@ router.patch('/me', async (req: OptionalAuthRequest, res) => {
 
     // Create user if doesn't exist
     if (!user) {
+      // Try to get display name from Firebase user record (for Google sign-in)
+      let displayName = name;
+      let userPhotoUrl = photoUrl;
+      
+      if (!displayName || !userPhotoUrl) {
+        try {
+          const auth = getAuth();
+          const firebaseUser = await auth.getUser(uid);
+          // Firebase user record has displayName and photoURL for Google sign-in
+          displayName = displayName || firebaseUser.displayName || req.user?.name || req.user?.email?.split('@')[0] || 'User';
+          userPhotoUrl = userPhotoUrl || firebaseUser.photoURL || req.user?.picture || '';
+        } catch (error) {
+          // If we can't fetch from Firebase, use token data or fallback
+          displayName = displayName || req.user?.name || req.user?.email?.split('@')[0] || 'User';
+          userPhotoUrl = userPhotoUrl || req.user?.picture || '';
+        }
+      } else {
+        // If name not provided, use fallback
+        displayName = displayName || req.user?.name || req.user?.email?.split('@')[0] || 'User';
+      }
+      
       user = new UserModel({
         _id: uid,
         uid,
-        name: name || req.user?.email?.split('@')[0] || 'User',
+        name: displayName,
         email: email || req.user?.email || '',
-        photoUrl: photoUrl || '',
+        photoUrl: userPhotoUrl,
         country: country || '',
         defaultCurrency: defaultCurrency || '',
         isProfilePublic: isProfilePublic || false,
@@ -314,20 +348,35 @@ router.get('/:userId', async (req: OptionalAuthRequest, res) => {
     const targetUserData = targetUser.toJSON();
     const isProfilePublic = targetUserData.isProfilePublic || false;
 
-    // If profile is not public, check if current user is following or is the user themselves
+    // If profile is not public, check if current user is following, is the user themselves, or is in a trip together
     if (!isProfilePublic) {
       if (!currentUserId || (currentUserId !== targetUserId)) {
-        // Check if current user follows this user
+        let hasAccess = false;
+        
         if (currentUserId) {
           const currentUser = await UserModel.findOne({ uid: currentUserId });
           const follows = currentUser?.follows || [];
-          if (!follows.includes(targetUserId)) {
-            return res.status(403).json({
-              success: false,
-              error: 'Profile is private',
+          
+          // Check if current user follows this user
+          if (follows.includes(targetUserId)) {
+            hasAccess = true;
+          } else {
+            // Check if they're in a trip together (either as creator/participant)
+            const { TripModel } = await import('../models/Trip.js');
+            const sharedTrip = await TripModel.findOne({
+              $or: [
+                { creatorId: currentUserId, 'participants.uid': targetUserId },
+                { creatorId: targetUserId, 'participants.uid': currentUserId }
+              ]
             });
+            
+            if (sharedTrip) {
+              hasAccess = true;
+            }
           }
-        } else {
+        }
+        
+        if (!hasAccess) {
           return res.status(403).json({
             success: false,
             error: 'Profile is private',
