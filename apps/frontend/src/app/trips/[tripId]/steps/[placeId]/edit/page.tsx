@@ -142,6 +142,7 @@ export default function EditStepPage() {
   const [comments, setComments] = useState<PlaceComment[]>([]);
   const [commentText, setCommentText] = useState('');
   const [addingComment, setAddingComment] = useState(false);
+  const [showComments, setShowComments] = useState(false);
   const [commentUserNamesMap, setCommentUserNamesMap] = useState<Record<string, string>>({});
   
   // Map search state
