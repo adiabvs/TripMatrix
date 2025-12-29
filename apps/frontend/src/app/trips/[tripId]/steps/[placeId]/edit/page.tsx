@@ -5,7 +5,7 @@ import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useEffect, useState, useRef } from 'react';
 import dynamic from 'next/dynamic';
-import { getTrip, getTripPlaces, updatePlace, createExpense, uploadImage, getTripExpenses, deleteExpense, getPlaceComments, addPlaceComment } from '@/lib/api';
+import { getTrip, getTripPlaces, updatePlace, createExpense, uploadImage, getTripExpenses, deleteExpense, getPlaceComments, addPlaceComment, getUser } from '@/lib/api';
 import type { Trip, TripPlace, ModeOfTravel, TripParticipant, PlaceComment } from '@tripmatrix/types';
 import { toDate, formatDateTimeLocalForInput, parseDateTimeLocalToUTC } from '@/lib/dateUtils';
 import { getCurrencySymbol } from '@/lib/currencyUtils';
