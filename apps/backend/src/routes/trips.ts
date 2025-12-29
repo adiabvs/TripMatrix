@@ -1,13 +1,19 @@
 import express from 'express';
-import { getFirestore } from '../config/firebase.js';
 import { OptionalAuthRequest } from '../middleware/optionalAuth.js';
-import type { Trip, TripParticipant, TripPlace } from '@tripmatrix/types';
+import type { Trip, TripParticipant, TripPlace, TripComment } from '@tripmatrix/types';
+import { TripModel } from '../models/Trip.js';
+import { TripPlaceModel } from '../models/TripPlace.js';
+import { TripExpenseModel } from '../models/TripExpense.js';
+import { TripRouteModel } from '../models/TripRoute.js';
+import { TripLikeModel } from '../models/TripLike.js';
+import { PlaceCommentModel } from '../models/PlaceComment.js';
+import { TripCommentModel } from '../models/TripComment.js';
+import { UserModel } from '../models/User.js';
+import { NotificationModel } from '../models/Notification.js';
+import { isMongoDBConnected } from '../config/mongodb.js';
+import mongoose from 'mongoose';
 
 const router = express.Router();
-
-function getDb() {
-  return getFirestore();
-}
 
 // Create a new trip
 router.post('/', async (req: OptionalAuthRequest, res) => {
@@ -68,13 +74,10 @@ router.post('/', async (req: OptionalAuthRequest, res) => {
       tripData.coverImage = coverImage;
     }
 
-    const db = getDb();
-    const tripRef = await db.collection('trips').add(tripData);
+    const tripDoc = new TripModel(tripData);
+    const savedTrip = await tripDoc.save();
     
-    const trip: Trip = {
-      tripId: tripRef.id,
-      ...tripData,
-    };
+    const trip: Trip = savedTrip.toJSON() as Trip;
 
     res.json({
       success: true,
@@ -88,21 +91,189 @@ router.post('/', async (req: OptionalAuthRequest, res) => {
   }
 });
 
+// Search trips by user, place, or keyword - MUST be before /:tripId route
+router.get('/search', async (req: OptionalAuthRequest, res) => {
+  try {
+    const { q, type, limit = '20', lastTripId } = req.query;
+    
+    if (!q || typeof q !== 'string') {
+      return res.status(400).json({
+        success: false,
+        error: 'Query parameter "q" is required',
+      });
+    }
+
+    const searchType = type || 'all'; // 'user', 'place', 'trip', 'all'
+    const searchLower = q.toLowerCase();
+    let trips: Trip[] = [];
+    let users: any[] = [];
+
+    if (searchType === 'user' || searchType === 'all') {
+      // Escape special regex characters for safe searching
+      const escapedQuery = searchLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      
+      // Search by user name, email, or username (case-insensitive contains)
+      const usersDocs = await UserModel.find({
+        $or: [
+          { name: { $regex: escapedQuery, $options: 'i' } },
+          { email: { $regex: escapedQuery, $options: 'i' } },
+          { username: { $regex: escapedQuery, $options: 'i' } }
+        ]
+      }).limit(10);
+      
+      users = usersDocs.map(doc => doc.toJSON());
+      
+      const userIds = users.map(user => user.uid || user._id?.toString());
+      
+      if (userIds.length > 0) {
+        // Get trips by these users
+        const tripQuery: any = {
+          creatorId: { $in: userIds },
+          isPublic: true
+        };
+        
+        const tripsDocs = await TripModel.find(tripQuery);
+        const userTrips = tripsDocs.map(doc => doc.toJSON() as Trip);
+        trips.push(...userTrips);
+      }
+    }
+
+    if (searchType === 'trip' || searchType === 'all') {
+      // Escape special regex characters for safe searching
+      const escapedQuery = searchLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      
+      // Search by trip title/description (case-insensitive contains)
+      const tripQuery: any = {
+        isPublic: true,
+        $or: [
+          { title: { $regex: escapedQuery, $options: 'i' } },
+          { description: { $regex: escapedQuery, $options: 'i' } }
+        ]
+      };
+      
+      const tripsDocs = await TripModel.find(tripQuery);
+      const matchingTrips = tripsDocs.map(doc => doc.toJSON() as Trip);
+      trips.push(...matchingTrips);
+      
+      // Also search by participants (members in trip)
+      // First find users matching the search query
+      const matchingUsers = await UserModel.find({
+        $or: [
+          { name: { $regex: escapedQuery, $options: 'i' } },
+          { email: { $regex: escapedQuery, $options: 'i' } },
+          { username: { $regex: escapedQuery, $options: 'i' } }
+        ]
+      });
+      
+      const matchingUserIds = matchingUsers.map(u => u.uid || u._id?.toString()).filter(Boolean);
+      
+      if (matchingUserIds.length > 0) {
+        // Find trips where these users are participants
+        const participantTripsDocs = await TripModel.find({
+          isPublic: true,
+          'participants.uid': { $in: matchingUserIds }
+        });
+        
+        const participantTrips = participantTripsDocs.map(doc => doc.toJSON() as Trip);
+        trips.push(...participantTrips);
+      }
+    }
+
+    if (searchType === 'place' || searchType === 'all') {
+      // Escape special regex characters for safe searching
+      const escapedQuery = searchLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      
+      // Search by place name (case-insensitive contains)
+      const placesDocs = await TripPlaceModel.find({
+        name: { $regex: escapedQuery, $options: 'i' }
+      }).limit(50);
+      
+      const tripIds = [...new Set(placesDocs.map(doc => doc.tripId).filter(Boolean))];
+      
+      if (tripIds.length > 0) {
+        // Convert string tripIds to ObjectIds for querying
+        const objectIds = tripIds
+          .map(id => {
+            try {
+              return mongoose.Types.ObjectId.isValid(id) ? new mongoose.Types.ObjectId(id) : null;
+            } catch {
+              return null;
+            }
+          })
+          .filter((id): id is mongoose.Types.ObjectId => id !== null);
+        
+        if (objectIds.length > 0) {
+          const tripQuery: any = {
+            _id: { $in: objectIds },
+            isPublic: true
+          };
+          
+          const tripsDocs = await TripModel.find(tripQuery);
+          const placeTrips = tripsDocs.map(doc => doc.toJSON() as Trip);
+          trips.push(...placeTrips);
+        }
+      }
+    }
+
+    // Remove duplicates
+    const uniqueTrips = Array.from(
+      new Map(trips.map(trip => [trip.tripId, trip])).values()
+    );
+
+    // Sort by createdAt
+    uniqueTrips.sort((a, b) => {
+      const aTime = new Date(a.createdAt).getTime();
+      const bTime = new Date(b.createdAt).getTime();
+      return bTime - aTime;
+    });
+
+    // Apply pagination
+    let paginatedTrips = uniqueTrips;
+    if (lastTripId && typeof lastTripId === 'string') {
+      const lastIndex = paginatedTrips.findIndex(t => t.tripId === lastTripId);
+      if (lastIndex >= 0) {
+        paginatedTrips = paginatedTrips.slice(lastIndex + 1);
+      }
+    }
+
+    const limitNum = parseInt(limit as string, 10) || 20;
+    const hasMore = paginatedTrips.length > limitNum;
+    const finalTrips = hasMore ? paginatedTrips.slice(0, limitNum) : paginatedTrips;
+
+    res.json({
+      success: true,
+      data: {
+        trips: finalTrips,
+        users,
+        hasMore,
+        lastTripId: hasMore && finalTrips.length > 0
+          ? finalTrips[finalTrips.length - 1].tripId 
+          : null
+      }
+    });
+  } catch (error: any) {
+    console.error('Search error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to search trips',
+    });
+  }
+});
+
 // Get trip by ID (public access for public trips)
 router.get('/:tripId', async (req: OptionalAuthRequest, res) => {
   try {
     const { tripId } = req.params;
-    const db = getDb();
-    const tripDoc = await db.collection('trips').doc(tripId).get();
+    const trip = await TripModel.findById(tripId);
 
-    if (!tripDoc.exists) {
+    if (!trip) {
       return res.status(404).json({
         success: false,
         error: 'Trip not found',
       });
     }
 
-    const trip = { tripId: tripDoc.id, ...tripDoc.data() } as Trip;
+    const tripData = trip.toJSON() as Trip;
     
     // Allow access if trip is public or user is authenticated participant
     if (!trip.isPublic) {
@@ -121,7 +292,7 @@ router.get('/:tripId', async (req: OptionalAuthRequest, res) => {
       }
     }
 
-    res.json({ success: true, data: trip });
+    res.json({ success: true, data: tripData });
   } catch (error: any) {
     res.status(500).json({
       success: false,
@@ -141,33 +312,22 @@ router.get('/', async (req: OptionalAuthRequest, res) => {
     }
     const uid = req.uid;
     const { status, isPublic } = req.query;
-    const db = getFirestore();
 
     // Query trips where user is creator
-    const creatorQuery = db.collection('trips')
-      .where('creatorId', '==', uid);
-    
-    // Get all trips and filter in memory (since participants is an array of objects)
-    const creatorSnapshot = await creatorQuery.get();
-    const creatorTrips = creatorSnapshot.docs.map((doc) => ({
-      tripId: doc.id,
-      ...doc.data(),
-    })) as Trip[];
+    const creatorTripsDocs = await TripModel.find({ creatorId: uid });
+    const creatorTrips = creatorTripsDocs.map(doc => doc.toJSON() as Trip);
 
-    // Also get all trips and filter for participant trips (in memory)
-    // This is necessary since participants is an array of objects, not strings
-    const allTripsSnapshot = await db.collection('trips').get();
-    const allTrips = allTripsSnapshot.docs.map((doc) => ({
-      tripId: doc.id,
-      ...doc.data(),
-    })) as Trip[];
+    // Get all trips and filter for participant trips (in memory)
+    // This is necessary since participants is an array of objects
+    const allTripsDocs = await TripModel.find({});
+    const allTrips = allTripsDocs.map(doc => doc.toJSON() as Trip);
 
     // Filter trips where user is a participant (not creator, already included)
     const participantTrips = allTrips.filter((trip) => {
       // Skip if already included as creator
       if (trip.creatorId === uid) return false;
       // Check if user is in participants array
-      return trip.participants?.some((p) => p.uid === uid);
+      return trip.participants?.some((p: any) => p.uid === uid);
     });
 
     // Combine and deduplicate
@@ -214,64 +374,164 @@ router.post('/:tripId/participants', async (req: OptionalAuthRequest, res) => {
     const { tripId } = req.params;
     const { participants } = req.body;
     const uid = req.uid;
-    const db = getDb();
 
-    const tripRef = db.collection('trips').doc(tripId);
-    const tripDoc = await tripRef.get();
+    const trip = await TripModel.findById(tripId);
 
-    if (!tripDoc.exists) {
+    if (!trip) {
       return res.status(404).json({
         success: false,
         error: 'Trip not found',
       });
     }
 
-    const trip = tripDoc.data() as Trip;
+    const tripData = trip.toJSON() as Trip;
     
     // Check if user is creator or participant
-    if (trip.creatorId !== uid && !trip.participants.some((p) => p.uid === uid)) {
+    if (tripData.creatorId !== uid && !tripData.participants.some((p) => p.uid === uid)) {
       return res.status(403).json({
         success: false,
         error: 'Not authorized to add participants',
       });
     }
 
+    // Get creator info for notification
+    const creator = await UserModel.findOne({ uid: tripData.creatorId });
+    const creatorName = creator?.name || 'Someone';
+
     // Process participants (can be uids or guest names)
     const newParticipants: TripParticipant[] = participants.map((p: string | TripParticipant) => {
       if (typeof p === 'string') {
         // Check if it's a uid (starts with alphanumeric, no spaces)
         if (/^[a-zA-Z0-9]+$/.test(p)) {
-          return { uid: p, isGuest: false };
+          // For non-creator users, set status to pending
+          return { uid: p, isGuest: false, status: p === tripData.creatorId ? 'accepted' : 'pending' };
         } else {
           return { guestName: p, isGuest: true };
         }
+      }
+      // If already a participant object, ensure status is set
+      if (p.uid && p.uid !== tripData.creatorId && !p.status) {
+        return { ...p, status: 'pending' };
       }
       return p;
     });
 
     // Merge with existing participants
-    const existingUids = new Set(trip.participants.map((p) => p.uid).filter(Boolean));
-    const existingGuests = new Set(trip.participants.map((p) => p.guestName).filter(Boolean));
+    const existingUids = new Set(tripData.participants.map((p) => p.uid).filter(Boolean));
+    const existingGuests = new Set(tripData.participants.map((p) => p.guestName).filter(Boolean));
     
-    const mergedParticipants = [...trip.participants];
+    const mergedParticipants = [...tripData.participants];
+    const newUserParticipants: string[] = [];
+    
     newParticipants.forEach((newP) => {
       if (newP.uid && !existingUids.has(newP.uid)) {
         mergedParticipants.push(newP);
         existingUids.add(newP.uid);
+        // Track new user participants for notifications (ALWAYS create notification regardless of profile privacy)
+        if (newP.uid !== tripData.creatorId) {
+          newUserParticipants.push(newP.uid);
+        }
       } else if (newP.guestName && !existingGuests.has(newP.guestName)) {
         mergedParticipants.push(newP);
         existingGuests.add(newP.guestName);
+      } else if (newP.uid && existingUids.has(newP.uid)) {
+        // If participant already exists but status is not set, update it to pending if needed
+        const existingIndex = mergedParticipants.findIndex(p => p.uid === newP.uid);
+        if (existingIndex >= 0 && !mergedParticipants[existingIndex].status && newP.uid !== tripData.creatorId) {
+          mergedParticipants[existingIndex].status = 'pending';
+          // Also create notification if not already sent
+          if (!newUserParticipants.includes(newP.uid)) {
+            newUserParticipants.push(newP.uid);
+          }
+        }
       }
     });
 
-    await tripRef.update({
-      participants: mergedParticipants,
-      updatedAt: new Date(),
-    });
+    trip.participants = mergedParticipants;
+    trip.updatedAt = new Date();
+    await trip.save();
+
+    // Create notifications for new user participants
+    if (newUserParticipants.length > 0) {
+      const notificationPromises = newUserParticipants.map(async (userId) => {
+        const notification = new NotificationModel({
+          userId,
+          type: 'trip_invitation',
+          title: 'Trip Invitation',
+          message: `${creatorName} invited you to join "${tripData.title}"`,
+          tripId: tripId,
+          fromUserId: uid,
+          isRead: false,
+        });
+        return notification.save();
+      });
+      await Promise.all(notificationPromises);
+    }
 
     res.json({
       success: true,
       data: { participants: mergedParticipants },
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+// Remove participants from trip
+router.delete('/:tripId/participants', async (req: OptionalAuthRequest, res) => {
+  try {
+    if (!req.uid) {
+      return res.status(401).json({
+        success: false,
+        error: 'Authentication required',
+      });
+    }
+    const { tripId } = req.params;
+    const { participants } = req.body; // Array of uids or guestNames to remove
+    const uid = req.uid;
+
+    const trip = await TripModel.findById(tripId);
+
+    if (!trip) {
+      return res.status(404).json({
+        success: false,
+        error: 'Trip not found',
+      });
+    }
+
+    const tripData = trip.toJSON() as Trip;
+    
+    // Check if user is creator or participant
+    if (tripData.creatorId !== uid && !tripData.participants.some((p) => p.uid === uid)) {
+      return res.status(403).json({
+        success: false,
+        error: 'Not authorized to remove participants',
+      });
+    }
+
+    // Don't allow removing the creator
+    const participantsToRemove = Array.isArray(participants) ? participants : [];
+    const filteredParticipants = tripData.participants.filter((p) => {
+      // Keep creator
+      if (p.uid === tripData.creatorId && !p.isGuest) {
+        return true;
+      }
+      // Remove if matches any in the removal list
+      return !participantsToRemove.some((removeId: string) => {
+        return (p.uid === removeId) || (p.guestName === removeId);
+      });
+    });
+
+    trip.participants = filteredParticipants;
+    trip.updatedAt = new Date();
+    await trip.save();
+
+    res.json({
+      success: true,
+      data: { participants: filteredParticipants },
     });
   } catch (error: any) {
     res.status(500).json({
@@ -293,23 +553,21 @@ router.patch('/:tripId', async (req: OptionalAuthRequest, res) => {
     const { tripId } = req.params;
     const updates = req.body;
     const uid = req.uid;
-    const db = getDb();
 
-    const tripRef = db.collection('trips').doc(tripId);
-    const tripDoc = await tripRef.get();
+    const trip = await TripModel.findById(tripId);
 
-    if (!tripDoc.exists) {
+    if (!trip) {
       return res.status(404).json({
         success: false,
         error: 'Trip not found',
       });
     }
 
-    const trip = tripDoc.data() as Trip;
+    const tripData = trip.toJSON() as Trip;
     
     // Check authorization - allow creator or participants to edit
-    const isCreator = trip.creatorId === uid;
-    const isParticipant = trip.participants?.some((p) => p.uid === uid);
+    const isCreator = tripData.creatorId === uid;
+    const isParticipant = tripData.participants?.some((p) => p.uid === uid);
     
     if (!isCreator && !isParticipant) {
       return res.status(403).json({
@@ -323,26 +581,20 @@ router.patch('/:tripId', async (req: OptionalAuthRequest, res) => {
       updates.endTime = new Date();
     }
 
-    // Remove undefined values from updates
-    const cleanUpdates: any = {
-      updatedAt: new Date(),
-    };
-    
+    // Apply updates
     Object.keys(updates).forEach((key) => {
       const value = updates[key as keyof typeof updates];
       if (value !== undefined) {
-        cleanUpdates[key] = value;
+        (trip as any)[key] = value;
       }
     });
 
-    await tripRef.update(cleanUpdates);
-
-    const updatedDoc = await tripRef.get();
-    const updatedTrip = { tripId: updatedDoc.id, ...updatedDoc.data() } as Trip;
+    trip.updatedAt = new Date();
+    const updatedTrip = await trip.save();
 
     res.json({
       success: true,
-      data: updatedTrip,
+      data: updatedTrip.toJSON() as Trip,
     });
   } catch (error: any) {
     res.status(500).json({
@@ -363,22 +615,20 @@ router.delete('/:tripId', async (req: OptionalAuthRequest, res) => {
     }
     const { tripId } = req.params;
     const uid = req.uid;
-    const db = getDb();
 
-    const tripRef = db.collection('trips').doc(tripId);
-    const tripDoc = await tripRef.get();
+    const trip = await TripModel.findById(tripId);
 
-    if (!tripDoc.exists) {
+    if (!trip) {
       return res.status(404).json({
         success: false,
         error: 'Trip not found',
       });
     }
 
-    const trip = tripDoc.data() as Trip;
+    const tripData = trip.toJSON() as Trip;
 
     // Check authorization - only creator can delete
-    if (trip.creatorId !== uid) {
+    if (tripData.creatorId !== uid) {
       return res.status(403).json({
         success: false,
         error: 'Not authorized to delete this trip',
@@ -386,11 +636,8 @@ router.delete('/:tripId', async (req: OptionalAuthRequest, res) => {
     }
 
     // Get all places for this trip to collect image URLs
-    const placesSnapshot = await db.collection('tripPlaces')
-      .where('tripId', '==', tripId)
-      .get();
-
-    const places = placesSnapshot.docs.map(doc => doc.data() as TripPlace);
+    const placesDocs = await TripPlaceModel.find({ tripId });
+    const places = placesDocs.map(doc => doc.toJSON() as TripPlace);
     
     // Collect all image URLs from places
     const imageUrls: string[] = [];
@@ -446,27 +693,15 @@ router.delete('/:tripId', async (req: OptionalAuthRequest, res) => {
     }
 
     // Delete all related data
-    const batch = db.batch();
-
-    // Delete places
-    placesSnapshot.docs.forEach(doc => batch.delete(doc.ref));
-
-    // Delete expenses
-    const expensesSnapshot = await db.collection('tripExpenses')
-      .where('tripId', '==', tripId)
-      .get();
-    expensesSnapshot.docs.forEach(doc => batch.delete(doc.ref));
-
-    // Delete routes
-    const routesSnapshot = await db.collection('tripRoutes')
-      .where('tripId', '==', tripId)
-      .get();
-    routesSnapshot.docs.forEach(doc => batch.delete(doc.ref));
+    await Promise.all([
+      TripPlaceModel.deleteMany({ tripId }),
+      TripExpenseModel.deleteMany({ tripId }),
+      TripRouteModel.deleteMany({ tripId }),
+      TripLikeModel.deleteMany({ tripId }),
+    ]);
 
     // Delete trip
-    batch.delete(tripRef);
-
-    await batch.commit();
+    await TripModel.findByIdAndDelete(tripId);
 
     res.json({
       success: true,
@@ -484,15 +719,8 @@ router.delete('/:tripId', async (req: OptionalAuthRequest, res) => {
 router.get('/public/list', async (req, res) => {
   try {
     const { limit, search } = req.query;
-    const db = getDb();
-    const snapshot = await db.collection('trips')
-      .where('isPublic', '==', true)
-      .get();
-
-    let trips = snapshot.docs.map((doc) => ({
-      tripId: doc.id,
-      ...doc.data(),
-    })) as Trip[];
+    const tripsDocs = await TripModel.find({ isPublic: true }).sort({ createdAt: -1 });
+    let trips = tripsDocs.map(doc => doc.toJSON() as Trip);
 
     // Filter by search query if provided
     if (search && typeof search === 'string') {
@@ -508,12 +736,7 @@ router.get('/public/list', async (req, res) => {
       });
     }
 
-    // Sort by createdAt in memory (avoids needing composite index)
-    trips.sort((a, b) => {
-      const aTime = new Date(a.createdAt).getTime();
-      const bTime = new Date(b.createdAt).getTime();
-      return bTime - aTime; // Descending order
-    });
+    // Already sorted by createdAt in query
 
     // Apply limit only if provided (otherwise return all)
     if (limit) {
@@ -534,27 +757,41 @@ router.get('/public/list', async (req, res) => {
 // Supports pagination with lastTripId
 router.get('/public/list/with-data', async (req: OptionalAuthRequest, res) => {
   try {
+    // Check MongoDB connection
+    if (!isMongoDBConnected() && mongoose.connection.readyState !== 1) {
+      console.error('MongoDB not connected. ReadyState:', mongoose.connection.readyState);
+      return res.status(503).json({
+        success: false,
+        error: 'Database connection not available. Please try again later.',
+      });
+    }
+    
     const { limit = '20', lastTripId } = req.query;
-    const db = getDb();
     
     // Get user's followed list if authenticated
     let followedUserIds: string[] = [];
     if (req.uid) {
-      const userDoc = await db.collection('users').doc(req.uid).get();
-      if (userDoc.exists) {
-        followedUserIds = userDoc.data()?.follows || [];
+      try {
+        const user = await UserModel.findOne({ uid: req.uid });
+        if (user) {
+          followedUserIds = user.follows || [];
+        }
+      } catch (error) {
+        console.error('Error fetching user for followed list:', error);
+        // Continue without followed list
       }
     }
     
-    // Get all public trips (fetch without orderBy to avoid composite index requirement)
-    const snapshot = await db.collection('trips')
-      .where('isPublic', '==', true)
-      .get();
-
-    let trips = snapshot.docs.map((doc) => ({
-      tripId: doc.id,
-      ...doc.data(),
-    })) as Trip[];
+    // Get all public trips
+    const tripsDocs = await TripModel.find({ isPublic: true }).sort({ createdAt: -1 });
+    let trips = tripsDocs.map((doc: any) => {
+      try {
+        return doc.toJSON() as Trip;
+      } catch (error) {
+        console.error('Error converting trip to JSON:', error);
+        return null;
+      }
+    }).filter((trip): trip is Trip => trip !== null);
 
     // Sort: followed users first, then by createdAt
     trips.sort((a, b) => {
@@ -585,28 +822,28 @@ router.get('/public/list/with-data', async (req: OptionalAuthRequest, res) => {
     const hasMore = totalAfterPagination > limitNum;
     trips = trips.slice(0, limitNum);
 
-    const tripIds = trips.map(t => t.tripId);
+    const tripIds = trips.map(t => t.tripId).filter(Boolean);
     
     // Batch fetch all places for all trips
     const placesPromises = tripIds.map(async (tripId) => {
-      const placesSnapshot = await db.collection('tripPlaces')
-        .where('tripId', '==', tripId)
-        .get();
-      return placesSnapshot.docs.map(doc => ({
-        placeId: doc.id,
-        ...doc.data(),
-      }));
+      try {
+        const placesDocs = await TripPlaceModel.find({ tripId: tripId.toString() });
+        return placesDocs.map(doc => doc.toJSON());
+      } catch (error) {
+        console.error(`Error fetching places for trip ${tripId}:`, error);
+        return [];
+      }
     });
 
     // Batch fetch all routes for all trips
     const routesPromises = tripIds.map(async (tripId) => {
-      const routesSnapshot = await db.collection('tripRoutes')
-        .where('tripId', '==', tripId)
-        .get();
-      return routesSnapshot.docs.map(doc => ({
-        routeId: doc.id,
-        ...doc.data(),
-      }));
+      try {
+        const routesDocs = await TripRouteModel.find({ tripId: tripId.toString() });
+        return routesDocs.map(doc => doc.toJSON());
+      } catch (error) {
+        console.error(`Error fetching routes for trip ${tripId}:`, error);
+        return [];
+      }
     });
 
     // Fetch all in parallel
@@ -630,9 +867,9 @@ router.get('/public/list/with-data', async (req: OptionalAuthRequest, res) => {
     // Batch fetch creator info
     const creatorPromises = creatorIds.map(async (creatorId) => {
       try {
-        const creatorDoc = await db.collection('users').doc(creatorId).get();
-        if (creatorDoc.exists) {
-          return { uid: creatorId, user: creatorDoc.data() };
+        const creator = await UserModel.findOne({ uid: creatorId.toString() });
+        if (creator) {
+          return { uid: creatorId, user: creator.toJSON() };
         }
       } catch (error) {
         console.error(`Failed to load creator ${creatorId}:`, error);
@@ -649,7 +886,7 @@ router.get('/public/list/with-data', async (req: OptionalAuthRequest, res) => {
     });
 
     // Calculate pagination info
-    const nextLastTripId = trips.length > 0 ? trips[trips.length - 1].tripId : null;
+    const nextLastTripId = hasMore && trips.length > 0 ? trips[trips.length - 1].tripId : null;
 
     // Build response with trips, places, routes, and creators
     res.json({
@@ -664,146 +901,11 @@ router.get('/public/list/with-data', async (req: OptionalAuthRequest, res) => {
       },
     });
   } catch (error: any) {
+    console.error('Error in /public/list/with-data:', error);
+    console.error('Error stack:', error.stack);
     res.status(500).json({
       success: false,
-      error: error.message,
-    });
-  }
-});
-
-// Search trips by user, place, or keyword
-router.get('/search', async (req: OptionalAuthRequest, res) => {
-  try {
-    const { q, type, limit = '20', lastTripId } = req.query;
-    const db = getDb();
-    
-    if (!q || typeof q !== 'string') {
-      return res.status(400).json({
-        success: false,
-        error: 'Query parameter "q" is required',
-      });
-    }
-
-    const searchType = type || 'all'; // 'user', 'place', 'trip', 'all'
-    const searchLower = q.toLowerCase();
-    let trips: Trip[] = [];
-
-    if (searchType === 'user' || searchType === 'all') {
-      // Search by user name/email
-      const usersSnapshot = await db.collection('users')
-        .where('name', '>=', searchLower)
-        .where('name', '<=', searchLower + '\uf8ff')
-        .limit(10)
-        .get();
-      
-      const userIds = usersSnapshot.docs.map(doc => doc.id);
-      
-      if (userIds.length > 0) {
-        // Get trips by these users
-        const tripsPromises = userIds.map(async (userId) => {
-          const tripsSnapshot = await db.collection('trips')
-            .where('creatorId', '==', userId)
-            .where('isPublic', '==', true)
-            .get();
-          return tripsSnapshot.docs.map(doc => ({
-            tripId: doc.id,
-            ...doc.data(),
-          })) as Trip[];
-        });
-        
-        const userTrips = await Promise.all(tripsPromises);
-        trips.push(...userTrips.flat());
-      }
-    }
-
-    if (searchType === 'trip' || searchType === 'all') {
-      // Search by trip title/description
-      const allTripsSnapshot = await db.collection('trips')
-        .where('isPublic', '==', true)
-        .get();
-      
-      const allTrips = allTripsSnapshot.docs.map((doc) => ({
-        tripId: doc.id,
-        ...doc.data(),
-      })) as Trip[];
-      
-      const matchingTrips = allTrips.filter((trip) => {
-        if (trip.title.toLowerCase().includes(searchLower)) return true;
-        if (trip.description?.toLowerCase().includes(searchLower)) return true;
-        return false;
-      });
-      
-      trips.push(...matchingTrips);
-    }
-
-    if (searchType === 'place' || searchType === 'all') {
-      // Search by place name
-      const placesSnapshot = await db.collection('tripPlaces')
-        .where('name', '>=', searchLower)
-        .where('name', '<=', searchLower + '\uf8ff')
-        .limit(50)
-        .get();
-      
-      const placeDocs = placesSnapshot.docs;
-      const tripIds = [...new Set(placeDocs.map(doc => doc.data().tripId))];
-      
-      if (tripIds.length > 0) {
-        const tripsPromises = tripIds.map(async (tripId) => {
-          const tripDoc = await db.collection('trips').doc(tripId).get();
-          if (tripDoc.exists) {
-            const tripData = tripDoc.data();
-            if (tripData && tripData.isPublic) {
-              return { tripId: tripDoc.id, ...tripData } as Trip;
-            }
-          }
-          return null;
-        });
-        
-        const placeTrips = await Promise.all(tripsPromises);
-        trips.push(...placeTrips.filter(t => t !== null) as Trip[]);
-      }
-    }
-
-    // Remove duplicates
-    const uniqueTrips = Array.from(
-      new Map(trips.map(trip => [trip.tripId, trip])).values()
-    );
-
-    // Sort by createdAt
-    uniqueTrips.sort((a, b) => {
-      const aTime = new Date(a.createdAt).getTime();
-      const bTime = new Date(b.createdAt).getTime();
-      return bTime - aTime;
-    });
-
-    // Apply pagination
-    let paginatedTrips = uniqueTrips;
-    if (lastTripId && typeof lastTripId === 'string') {
-      const lastIndex = paginatedTrips.findIndex(t => t.tripId === lastTripId);
-      if (lastIndex >= 0) {
-        paginatedTrips = paginatedTrips.slice(lastIndex + 1);
-      }
-    }
-    paginatedTrips = paginatedTrips.slice(0, Number(limit));
-
-    const hasMore = paginatedTrips.length === Number(limit) && 
-                    uniqueTrips.length > paginatedTrips.length;
-    const newLastTripId = paginatedTrips.length > 0 
-      ? paginatedTrips[paginatedTrips.length - 1].tripId 
-      : null;
-
-    res.json({
-      success: true,
-      data: {
-        trips: paginatedTrips,
-        hasMore,
-        lastTripId: newLastTripId,
-      },
-    });
-  } catch (error: any) {
-    res.status(500).json({
-      success: false,
-      error: error.message,
+      error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message,
     });
   }
 });
@@ -819,24 +921,22 @@ router.post('/:tripId/like', async (req: OptionalAuthRequest, res) => {
     }
     const { tripId } = req.params;
     const uid = req.uid;
-    const db = getDb();
 
-    const tripRef = db.collection('trips').doc(tripId);
-    const tripDoc = await tripRef.get();
+    const trip = await TripModel.findById(tripId);
 
-    if (!tripDoc.exists) {
+    if (!trip) {
       return res.status(404).json({
         success: false,
         error: 'Trip not found',
       });
     }
 
-    const trip = tripDoc.data() as Trip;
+    const tripData = trip.toJSON() as Trip;
     
     // Check if trip is public or user has access
-    if (!trip.isPublic) {
-      if (trip.creatorId !== uid && 
-          !trip.participants?.some((p) => p.uid === uid)) {
+    if (!tripData.isPublic) {
+      if (tripData.creatorId !== uid && 
+          !tripData.participants?.some((p) => p.uid === uid)) {
         return res.status(403).json({
           success: false,
           error: 'Not authorized to like this trip',
@@ -845,13 +945,9 @@ router.post('/:tripId/like', async (req: OptionalAuthRequest, res) => {
     }
 
     // Check if already liked
-    const likeDoc = await db.collection('tripLikes')
-      .where('tripId', '==', tripId)
-      .where('userId', '==', uid)
-      .limit(1)
-      .get();
+    const existingLike = await TripLikeModel.findOne({ tripId, userId: uid });
 
-    if (!likeDoc.empty) {
+    if (existingLike) {
       return res.json({
         success: true,
         data: { liked: true, message: 'Already liked' },
@@ -859,7 +955,7 @@ router.post('/:tripId/like', async (req: OptionalAuthRequest, res) => {
     }
 
     // Add like
-    await db.collection('tripLikes').add({
+    await TripLikeModel.create({
       tripId,
       userId: uid,
       createdAt: new Date(),
@@ -888,23 +984,16 @@ router.delete('/:tripId/like', async (req: OptionalAuthRequest, res) => {
     }
     const { tripId } = req.params;
     const uid = req.uid;
-    const db = getDb();
 
     // Find and delete like
-    const likeSnapshot = await db.collection('tripLikes')
-      .where('tripId', '==', tripId)
-      .where('userId', '==', uid)
-      .limit(1)
-      .get();
+    const like = await TripLikeModel.findOneAndDelete({ tripId, userId: uid });
 
-    if (likeSnapshot.empty) {
+    if (!like) {
       return res.json({
         success: true,
         data: { liked: false, message: 'Not liked' },
       });
     }
-
-    await likeSnapshot.docs[0].ref.delete();
 
     res.json({
       success: true,
@@ -923,11 +1012,10 @@ router.get('/:tripId/likes', async (req: OptionalAuthRequest, res) => {
   try {
     const { tripId } = req.params;
     const uid = req.uid;
-    const db = getDb();
 
     // Verify trip exists
-    const tripDoc = await db.collection('trips').doc(tripId).get();
-    if (!tripDoc.exists) {
+    const trip = await TripModel.findById(tripId);
+    if (!trip) {
       return res.json({
         success: true,
         data: {
@@ -942,14 +1030,11 @@ router.get('/:tripId/likes', async (req: OptionalAuthRequest, res) => {
     let isLiked = false;
 
     try {
-      const likesSnapshot = await db.collection('tripLikes')
-        .where('tripId', '==', tripId)
-        .get();
-
-      likeCount = likesSnapshot.size;
-      isLiked = uid ? likesSnapshot.docs.some(doc => doc.data().userId === uid) : false;
+      const likes = await TripLikeModel.find({ tripId });
+      likeCount = likes.length;
+      isLiked = uid ? likes.some(like => like.userId === uid) : false;
     } catch (queryError: any) {
-      // If query fails (e.g., collection doesn't exist), return defaults
+      // If query fails, return defaults
       console.warn('Error querying tripLikes:', queryError.message);
       likeCount = 0;
       isLiked = false;
@@ -979,11 +1064,10 @@ router.get('/:tripId/likes', async (req: OptionalAuthRequest, res) => {
 router.get('/:tripId/comments/count', async (req: OptionalAuthRequest, res) => {
   try {
     const { tripId } = req.params;
-    const db = getDb();
 
     // Verify trip exists
-    const tripDoc = await db.collection('trips').doc(tripId).get();
-    if (!tripDoc.exists) {
+    const trip = await TripModel.findById(tripId);
+    if (!trip) {
       return res.json({
         success: true,
         data: { commentCount: 0 },
@@ -991,11 +1075,8 @@ router.get('/:tripId/comments/count', async (req: OptionalAuthRequest, res) => {
     }
 
     // Get all comments for places in this trip
-    const placesSnapshot = await db.collection('tripPlaces')
-      .where('tripId', '==', tripId)
-      .get();
-
-    const placeIds = placesSnapshot.docs.map(doc => doc.id);
+    const placesDocs = await TripPlaceModel.find({ tripId });
+    const placeIds = placesDocs.map(doc => doc._id.toString());
     
     if (placeIds.length === 0) {
       return res.json({
@@ -1005,33 +1086,13 @@ router.get('/:tripId/comments/count', async (req: OptionalAuthRequest, res) => {
     }
 
     // Get comment count for all places in this trip
-    // Use a single query with 'in' operator if possible, or batch queries
     let totalCommentCount = 0;
     
     try {
-      // Firestore 'in' operator supports up to 10 items, so we need to batch if more
-      if (placeIds.length <= 10) {
-        // Single query for all place IDs
-        const commentsSnapshot = await db.collection('placeComments')
-          .where('placeId', 'in', placeIds)
-          .get();
-        totalCommentCount = commentsSnapshot.size;
-      } else {
-        // Batch queries for more than 10 places
-        const batches = [];
-        for (let i = 0; i < placeIds.length; i += 10) {
-          const batch = placeIds.slice(i, i + 10);
-          batches.push(
-            db.collection('placeComments')
-              .where('placeId', 'in', batch)
-              .get()
-          );
-        }
-        const results = await Promise.all(batches);
-        totalCommentCount = results.reduce((sum, snapshot) => sum + snapshot.size, 0);
-      }
+      const comments = await PlaceCommentModel.find({ placeId: { $in: placeIds } });
+      totalCommentCount = comments.length;
     } catch (queryError: any) {
-      // If query fails (e.g., collection doesn't exist), return 0
+      // If query fails, return 0
       console.warn('Error querying placeComments:', queryError.message);
       totalCommentCount = 0;
     }
@@ -1046,6 +1107,121 @@ router.get('/:tripId/comments/count', async (req: OptionalAuthRequest, res) => {
     res.json({
       success: true,
       data: { commentCount: 0 },
+    });
+  }
+});
+
+// Add a comment to a trip
+router.post('/:tripId/comments', async (req: OptionalAuthRequest, res) => {
+  try {
+    const { tripId } = req.params;
+    const { text } = req.body;
+    
+    if (!req.uid) {
+      return res.status(401).json({
+        success: false,
+        error: 'Authentication required',
+      });
+    }
+    
+    const uid = req.uid;
+
+    if (!text || !text.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: 'Comment text is required',
+      });
+    }
+
+    // Verify trip exists
+    const trip = await TripModel.findById(tripId);
+    if (!trip) {
+      return res.status(404).json({
+        success: false,
+        error: 'Trip not found',
+      });
+    }
+
+    const tripData = trip.toJSON();
+    
+    // Allow comments if trip is public, or if user is creator/participant
+    if (!tripData.isPublic) {
+      if (tripData.creatorId !== uid && 
+          !tripData.participants?.some((p: any) => p.uid === uid)) {
+        return res.status(403).json({
+          success: false,
+          error: 'Not authorized to comment on this trip',
+        });
+      }
+    }
+
+    // Create comment
+    const commentDoc = new TripCommentModel({
+      tripId,
+      userId: uid,
+      text: text.trim(),
+      createdAt: new Date(),
+    });
+    const savedComment = await commentDoc.save();
+    const comment = savedComment.toJSON() as TripComment;
+
+    res.json({
+      success: true,
+      data: comment,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+// Get comments for a trip
+router.get('/:tripId/comments', async (req: OptionalAuthRequest, res) => {
+  try {
+    const { tripId } = req.params;
+
+    // Verify trip exists
+    const trip = await TripModel.findById(tripId);
+    if (!trip) {
+      return res.status(404).json({
+        success: false,
+        error: 'Trip not found',
+      });
+    }
+
+    const tripData = trip.toJSON();
+    
+    // Allow viewing comments if trip is public, or if user is authenticated and has access
+    if (!tripData.isPublic) {
+      if (!req.uid) {
+        return res.status(401).json({
+          success: false,
+          error: 'Authentication required',
+        });
+      }
+      if (tripData.creatorId !== req.uid && 
+          !tripData.participants?.some((p: any) => p.uid === req.uid)) {
+        return res.status(403).json({
+          success: false,
+          error: 'Not authorized to view comments',
+        });
+      }
+    }
+
+    // Get all comments for this trip
+    const commentsDocs = await TripCommentModel.find({ tripId }).sort({ createdAt: -1 });
+    const comments = commentsDocs.map(doc => doc.toJSON() as TripComment);
+
+    res.json({
+      success: true,
+      data: comments,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
     });
   }
 });

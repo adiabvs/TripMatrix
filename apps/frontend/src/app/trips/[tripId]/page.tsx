@@ -5,11 +5,10 @@ import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import dynamic from 'next/dynamic';
-import { updateTrip, deletePlace, deleteExpense, updatePlace } from '@/lib/api';
+import { updateTrip, deletePlace, deleteExpense, updatePlace, getTripCommentCount } from '@/lib/api';
 import type { TripExpense, ModeOfTravel } from '@tripmatrix/types';
-import { db } from '@/lib/firebase';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import type { TripPlace } from '@tripmatrix/types';
+import { MdStop } from 'react-icons/md';
 import { useTripData } from '@/hooks/useTripData';
 import { useTripPermissions } from '@/hooks/useTripPermissions';
 import TripHeader from '@/components/trip/TripHeader';
@@ -56,6 +55,7 @@ export default function TripDetailPage() {
   const [token, setToken] = useState<string | null>(null);
   const [visibleStepIndex, setVisibleStepIndex] = useState<number>(0);
   const [scrollProgress, setScrollProgress] = useState<number>(0);
+  const [commentCount, setCommentCount] = useState<number>(0);
   const stepsContainerRef = useRef<HTMLDivElement>(null);
   const stepCardRefs = useRef<(HTMLDivElement | null)[]>([]);
   const observerRef = useRef<IntersectionObserver | null>(null);
@@ -92,64 +92,24 @@ export default function TripDetailPage() {
     }
   }, [tripId, user, authLoading, getIdToken, loadTripData]);
 
-  // Subscribe to places updates
-  useEffect(() => {
-    if (!user || !tripId) return;
-
-    let unsubscribe: (() => void) | undefined;
-    try {
-      const placesQuery = query(
-        collection(db, 'tripPlaces'),
-        where('tripId', '==', tripId)
-      );
-      unsubscribe = onSnapshot(placesQuery, (snapshot) => {
-        const placesData = snapshot.docs.map((doc) => ({
-          placeId: doc.id,
-          ...doc.data(),
-        })) as TripPlace[];
-        setPlaces(placesData);
-      });
-    } catch (error) {
-      console.error('Failed to subscribe to places updates:', error);
-    }
-
-    return () => {
-      if (unsubscribe) unsubscribe();
-    };
-  }, [user, tripId]);
-
-  // Subscribe to expenses updates
+  // Refresh places and expenses periodically (MongoDB doesn't have real-time subscriptions)
   useEffect(() => {
     if (!tripId) return;
 
-    let unsubscribe: (() => void) | undefined;
-    try {
-      const expensesQuery = query(
-        collection(db, 'tripExpenses'),
-        where('tripId', '==', tripId)
-      );
-      unsubscribe = onSnapshot(expensesQuery, (snapshot) => {
-        const expensesData = snapshot.docs.map((doc) => ({
-          expenseId: doc.id,
-          ...doc.data(),
-        })) as TripExpense[];
-        console.log('Expenses updated:', expensesData.length, 'expenses');
-        setExpenses(expensesData);
-      });
-    } catch (error) {
-      console.error('Failed to subscribe to expenses updates:', error);
-    }
+    // Refresh data every 5 seconds when page is visible
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible' && !loading) {
+        loadTripData(token);
+      }
+    }, 5000);
 
-    return () => {
-      if (unsubscribe) unsubscribe();
-    };
-  }, [tripId]);
+    return () => clearInterval(interval);
+  }, [tripId, token, loading, loadTripData]);
 
   // Reload data when page becomes visible (user navigates back)
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible' && tripId && !loading) {
-        console.log('Page visible, reloading trip data...');
         loadTripData(token);
       }
     };
@@ -161,15 +121,16 @@ export default function TripDetailPage() {
   }, [tripId, token, loading, loadTripData]);
 
   const handleEndTrip = async () => {
-    if (!trip || !confirm('Are you sure you want to end this trip?')) return;
+    if (!trip || !confirm('Are you sure you want to end this trip? This will mark it as completed.')) return;
 
     try {
-      const token = await getIdToken();
-      await updateTrip(tripId, { status: 'completed' }, token);
-      await loadTripData();
-    } catch (error) {
+      const authToken = token || await getIdToken();
+      await updateTrip(tripId, { status: 'completed', endTime: new Date().toISOString() }, authToken);
+      await loadTripData(authToken);
+      alert('Trip ended successfully!');
+    } catch (error: any) {
       console.error('Failed to end trip:', error);
-      alert('Failed to end trip');
+      alert(`Failed to end trip: ${error.message || 'Unknown error'}`);
     }
   };
 
@@ -327,82 +288,178 @@ export default function TripDetailPage() {
     return new Date(a.visitedAt).getTime() - new Date(b.visitedAt).getTime();
   });
 
-  // Set up intersection observer to track visible step cards
+  // Set up scroll-based tracking for step cards (fixed to use scroll position, not viewport)
   useEffect(() => {
-    if (sortedPlaces.length === 0) return;
+    if (sortedPlaces.length === 0 || !stepsContainerRef.current) return;
 
-    // Clean up previous observer
+    const container = stepsContainerRef.current;
+    const stepCards = Array.from(container.querySelectorAll('[data-step-index]')) as HTMLElement[];
+    
+    if (stepCards.length === 0) return;
+
+    // Helper function to calculate distance between two coordinates (Haversine formula)
+    const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+      const R = 6371; // Earth's radius in kilometers
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a = 
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return R * c;
+    };
+
+    // Track scroll direction
+    let lastScrollY = window.scrollY;
+    const scrollDirectionRef = { current: 0 }; // 1 = down, -1 = up, 0 = none
+    let lastLogTime = 0;
+    const LOG_THROTTLE_MS = 200; // Log every 200ms to avoid spam (reduced for better visibility)
+
+    const handleScroll = () => {
+      const currentScrollY = window.scrollY;
+      scrollDirectionRef.current = currentScrollY > lastScrollY ? 1 : currentScrollY < lastScrollY ? -1 : 0;
+      lastScrollY = currentScrollY;
+
+      // Find the step card that's currently most visible/centered
+      let mostVisibleIndex = 0;
+      let minDistanceFromCenter = Infinity;
+
+      stepCards.forEach((card) => {
+        const stepIndex = parseInt(card.getAttribute('data-step-index') || '0', 10);
+        const rect = card.getBoundingClientRect();
+        const viewportCenter = window.innerHeight / 2;
+        const cardCenter = rect.top + rect.height / 2;
+        const distanceFromCenter = Math.abs(cardCenter - viewportCenter);
+
+        // Card is visible and closer to center
+        if (rect.top < window.innerHeight && rect.bottom > 0 && distanceFromCenter < minDistanceFromCenter) {
+          minDistanceFromCenter = distanceFromCenter;
+          mostVisibleIndex = stepIndex;
+        }
+      });
+
+      setVisibleStepIndex(mostVisibleIndex);
+
+      // Calculate scroll progress based on scroll position relative to card position
+      const activeCard = stepCards.find(card => 
+        parseInt(card.getAttribute('data-step-index') || '0', 10) === mostVisibleIndex
+      );
+
+      if (activeCard) {
+        const cardRect = activeCard.getBoundingClientRect();
+        const viewportHeight = window.innerHeight;
+        const viewportCenter = viewportHeight / 2;
+        const cardCenter = cardRect.top + cardRect.height / 2;
+        
+        // Calculate progress based on how much the card has scrolled past the center
+        // Progress: 0 when card center is at viewport center, 1 when card bottom is at viewport bottom
+        // This works for both forward and reverse scrolling
+        let normalizedProgress = 0;
+        if (cardCenter > viewportCenter) {
+          // Card is below center - calculate progress towards next step
+          const distanceFromCenter = cardCenter - viewportCenter;
+          const availableDistance = viewportHeight - viewportCenter; // Distance from center to bottom
+          
+          // Normalize progress: use 70% of available distance for smoother animation
+          normalizedProgress = Math.max(0, Math.min(1, distanceFromCenter / (availableDistance * 0.7)));
+          setScrollProgress(normalizedProgress);
+        } else if (cardCenter < viewportCenter && scrollDirectionRef.current === -1) {
+          // Scrolling up and card is above center - reverse progress
+          const distanceFromCenter = viewportCenter - cardCenter;
+          const availableDistance = viewportCenter; // Distance from top to center
+          
+          // Reverse progress calculation
+          normalizedProgress = Math.max(0, Math.min(1, 1 - (distanceFromCenter / (availableDistance * 0.7))));
+          setScrollProgress(normalizedProgress);
+        } else {
+          // Card is at or above center and not scrolling up - no progress
+          setScrollProgress(0);
+        }
+
+        // Log step information during scrolling (throttled)
+        const now = Date.now();
+        if (now - lastLogTime >= LOG_THROTTLE_MS) {
+          // Get fresh sortedPlaces from the component scope
+          const currentPlace = sortedPlaces[mostVisibleIndex];
+          const nextPlace = sortedPlaces[mostVisibleIndex + 1];
+          
+          if (currentPlace) {
+            // Always log current step info, even if coordinates are missing
+            if (currentPlace.coordinates?.lat && currentPlace.coordinates?.lng) {
+              // Calculate distance to next step if it exists
+              if (nextPlace?.coordinates?.lat && nextPlace?.coordinates?.lng) {
+                const totalDistanceToNext = calculateDistance(
+                  currentPlace.coordinates.lat,
+                  currentPlace.coordinates.lng,
+                  nextPlace.coordinates.lat,
+                  nextPlace.coordinates.lng
+                );
+                
+                // Calculate current progress distance (how far we've traveled towards next step)
+                const currentProgressDistance = totalDistanceToNext * normalizedProgress;
+                const remainingDistance = totalDistanceToNext - currentProgressDistance;
+                const progressPercentage = normalizedProgress * 100;
+              }
+            }
+          }
+          
+          lastLogTime = now;
+        }
+      } else {
+        setScrollProgress(0);
+      }
+    };
+
+    // Use IntersectionObserver for step detection, but scroll listener for progress
     if (observerRef.current) {
       observerRef.current.disconnect();
     }
 
-    // Create new intersection observer using viewport as root
     observerRef.current = new IntersectionObserver(
       (entries) => {
-        // Find the entry with the highest intersection ratio that's in the center of viewport
+        // Find the entry with the highest intersection ratio
         let maxRatio = 0;
         let mostVisibleIndex = 0;
-        let mostVisibleEntry: IntersectionObserverEntry | null = null;
 
         for (const entry of entries) {
           const stepIndex = parseInt(entry.target.getAttribute('data-step-index') || '0', 10);
-          // Prefer entries that are more centered in the viewport
-          const rect = entry.boundingClientRect;
-          const viewportCenter = window.innerHeight / 2;
-          const cardCenter = rect.top + rect.height / 2;
-          const distanceFromCenter = Math.abs(cardCenter - viewportCenter);
-          
-          // Weight intersection ratio by proximity to center
-          const centerWeight = 1 / (1 + distanceFromCenter / 100);
-          const weightedRatio = entry.intersectionRatio * centerWeight;
-          
-          if (weightedRatio > maxRatio && entry.intersectionRatio > 0.2) {
-            maxRatio = weightedRatio;
+          if (entry.intersectionRatio > maxRatio && entry.intersectionRatio > 0.3) {
+            maxRatio = entry.intersectionRatio;
             mostVisibleIndex = stepIndex;
-            mostVisibleEntry = entry;
           }
         }
 
-        // Update visible step index
-        if (mostVisibleEntry !== null && maxRatio > 0) {
+        if (maxRatio > 0) {
           setVisibleStepIndex(mostVisibleIndex);
-          
-          // Calculate scroll progress: how far through the current step we are
-          // TypeScript needs explicit type narrowing here
-          const entry: IntersectionObserverEntry = mostVisibleEntry;
-          const rect = entry.boundingClientRect;
-          const viewportHeight = window.innerHeight;
-          const viewportCenter = viewportHeight / 2;
-          const cardCenter = rect.top + rect.height / 2;
-          
-          // Progress: 0 when card center is at viewport top, 1 when at bottom
-          // Normalize to 0-1 range
-          const normalizedProgress = Math.max(0, Math.min(1, (cardCenter - viewportCenter + viewportHeight / 4) / (viewportHeight / 2)));
-          setScrollProgress(normalizedProgress);
         }
       },
       {
-        root: null, // Use viewport as root
-        rootMargin: '-30% 0px -30% 0px', // Trigger when card is in center 40% of viewport
-        threshold: [0, 0.2, 0.4, 0.6, 0.8, 1.0],
+        root: null,
+        rootMargin: '-30% 0px -30% 0px',
+        threshold: [0, 0.3, 0.5, 0.7, 1.0],
       }
     );
 
-    // Observe all step cards after a short delay to ensure DOM is ready
+    // Observe all step cards
     const timeoutId = setTimeout(() => {
-      const stepCards = document.querySelectorAll('[data-step-index]');
       stepCards.forEach((card) => {
         observerRef.current?.observe(card);
       });
     }, 100);
 
+    // Add scroll listener
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    handleScroll(); // Initial calculation
+
     return () => {
       clearTimeout(timeoutId);
+      window.removeEventListener('scroll', handleScroll);
       if (observerRef.current) {
         observerRef.current.disconnect();
       }
     };
-  }, [sortedPlaces.length]);
+  }, [sortedPlaces]);
 
   // Update step card refs when places change
   useEffect(() => {
@@ -444,7 +501,7 @@ export default function TripDetailPage() {
       <TripHeader title={trip.title} canEdit={canEdit} tripId={tripId} />
 
       {/* Map Section - 25% height */}
-      <div className="relative flex-shrink-0" style={{ height: '25vh' }}>
+      <div className="relative flex-shrink-0" style={{ height: '25vh', zIndex: 1 }}>
         <TripMapbox 
           places={places} 
           routes={routes}
@@ -467,6 +524,17 @@ export default function TripDetailPage() {
           placesCount={places.length}
           canShare={canShare}
           className="mb-8"
+          onCommentClick={async () => {
+            // Refresh comment count when comments are toggled
+            try {
+              const token = user ? await getIdToken() : null;
+              const count = await getTripCommentCount(tripId, token);
+              setCommentCount(count || 0);
+            } catch (error) {
+              console.error('Failed to refresh comment count:', error);
+            }
+          }}
+          commentCount={commentCount}
         />
 
         <TripStepsList
@@ -480,6 +548,19 @@ export default function TripDetailPage() {
           isUpcoming={isUpcoming}
           trip={trip}
         />
+
+        {/* End Trip Button - Show at the end for in_progress trips if user can edit */}
+        {canEdit && trip.status === 'in_progress' && (
+          <div className="mt-8 mb-8">
+            <button
+              onClick={handleEndTrip}
+              className="w-full px-4 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold flex items-center justify-center gap-2 transition-colors active:scale-95 shadow-lg"
+            >
+              <MdStop className="w-5 h-5" />
+              <span>End Trip</span>
+            </button>
+          </div>
+        )}
       </main>
 
     </div>

@@ -11,6 +11,7 @@ import { db } from '@/lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import { toDate, formatDateTimeLocalForInput, parseDateTimeLocalToUTC } from '@/lib/dateUtils';
 import { format } from 'date-fns';
+import { getCurrencySymbol } from '@/lib/currencyUtils';
 import type L from 'leaflet';
 import ExpenseForm from '@/components/ExpenseForm';
 import { MdMap, MdArrowBack, MdCameraAlt, MdSearch, MdRefresh, MdMyLocation, MdClose } from 'react-icons/md';
@@ -114,8 +115,14 @@ export default function NewStepPage() {
       } else if (sortedPlaces.length > 0) {
         setPreviousPlace(sortedPlaces[sortedPlaces.length - 1]);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to load trip data:', error);
+      // Don't block access if trip data fails to load - let the component handle it
+      // The error might be due to private profile, but user should still be able to add steps if they're a participant
+      if (error.message?.includes('403') || error.message?.includes('Forbidden')) {
+        // If it's a 403, it might be a profile access issue, but we should still try to proceed
+        // The backend will handle the actual permission check when adding the step
+      }
     } finally {
       setLoading(false);
     }
@@ -516,7 +523,14 @@ export default function NewStepPage() {
   }
 
   const isCreator = user?.uid === trip.creatorId;
-  if (!isCreator) {
+  // Check if user is an accepted participant (status is 'accepted' or undefined for backward compatibility)
+  const isParticipant = trip.participants?.some((p: TripParticipant) => 
+    p.uid === user?.uid && 
+    !p.isGuest && 
+    (p.status === 'accepted' || p.status === undefined)
+  );
+  
+  if (!isCreator && !isParticipant) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-[#424242] to-[#1a1a1a] px-4">
         <div className="text-6xl mb-4">🔒</div>
@@ -822,8 +836,9 @@ export default function NewStepPage() {
                         className="flex items-center justify-between p-3 bg-[#616161] rounded-lg border border-[#757575]"
                       >
                         <div className="flex-1">
-                          <p className="text-[14px] font-medium text-white">
-                            {expense.currency} {expense.amount?.toFixed(2)}
+                          <p className="text-[14px] font-medium text-white flex items-center gap-1">
+                            <span>{getCurrencySymbol(expense.currency || 'USD')}</span>
+                            <span>{expense.amount?.toFixed(2)}</span>
                           </p>
                           {expense.description && (
                             <p className="text-[12px] text-[#bdbdbd] mt-1">{expense.description}</p>

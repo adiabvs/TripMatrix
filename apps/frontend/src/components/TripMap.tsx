@@ -4,7 +4,7 @@ import { useEffect, useRef } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import type { TripRoute, RoutePoint } from '@tripmatrix/types';
-import { getModeIconSVG } from '@/lib/iconUtils';
+import { getModeIconHTML } from '@/lib/iconUtils';
 
 // Fix for default marker icons in Next.js
 if (typeof window !== 'undefined') {
@@ -156,7 +156,7 @@ export default function TripMap({
       
       if (nextPlace.modeOfTravel) {
         const color = modeColors[nextPlace.modeOfTravel] || '#3b82f6';
-        const iconHTML = getModeIconSVG(nextPlace.modeOfTravel, color);
+        const iconHTML = getModeIconHTML(nextPlace.modeOfTravel, color, true);
         const label = modeLabels[nextPlace.modeOfTravel] || 'Travel';
         
         // Draw line between places

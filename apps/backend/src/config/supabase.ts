@@ -1,38 +1,66 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-let supabaseClient: ReturnType<typeof createClient> | null = null;
+let supabaseClient: SupabaseClient | null = null;
+let supabaseAnonClient: SupabaseClient | null = null;
 
 export function initializeSupabase() {
   const supabaseUrl = process.env.SUPABASE_URL;
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
 
-  if (!supabaseUrl || !supabaseServiceKey) {
-    console.warn('⚠️  Supabase credentials not found. Image uploads will not work.');
-    console.warn('   Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in .env for image uploads.');
+  if (!supabaseUrl) {
+    console.warn('⚠️  SUPABASE_URL is not set. Database operations will not work.');
     return;
   }
 
+  if (!supabaseServiceKey) {
+    console.warn('⚠️  SUPABASE_SERVICE_ROLE_KEY is not set. Some features may not work.');
+  }
+
   try {
-    supabaseClient = createClient(supabaseUrl, supabaseServiceKey, {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-      },
-    });
-    console.log('✅ Supabase client initialized');
+    // Service role client (for admin operations)
+    if (supabaseServiceKey) {
+      supabaseClient = createClient(supabaseUrl, supabaseServiceKey, {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false,
+        },
+      });
+      console.log('✅ Supabase service role client initialized');
+    }
+
+    // Anon client (for user operations with RLS)
+    if (supabaseAnonKey) {
+      supabaseAnonClient = createClient(supabaseUrl, supabaseAnonKey, {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false,
+        },
+      });
+      console.log('✅ Supabase anon client initialized');
+    }
   } catch (error: any) {
     console.error('❌ Supabase initialization error:', error.message);
-    console.warn('⚠️  Continuing without Supabase. Image uploads will not work.');
+    console.warn('⚠️  Continuing without Supabase. Some features will not work.');
   }
 }
 
 export function getSupabase() {
   if (!supabaseClient) {
     throw new Error(
-      'Supabase client is not initialized. Check your .env file for SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.'
+      'Supabase service role client is not initialized. Check your .env file for SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.'
     );
   }
   return supabaseClient;
+}
+
+export function getSupabaseAnon() {
+  if (!supabaseAnonClient) {
+    throw new Error(
+      'Supabase anon client is not initialized. Check your .env file for SUPABASE_URL and SUPABASE_ANON_KEY.'
+    );
+  }
+  return supabaseAnonClient;
 }
 
 export function isSupabaseInitialized() {

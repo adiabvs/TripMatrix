@@ -1,5 +1,4 @@
 import express from 'express';
-import { getFirestore } from '../config/firebase.js';
 import { AuthenticatedRequest } from '../middleware/auth.js';
 import { toDate } from '../utils/dateUtils.js';
 import type { Trip, TripPlace, TravelDiary } from '@tripmatrix/types';
@@ -8,6 +7,10 @@ import { generateTravelDiaryDesign } from '../services/canvaDesignGenerator.js';
 import { refreshAccessToken } from '../services/canvaOAuthService.js';
 import { generatePDFDiary } from '../services/pdfDiaryService.js';
 import type { DiaryPlatform } from '@tripmatrix/types';
+import { TripModel } from '../models/Trip.js';
+import { TripPlaceModel } from '../models/TripPlace.js';
+import { TravelDiaryModel } from '../models/TravelDiary.js';
+import { CanvaTokenModel } from '../models/CanvaToken.js';
 
 const router = express.Router();
 
@@ -25,45 +28,22 @@ setInterval(() => {
   }
 }, 30 * 60 * 1000); // Run cleanup every 30 minutes
 
-function getDb() {
-  return getFirestore();
-}
-
 // Generate travel diary for a completed trip
 router.post('/generate/:tripId', async (req: AuthenticatedRequest, res) => {
   try {
     const { tripId } = req.params;
     const uid = req.uid!;
 
-    const db = getDb();
-    
     // Get trip
-    const tripDoc = await db.collection('trips').doc(tripId).get();
-    if (!tripDoc.exists) {
+    const tripDoc = await TripModel.findById(tripId);
+    if (!tripDoc) {
       return res.status(404).json({
         success: false,
         error: 'Trip not found',
       });
     }
 
-    const tripData = tripDoc.data() as any;
-    
-    if (!tripData) {
-      return res.status(404).json({
-        success: false,
-        error: 'Trip data not found',
-      });
-    }
-    
-    // Convert Firestore Timestamps to Date objects
-    const trip: Trip = {
-      ...tripData,
-      tripId: tripDoc.id,
-      startTime: toDate(tripData.startTime),
-      endTime: tripData.endTime ? toDate(tripData.endTime) : undefined,
-      createdAt: tripData.createdAt ? toDate(tripData.createdAt) : new Date(),
-      updatedAt: tripData.updatedAt ? toDate(tripData.updatedAt) : new Date(),
-    };
+    const trip: Trip = tripDoc.toJSON() as Trip;
     
     // Check authorization
     if (trip.creatorId !== uid && !trip.participants?.some((p: any) => p.uid === uid)) {
@@ -82,22 +62,8 @@ router.post('/generate/:tripId', async (req: AuthenticatedRequest, res) => {
     }
 
     // Get places
-    const placesSnapshot = await db.collection('tripPlaces')
-      .where('tripId', '==', tripId)
-      .get();
-    
-    const places = placesSnapshot.docs.map((doc) => {
-      const placeData = doc.data() as any;
-      if (!placeData) {
-        throw new Error(`Place data not found for ${doc.id}`);
-      }
-      return {
-        placeId: doc.id,
-        ...placeData,
-        visitedAt: toDate(placeData.visitedAt),
-        createdAt: placeData.createdAt ? toDate(placeData.createdAt) : new Date(),
-      };
-    }) as TripPlace[];
+    const placesDocs = await TripPlaceModel.find({ tripId });
+    const places = placesDocs.map((doc) => doc.toJSON() as TripPlace);
 
     if (places.length === 0) {
       return res.status(400).json({
@@ -115,20 +81,20 @@ router.post('/generate/:tripId', async (req: AuthenticatedRequest, res) => {
     
     if (platform === 'canva') {
       // Check if user has Canva OAuth token
-      const tokenDoc = await getDb().collection('canvaTokens').doc(uid).get();
+      const tokenDoc = await CanvaTokenModel.findOne({ userId: uid });
 
-      if (!tokenDoc.exists) {
+      if (!tokenDoc) {
         return res.status(400).json({
           success: false,
           error: 'Canva not connected. Please connect your Canva account first by clicking "Connect with Canva" on the diary page.',
         });
       }
 
-      const tokenData = tokenDoc.data()!;
+      const tokenData = tokenDoc.toJSON();
       accessToken = tokenData.accessToken;
 
       // Check if token expired and refresh if needed
-      if (new Date(tokenData.expiresAt.toDate()) < new Date()) {
+      if (new Date(tokenData.expiresAt) < new Date()) {
         if (tokenData.refreshToken) {
           try {
             const { getCanvaConfig } = await import('../services/canvaOAuthService.js');
@@ -136,14 +102,13 @@ router.post('/generate/:tripId', async (req: AuthenticatedRequest, res) => {
             const newToken = await refreshAccessToken(config, tokenData.refreshToken);
             accessToken = newToken.access_token;
             
-            await getDb().collection('canvaTokens').doc(uid).update({
-              accessToken: newToken.access_token,
-              refreshToken: newToken.refresh_token || tokenData.refreshToken,
-              expiresAt: new Date(Date.now() + (newToken.expires_in * 1000)),
-              updatedAt: new Date(),
-            });
+            tokenDoc.accessToken = newToken.access_token;
+            tokenDoc.refreshToken = newToken.refresh_token || tokenData.refreshToken;
+            tokenDoc.expiresAt = new Date(Date.now() + (newToken.expires_in * 1000));
+            tokenDoc.updatedAt = new Date();
+            await tokenDoc.save();
           } catch (refreshError: any) {
-            await getDb().collection('canvaTokens').doc(uid).delete();
+            await CanvaTokenModel.findOneAndDelete({ userId: uid });
             return res.status(401).json({
               success: false,
               error: 'Canva token expired. Please reconnect your Canva account.',
@@ -306,12 +271,10 @@ router.post('/generate/:tripId', async (req: AuthenticatedRequest, res) => {
     }
 
 
-    const diaryRef = await getDb().collection('travelDiaries').add(diaryData);
+    const diaryDoc = new TravelDiaryModel(diaryData);
+    const savedDiary = await diaryDoc.save();
     
-    const diary: TravelDiary = {
-      diaryId: diaryRef.id,
-      ...diaryData,
-    };
+    const diary: TravelDiary = savedDiary.toJSON() as TravelDiary;
 
     res.json({
       success: true,
@@ -332,18 +295,16 @@ router.get('/trip/:tripId', async (req: AuthenticatedRequest, res) => {
     const { tripId } = req.params;
     const uid = req.uid!;
 
-    const db = getDb();
-    
     // Verify trip access
-    const tripDoc = await db.collection('trips').doc(tripId).get();
-    if (!tripDoc.exists) {
+    const tripDoc = await TripModel.findById(tripId);
+    if (!tripDoc) {
       return res.status(404).json({
         success: false,
         error: 'Trip not found',
       });
     }
 
-    const trip = tripDoc.data() as Trip;
+    const trip = tripDoc.toJSON() as Trip;
     
     if (trip.creatorId !== uid && !trip.participants?.some((p: any) => p.uid === uid)) {
       return res.status(403).json({
@@ -353,40 +314,23 @@ router.get('/trip/:tripId', async (req: AuthenticatedRequest, res) => {
     }
 
     // Get diary
-    const diarySnapshot = await db.collection('travelDiaries')
-      .where('tripId', '==', tripId)
-      .limit(1)
-      .get();
+    const diaryDoc = await TravelDiaryModel.findOne({ tripId });
 
-    if (diarySnapshot.empty) {
+    if (!diaryDoc) {
       return res.status(404).json({
         success: false,
         error: 'Diary not found',
       });
     }
 
-    const diary = {
-      diaryId: diarySnapshot.docs[0].id,
-      ...diarySnapshot.docs[0].data(),
-    } as TravelDiary;
+    let diary = diaryDoc.toJSON() as TravelDiary;
 
     // If designData is missing, regenerate it
     if (!diary.designData) {
       try {
         // Get places
-        const placesSnapshot = await db.collection('tripPlaces')
-          .where('tripId', '==', tripId)
-          .get();
-        
-        const places = placesSnapshot.docs.map((doc) => {
-          const placeData = doc.data() as any;
-          return {
-            placeId: doc.id,
-            ...placeData,
-            visitedAt: toDate(placeData.visitedAt),
-            createdAt: placeData.createdAt ? toDate(placeData.createdAt) : new Date(),
-          };
-        }) as TripPlace[];
+        const placesDocs = await TripPlaceModel.find({ tripId });
+        const places = placesDocs.map((doc) => doc.toJSON() as TripPlace);
 
         // Sort places by visitedAt
         const sortedPlaces = [...places].sort((a, b) => {
@@ -399,12 +343,11 @@ router.get('/trip/:tripId', async (req: AuthenticatedRequest, res) => {
         const designData = getTravelDiaryDesignData(trip, sortedPlaces);
         
         // Update diary with designData
-        await db.collection('travelDiaries').doc(diary.diaryId).update({
-          designData,
-          updatedAt: new Date(),
-        });
+        diaryDoc.designData = designData;
+        diaryDoc.updatedAt = new Date();
+        await diaryDoc.save();
 
-        diary.designData = designData;
+        diary = diaryDoc.toJSON() as TravelDiary;
       } catch (error: any) {
         console.error('Failed to regenerate designData:', error);
         // Continue without designData - user can still use Canva editor
@@ -429,28 +372,26 @@ router.post('/:diaryId/video', async (req: AuthenticatedRequest, res) => {
     const { diaryId } = req.params;
     const uid = req.uid!;
 
-    const db = getDb();
-    const diaryDoc = await db.collection('travelDiaries').doc(diaryId).get();
-    
-    if (!diaryDoc.exists) {
+    const diaryDoc = await TravelDiaryModel.findById(diaryId);
+    if (!diaryDoc) {
       return res.status(404).json({
         success: false,
         error: 'Diary not found',
       });
     }
 
-    const diary = diaryDoc.data() as TravelDiary;
+    const diary = diaryDoc.toJSON() as TravelDiary;
     
     // Verify trip access
-    const tripDoc = await db.collection('trips').doc(diary.tripId).get();
-    if (!tripDoc.exists) {
+    const tripDoc = await TripModel.findById(diary.tripId);
+    if (!tripDoc) {
       return res.status(404).json({
         success: false,
         error: 'Trip not found',
       });
     }
 
-    const trip = tripDoc.data() as Trip;
+    const trip = tripDoc.toJSON() as Trip;
     
     if (trip.creatorId !== uid && !trip.participants?.some((p: any) => p.uid === uid)) {
       return res.status(403).json({
@@ -458,12 +399,6 @@ router.post('/:diaryId/video', async (req: AuthenticatedRequest, res) => {
         error: 'Not authorized',
       });
     }
-
-    // Video generation placeholder - not yet implemented
-    return res.status(501).json({
-      success: false,
-      error: 'Video generation not yet implemented',
-    });
 
     // Video generation placeholder - not yet implemented
     return res.status(501).json({
@@ -484,28 +419,26 @@ router.post('/:diaryId/regenerate-design-data', async (req: AuthenticatedRequest
     const { diaryId } = req.params;
     const uid = req.uid!;
 
-    const db = getDb();
-    const diaryDoc = await db.collection('travelDiaries').doc(diaryId).get();
-    
-    if (!diaryDoc.exists) {
+    const diaryDoc = await TravelDiaryModel.findById(diaryId);
+    if (!diaryDoc) {
       return res.status(404).json({
         success: false,
         error: 'Diary not found',
       });
     }
 
-    const diary = diaryDoc.data() as TravelDiary;
+    const diary = diaryDoc.toJSON() as TravelDiary;
     
     // Verify trip access
-    const tripDoc = await db.collection('trips').doc(diary.tripId).get();
-    if (!tripDoc.exists) {
+    const tripDoc = await TripModel.findById(diary.tripId);
+    if (!tripDoc) {
       return res.status(404).json({
         success: false,
         error: 'Trip not found',
       });
     }
 
-    const trip = tripDoc.data() as Trip;
+    const trip = tripDoc.toJSON() as Trip;
     
     if (trip.creatorId !== uid && !trip.participants?.some((p: any) => p.uid === uid)) {
       return res.status(403).json({
@@ -515,19 +448,8 @@ router.post('/:diaryId/regenerate-design-data', async (req: AuthenticatedRequest
     }
 
     // Get places
-    const placesSnapshot = await db.collection('tripPlaces')
-      .where('tripId', '==', diary.tripId)
-      .get();
-    
-    const places = placesSnapshot.docs.map((doc) => {
-      const placeData = doc.data() as any;
-      return {
-        placeId: doc.id,
-        ...placeData,
-        visitedAt: toDate(placeData.visitedAt),
-        createdAt: placeData.createdAt ? toDate(placeData.createdAt) : new Date(),
-      };
-    }) as TripPlace[];
+    const placesDocs = await TripPlaceModel.find({ tripId: diary.tripId });
+    const places = placesDocs.map((doc) => doc.toJSON() as TripPlace);
 
     // Sort places by visitedAt
     const sortedPlaces = [...places].sort((a, b) => {
@@ -540,16 +462,11 @@ router.post('/:diaryId/regenerate-design-data', async (req: AuthenticatedRequest
     const designData = getTravelDiaryDesignData(trip, sortedPlaces);
     
     // Update diary with designData
-    await db.collection('travelDiaries').doc(diaryId).update({
-      designData,
-      updatedAt: new Date(),
-    });
+    diaryDoc.designData = designData;
+    diaryDoc.updatedAt = new Date();
+    const updatedDiaryDoc = await diaryDoc.save();
 
-    const updatedDiary: TravelDiary = {
-      ...diary,
-      designData,
-      diaryId,
-    };
+    const updatedDiary = updatedDiaryDoc.toJSON() as TravelDiary;
 
     res.json({
       success: true,
@@ -570,28 +487,26 @@ router.patch('/:diaryId', async (req: AuthenticatedRequest, res) => {
     const { canvaDesignId, canvaDesignUrl, canvaEditorUrl, videoUrl } = req.body;
     const uid = req.uid!;
 
-    const db = getDb();
-    const diaryDoc = await db.collection('travelDiaries').doc(diaryId).get();
-    
-    if (!diaryDoc.exists) {
+    const diaryDoc = await TravelDiaryModel.findById(diaryId);
+    if (!diaryDoc) {
       return res.status(404).json({
         success: false,
         error: 'Diary not found',
       });
     }
 
-    const diary = diaryDoc.data() as TravelDiary;
+    const diary = diaryDoc.toJSON() as TravelDiary;
     
     // Verify trip access
-    const tripDoc = await db.collection('trips').doc(diary.tripId).get();
-    if (!tripDoc.exists) {
+    const tripDoc = await TripModel.findById(diary.tripId);
+    if (!tripDoc) {
       return res.status(404).json({
         success: false,
         error: 'Trip not found',
       });
     }
 
-    const trip = tripDoc.data() as Trip;
+    const trip = tripDoc.toJSON() as Trip;
     
     if (trip.creatorId !== uid && !trip.participants?.some((p: any) => p.uid === uid)) {
       return res.status(403).json({
@@ -600,18 +515,15 @@ router.patch('/:diaryId', async (req: AuthenticatedRequest, res) => {
       });
     }
 
-    const updateData: any = { updatedAt: new Date() };
-    if (canvaDesignId !== undefined && canvaDesignId !== null) updateData.canvaDesignId = canvaDesignId;
-    if (canvaDesignUrl !== undefined && canvaDesignUrl !== null) updateData.canvaDesignUrl = canvaDesignUrl;
-    if (canvaEditorUrl !== undefined && canvaEditorUrl !== null) updateData.canvaEditorUrl = canvaEditorUrl;
-    if (videoUrl !== undefined && videoUrl !== null) updateData.videoUrl = videoUrl;
+    if (canvaDesignId !== undefined && canvaDesignId !== null) diaryDoc.canvaDesignId = canvaDesignId;
+    if (canvaDesignUrl !== undefined && canvaDesignUrl !== null) diaryDoc.canvaDesignUrl = canvaDesignUrl;
+    if (canvaEditorUrl !== undefined && canvaEditorUrl !== null) diaryDoc.canvaEditorUrl = canvaEditorUrl;
+    if (videoUrl !== undefined && videoUrl !== null) diaryDoc.videoUrl = videoUrl;
 
-    await db.collection('travelDiaries').doc(diaryId).update(updateData);
+    diaryDoc.updatedAt = new Date();
+    const updatedDiaryDoc = await diaryDoc.save();
 
-    const updatedDiary: TravelDiary = {
-      ...diary,
-      ...updateData,
-    };
+    const updatedDiary = updatedDiaryDoc.toJSON() as TravelDiary;
 
     res.json({
       success: true,
@@ -633,30 +545,27 @@ router.delete('/:diaryId', async (req: AuthenticatedRequest, res) => {
     const { diaryId } = req.params;
     const uid = req.uid!;
 
-    const db = getDb();
-    
     // Get diary to verify ownership
-    const diaryDoc = await db.collection('travelDiaries').doc(diaryId).get();
-    
-    if (!diaryDoc.exists) {
+    const diaryDoc = await TravelDiaryModel.findById(diaryId);
+    if (!diaryDoc) {
       return res.status(404).json({
         success: false,
         error: 'Diary not found',
       });
     }
 
-    const diary = diaryDoc.data() as TravelDiary;
+    const diary = diaryDoc.toJSON() as TravelDiary;
     
     // Verify trip access
-    const tripDoc = await db.collection('trips').doc(diary.tripId).get();
-    if (!tripDoc.exists) {
+    const tripDoc = await TripModel.findById(diary.tripId);
+    if (!tripDoc) {
       return res.status(404).json({
         success: false,
         error: 'Trip not found',
       });
     }
 
-    const trip = tripDoc.data() as Trip;
+    const trip = tripDoc.toJSON() as Trip;
     
     if (trip.creatorId !== uid && !trip.participants?.some((p: any) => p.uid === uid)) {
       return res.status(403).json({
@@ -666,7 +575,7 @@ router.delete('/:diaryId', async (req: AuthenticatedRequest, res) => {
     }
 
     // Delete diary
-    await db.collection('travelDiaries').doc(diaryId).delete();
+    await TravelDiaryModel.findByIdAndDelete(diaryId);
 
     res.json({
       success: true,
@@ -690,18 +599,16 @@ router.get('/download-pdf/:tripId', async (req: AuthenticatedRequest, res) => {
     const { tripId } = req.params;
     const uid = req.uid!;
 
-    const db = getDb();
-    
     // Verify trip access
-    const tripDoc = await db.collection('trips').doc(tripId).get();
-    if (!tripDoc.exists) {
+    const tripDoc = await TripModel.findById(tripId);
+    if (!tripDoc) {
       return res.status(404).json({
         success: false,
         error: 'Trip not found',
       });
     }
 
-    const trip = tripDoc.data() as Trip;
+    const trip = tripDoc.toJSON() as Trip;
     
     if (trip.creatorId !== uid && !trip.participants?.some((p: any) => p.uid === uid)) {
       return res.status(403).json({

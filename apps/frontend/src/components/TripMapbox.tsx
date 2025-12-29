@@ -6,6 +6,8 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import type { TripPlace, TripRoute, ModeOfTravel } from '@tripmatrix/types';
 import { geoInterpolate } from 'd3-geo';
 import { getModeIconSVG } from '@/lib/iconUtils';
+// @ts-ignore - Turf types have export resolution issues
+import * as turf from '@turf/turf';
 
 interface TripMapboxProps {
   places: TripPlace[];
@@ -58,7 +60,30 @@ const getAnimationDuration = (mode: ModeOfTravel | null | undefined): number => 
   }
 };
 
-// Get vehicle icon HTML
+// Vehicle speed constants (km/h) for normalization
+const getVehicleSpeed = (mode: ModeOfTravel | null | undefined): number => {
+  switch (mode) {
+    case 'walk':
+      return 5; // 5 km/h
+    case 'bike':
+      return 20; // 20 km/h
+    case 'car':
+      return 80; // 80 km/h
+    case 'train':
+      return 120; // 120 km/h
+    case 'bus':
+      return 60; // 60 km/h
+    case 'flight':
+      return 800; // 800 km/h
+    default:
+      return 50; // Default 50 km/h
+  }
+};
+
+// Animation state machine
+type AnimationState = 'IDLE' | 'STEP_TRANSITION' | 'FOLLOWING';
+
+// Get vehicle icon HTML (using SVG icons)
 const getVehicleIcon = (mode: ModeOfTravel | null | undefined): string => {
   return getModeIconSVG(mode, '#000');
 };
@@ -103,13 +128,28 @@ export default function TripMapbox({
   const vehicleMarkerRef = useRef<maplibregl.Marker | null>(null);
   const routeStartMarkerRef = useRef<maplibregl.Marker | null>(null);
   const routeEndMarkerRef = useRef<maplibregl.Marker | null>(null);
+  const placeNameMarkersRef = useRef<maplibregl.Marker[]>([]);
   const polylinesRef = useRef<any[]>([]);
   const routesRef = useRef<any[]>([]);
   const animationFrameRef = useRef<number | null>(null);
   const animationIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const targetVehiclePosRef = useRef<[number, number] | null>(null);
+  const lastHighlightedStepRef = useRef<number>(-1);
+  const lastScrollProgressRef = useRef<number>(-1);
   const [mapLoaded, setMapLoaded] = useState(false);
   const routeCoordinatesCache = useRef<Map<string, [number, number][]>>(new Map());
   const routeCreationAbortRef = useRef<AbortController | null>(null);
+  const animationStateRef = useRef<AnimationState>('IDLE');
+  const lastCameraUpdateRef = useRef<number>(0);
+  const lastLogUpdateRef = useRef<number>(0);
+  const routeDistancesRef = useRef<Map<number, number>>(new Map()); // Cache route distances (routeIndex -> distance in km)
+  const lastPlacesDataRef = useRef<string>(''); // Track places data to detect actual changes
+  const cumulativeDistancesRef = useRef<number[]>([]); // Cumulative distances for all steps
+  const lineStringCacheRef = useRef<Map<number, turf.Feature<turf.LineString>>>(new Map()); // Cache Turf LineStrings
+  const lastScrollYRef = useRef<number>(0); // Track scroll direction
+  const animationProgressRef = useRef<number>(0); // Time-based animation progress (0-1)
+  const animationStartTimeRef = useRef<number>(0); // When animation started
+  const animationDurationRef = useRef<number>(10000); // Animation duration in ms (10 seconds default)
 
   // Initialize map
   useEffect(() => {
@@ -300,9 +340,22 @@ export default function TripMapbox({
 
     const map = mapRef.current;
 
+    // Create a stable key from places data to detect actual changes
+    const placesKey = sortedPlacesData.map(p => `${p.placeId}-${p.coordinates?.lat}-${p.coordinates?.lng}`).join('|');
+    const placesChanged = lastPlacesDataRef.current !== placesKey;
+    
+    // Only proceed if places data actually changed or we have routes from props
+    if (!placesChanged && routes.length === 0 && routesRef.current.length > 0) {
+      return;
+    }
+
     // Clear existing markers
     markersRef.current.forEach(marker => marker.remove());
     markersRef.current = [];
+    
+    // Clear existing place name markers
+    placeNameMarkersRef.current.forEach(marker => marker.remove());
+    placeNameMarkersRef.current = [];
 
     // Cancel any ongoing route creation
     if (routeCreationAbortRef.current) {
@@ -310,59 +363,33 @@ export default function TripMapbox({
       routeCreationAbortRef.current = null;
     }
 
-    // Clear existing routes
-    routesRef.current.forEach(route => {
-      if (route.layerId && map.getLayer(route.layerId)) {
-        map.removeLayer(route.layerId);
-      }
-      if (route.sourceId && map.getSource(route.sourceId)) {
-        map.removeSource(route.sourceId);
-      }
-    });
-    routesRef.current = [];
-
-    // Delay marker rendering to prevent icons from appearing immediately
-    const markerTimeout = setTimeout(() => {
-      // Add markers for places
-      sortedPlacesData.forEach((place, index) => {
-        if (!place.coordinates || !place.coordinates.lat || !place.coordinates.lng) return;
-
-        const isHighlighted = index === highlightedStepIndex;
-        const modeColor = getModeColor(place.modeOfTravel);
-        const color = isHighlighted ? '#ffc107' : modeColor;
-
-        // Create custom marker element
-        const el = document.createElement('div');
-        el.className = 'custom-marker';
-        el.style.width = isHighlighted ? '32px' : '24px';
-        el.style.height = isHighlighted ? '32px' : '24px';
-        el.style.borderRadius = '50%';
-        el.style.backgroundColor = color;
-        el.style.border = '3px solid white';
-        el.style.boxShadow = '0 2px 8px rgba(0,0,0,0.3)';
-        el.style.display = 'flex';
-        el.style.alignItems = 'center';
-        el.style.justifyContent = 'center';
-        el.style.fontSize = isHighlighted ? '16px' : '12px';
-        el.style.cursor = 'pointer';
-        el.title = place.name;
-
-        const marker = new maplibregl.Marker(el)
-          .setLngLat([place.coordinates.lng, place.coordinates.lat])
-          .addTo(map);
-
-        markersRef.current.push(marker);
+    // Clear existing routes only if places actually changed or we have routes from props
+    const shouldCreateRoutes = routes.length === 0 && sortedPlacesData.length > 1;
+    const isCreatingRoutes = routeCreationAbortRef.current !== null;
+    
+    // Only clear routes if:
+    // 1. Places data changed AND we need to create new routes AND routes aren't currently being created
+    // 2. OR we have routes from props to replace existing ones
+    if ((placesChanged && shouldCreateRoutes && !isCreatingRoutes) || (routes.length > 0 && !isCreatingRoutes)) {
+      routesRef.current.forEach(route => {
+        if (route.layerId && map.getLayer(route.layerId)) {
+          map.removeLayer(route.layerId);
+        }
+        if (route.sourceId && map.getSource(route.sourceId)) {
+          map.removeSource(route.sourceId);
+        }
       });
-    }, 500); // Delay by 500ms to prevent icons from appearing on initial load
-
-    return () => {
-      clearTimeout(markerTimeout);
-    };
-
-    // Add routes
+      routesRef.current = [];
+    }
+    
+    // Update the places key tracker
+    lastPlacesDataRef.current = placesKey;
+    
     if (routes.length > 0) {
       routes.forEach((route, routeIndex) => {
-        if (!route.points || route.points.length < 2) return;
+        if (!route.points || route.points.length < 2) {
+          return;
+        }
 
         const coordinates = route.points.map(p => [p.lng, p.lat] as [number, number]);
         const color = getModeColor(route.modeOfTravel);
@@ -381,30 +408,93 @@ export default function TripMapbox({
         const sourceId = `route-${routeIndex}`;
         const layerId = `route-layer-${routeIndex}`;
 
-        // Check if source already exists
-        if (map.getSource(sourceId)) {
-          map.removeLayer(layerId);
-          map.removeSource(sourceId);
+        // Ensure coordinates are in [lng, lat] format for MapLibre GL JS
+        const validCoordinates = coordinates.map(coord => {
+          if (Array.isArray(coord) && coord.length >= 2) {
+            return [coord[0], coord[1]] as [number, number];
+          }
+          return null;
+        }).filter(coord => coord !== null) as [number, number][];
+
+        if (validCoordinates.length < 2) {
+          return;
         }
 
-        map.addSource(sourceId, {
-          type: 'geojson',
-          data: {
-            type: 'Feature',
-            properties: {},
-            geometry: {
-              type: 'LineString',
-              coordinates,
-            },
+        // Create GeoJSON Feature following MapLibre GL JS documentation pattern
+        // Reference: https://maplibre.org/maplibre-gl-js/docs/examples/animate-a-line/
+        const geojsonFeature: GeoJSON.Feature<GeoJSON.LineString> = {
+          type: 'Feature',
+          properties: {
+            modeOfTravel: route.modeOfTravel,
+            startIndex: startIndex,
+            endIndex: endIndex,
           },
-        });
+          geometry: {
+            type: 'LineString',
+            coordinates: validCoordinates,
+          },
+        };
+
+        // Add or update source using MapLibre GL JS API (following documentation pattern)
+        if (map.getSource(sourceId)) {
+          // Update existing source data using setData() method (as per MapLibre docs)
+          const source = map.getSource(sourceId) as maplibregl.GeoJSONSource;
+          source.setData(geojsonFeature);
+        } else {
+          // Add new GeoJSON source following MapLibre GL JS documentation pattern
+          map.addSource(sourceId, {
+            type: 'geojson',
+            data: geojsonFeature,
+          });
+        }
+        
+        // Immediately add route to routesRef so it's available for animation
+        const routeInfo = {
+          sourceId,
+          layerId,
+          coordinates: validCoordinates,
+          startIndex,
+          endIndex,
+          modeOfTravel: route.modeOfTravel,
+        };
+        
+        // Check if route already exists to avoid duplicates
+        const existingRouteIndex = routesRef.current.findIndex(
+          r => r.startIndex === startIndex && r.endIndex === endIndex
+        );
+        
+        if (existingRouteIndex >= 0) {
+          // Update existing route
+          routesRef.current[existingRouteIndex] = routeInfo;
+        } else {
+          // Add new route
+          routesRef.current.push(routeInfo);
+        }
 
         // Check if layer already exists and update it, otherwise add new layer
+        const isScrolling = scrollProgress > 0;
         if (map.getLayer(layerId)) {
-          // Update existing layer
-          map.setPaintProperty(layerId, 'line-color', isActive ? '#ffc107' : color);
-          map.setPaintProperty(layerId, 'line-width', isActive ? 4 : 3);
+          // Update existing layer properties
+          if (isActive) {
+            // Active route - always visible, different styling based on scroll
+            if (isScrolling) {
+              map.setPaintProperty(layerId, 'line-color', '#ffc107');
+              map.setPaintProperty(layerId, 'line-width', 10); // Thick when scrolling
+              map.setPaintProperty(layerId, 'line-opacity', 1.0);
+            } else {
+              map.setPaintProperty(layerId, 'line-color', '#ffc107');
+              map.setPaintProperty(layerId, 'line-width', 6); // Medium when at step
+              map.setPaintProperty(layerId, 'line-opacity', 0.8);
+            }
+            map.setLayoutProperty(layerId, 'visibility', 'visible');
+          } else {
+            map.setPaintProperty(layerId, 'line-color', color);
+            map.setPaintProperty(layerId, 'line-width', 3);
+            map.setPaintProperty(layerId, 'line-opacity', isScrolling ? 0.4 : 0.6);
+            map.setLayoutProperty(layerId, 'visibility', 'visible');
+          }
         } else {
+          // Initial layer creation using MapLibre GL JS - always visible
           map.addLayer({
             id: layerId,
             type: 'line',
@@ -412,50 +502,49 @@ export default function TripMapbox({
             layout: {
               'line-join': 'round',
               'line-cap': 'round',
+              'visibility': 'visible', // Always visible
             },
             paint: {
               'line-color': isActive ? '#ffc107' : color,
-              'line-width': isActive ? 4 : 3,
-              'line-opacity': 0.8,
+              'line-width': isActive ? (isScrolling ? 10 : 6) : 3, // Thick when active scrolling, medium when at step
+              'line-opacity': isActive ? (isScrolling ? 1.0 : 0.8) : (isScrolling ? 0.4 : 0.6),
             },
           });
         }
-
-        routesRef.current.push({ 
-          sourceId, 
-          layerId, 
-          coordinates, 
-          startIndex, 
-          endIndex,
-          modeOfTravel: route.modeOfTravel 
-        });
       });
     } else {
       // Create routes between consecutive places
       const createRoutes = async () => {
-        // Create abort controller for this route creation
-        const abortController = new AbortController();
-        routeCreationAbortRef.current = abortController;
+        try {
+          // Create abort controller for this route creation
+          const abortController = new AbortController();
+          routeCreationAbortRef.current = abortController;
 
-        for (let i = 0; i < sortedPlacesData.length - 1; i++) {
-          // Check if operation was aborted
-          if (abortController.signal.aborted) {
+          const routesToCreate = sortedPlacesData.length - 1;
+          
+          if (routesToCreate <= 0) {
             return;
           }
 
-          const current = sortedPlacesData[i];
-          const next = sortedPlacesData[i + 1];
+          for (let i = 0; i < routesToCreate; i++) {
+            // Check if operation was aborted
+            if (abortController.signal.aborted) {
+              return;
+            }
 
-          if (
-            !current.coordinates ||
-            !current.coordinates.lat ||
-            !current.coordinates.lng ||
-            !next.coordinates ||
-            !next.coordinates.lat ||
-            !next.coordinates.lng
-          ) {
-            continue;
-          }
+            const current = sortedPlacesData[i];
+            const next = sortedPlacesData[i + 1];
+
+            if (
+              !current.coordinates ||
+              !current.coordinates.lat ||
+              !current.coordinates.lng ||
+              !next.coordinates ||
+              !next.coordinates.lat ||
+              !next.coordinates.lng
+            ) {
+              continue;
+            }
 
           // Mode of travel should come from the destination step (next)
           const mode = next.modeOfTravel;
@@ -508,6 +597,15 @@ export default function TripMapbox({
                 next.coordinates.lng,
                 next.coordinates.lat
               );
+              
+              if (!coordinates || coordinates.length === 0) {
+                // Fallback: create direct path
+                coordinates = [
+                  [current.coordinates.lng, current.coordinates.lat],
+                  [next.coordinates.lng, next.coordinates.lat]
+                ];
+              }
+              
               // Check again after async operation
               if (abortController.signal.aborted) {
                 return;
@@ -520,25 +618,100 @@ export default function TripMapbox({
           if (abortController.signal.aborted) {
             return;
           }
+          
+          if (!coordinates || coordinates.length < 2) {
+            continue;
+          }
 
-          map.addSource(sourceId, {
-            type: 'geojson',
-            data: {
-              type: 'Feature',
-              properties: {},
-              geometry: {
-                type: 'LineString',
-                coordinates,
-              },
+          // Ensure coordinates are in [lng, lat] format for MapLibre GL JS
+          const validCoordinates = coordinates.map(coord => {
+            if (Array.isArray(coord) && coord.length >= 2) {
+              return [coord[0], coord[1]] as [number, number];
+            }
+            return null;
+          }).filter(coord => coord !== null) as [number, number][];
+
+          if (validCoordinates.length < 2) {
+            continue;
+          }
+
+          // Create GeoJSON Feature following MapLibre GL JS documentation pattern
+          // https://maplibre.org/maplibre-gl-js/docs/examples/animate-a-line/
+          const geojsonFeature: GeoJSON.Feature<GeoJSON.LineString> = {
+            type: 'Feature',
+            properties: {
+              modeOfTravel: mode,
+              startIndex: i,
+              endIndex: i + 1,
             },
-          });
+            geometry: {
+              type: 'LineString',
+              coordinates: validCoordinates,
+            },
+          };
+
+          // Add or update source using MapLibre GL JS API (following documentation pattern)
+          // Reference: https://maplibre.org/maplibre-gl-js/docs/examples/animate-a-line/
+          if (map.getSource(sourceId)) {
+            // Update existing source data using setData() method (as per MapLibre docs)
+            const source = map.getSource(sourceId) as maplibregl.GeoJSONSource;
+            source.setData(geojsonFeature);
+          } else {
+            // Add new GeoJSON source following MapLibre GL JS documentation pattern
+            map.addSource(sourceId, {
+              type: 'geojson',
+              data: geojsonFeature,
+            });
+          }
+          
+          // Immediately add route to routesRef so it's available for animation
+          // This ensures routes are available even if layer creation is delayed
+          const routeInfo = {
+            sourceId,
+            layerId,
+            coordinates: validCoordinates,
+            startIndex: i,
+            endIndex: i + 1,
+            modeOfTravel: mode,
+          };
+          
+          // Check if route already exists to avoid duplicates
+          const existingRouteIndex = routesRef.current.findIndex(
+            r => r.startIndex === i && r.endIndex === i + 1
+          );
+          
+          if (existingRouteIndex >= 0) {
+            // Update existing route
+            routesRef.current[existingRouteIndex] = routeInfo;
+          } else {
+            // Add new route
+            routesRef.current.push(routeInfo);
+          }
 
           // Check if layer already exists and update it, otherwise add new layer
+          const isScrolling = scrollProgress > 0;
           if (map.getLayer(layerId)) {
-            // Update existing layer
-            map.setPaintProperty(layerId, 'line-color', isActive ? '#ffc107' : color);
-            map.setPaintProperty(layerId, 'line-width', isActive ? 4 : 3);
+            // Update existing layer properties
+            if (isActive) {
+              // Active route - always visible, different styling based on scroll
+              if (isScrolling) {
+                map.setPaintProperty(layerId, 'line-color', '#ffc107');
+                map.setPaintProperty(layerId, 'line-width', 10); // Thick when scrolling
+                map.setPaintProperty(layerId, 'line-opacity', 1.0);
+              } else {
+                map.setPaintProperty(layerId, 'line-color', '#ffc107');
+                map.setPaintProperty(layerId, 'line-width', 6); // Medium when at step
+                map.setPaintProperty(layerId, 'line-opacity', 0.8);
+              }
+              map.setLayoutProperty(layerId, 'visibility', 'visible');
+            } else {
+              map.setPaintProperty(layerId, 'line-color', color);
+              map.setPaintProperty(layerId, 'line-width', 3);
+              map.setPaintProperty(layerId, 'line-opacity', isScrolling ? 0.4 : 0.6);
+              map.setLayoutProperty(layerId, 'visibility', 'visible');
+            }
           } else {
+            // Initial layer creation - always visible
             map.addLayer({
               id: layerId,
               type: 'line',
@@ -546,51 +719,160 @@ export default function TripMapbox({
               layout: {
                 'line-join': 'round',
                 'line-cap': 'round',
+                'visibility': 'visible', // Always visible
               },
               paint: {
                 'line-color': isActive ? '#ffc107' : color,
-                'line-width': isActive ? 4 : 3,
-                'line-opacity': 0.8,
+                'line-width': isActive ? (isScrolling ? 10 : 6) : 3, // Thick when active scrolling, medium when at step
+                'line-opacity': isActive ? (isScrolling ? 1.0 : 0.8) : (isScrolling ? 0.4 : 0.6),
               },
             });
           }
-
-          routesRef.current.push({ 
-            sourceId, 
-            layerId, 
-            coordinates, 
-            startIndex: i, 
-            endIndex: i + 1,
-            modeOfTravel: mode 
-          });
         }
         
-        // Clear abort controller when done
-        if (routeCreationAbortRef.current === abortController) {
-          routeCreationAbortRef.current = null;
+          // Clear abort controller when done
+          if (routeCreationAbortRef.current === abortController) {
+            routeCreationAbortRef.current = null;
+          }
+        } catch (error) {
+          console.error('Error in route creation:', error);
+          // Clear abort controller on error
+          if (routeCreationAbortRef.current) {
+            routeCreationAbortRef.current = null;
+          }
         }
       };
+      
       createRoutes();
     }
-  }, [mapLoaded, sortedPlacesData, routes]);
+  }, [mapLoaded, sortedPlacesData, routes]); // Removed scrollProgress - route creation shouldn't depend on scroll
 
-  // Update route colors when highlighted step changes
+  // Add place name labels to the map
+  useEffect(() => {
+    if (!mapRef.current || !mapLoaded || sortedPlacesData.length === 0) return;
+
+    const map = mapRef.current;
+
+    // Clear existing place name markers
+    placeNameMarkersRef.current.forEach(marker => marker.remove());
+    placeNameMarkersRef.current = [];
+
+    // Add place name labels
+    sortedPlacesData.forEach((place, index) => {
+      if (!place.coordinates || !place.coordinates.lat || !place.coordinates.lng) return;
+
+      const isHighlighted = index === highlightedStepIndex;
+
+      // Create place name label
+      const labelEl = document.createElement('div');
+      labelEl.className = 'place-name-label';
+      labelEl.textContent = place.name || 'Place';
+      labelEl.style.backgroundColor = isHighlighted ? 'rgba(255, 193, 7, 0.95)' : 'rgba(0, 0, 0, 0.85)';
+      labelEl.style.color = isHighlighted ? '#000' : 'white';
+      labelEl.style.padding = '4px 8px';
+      labelEl.style.borderRadius = '4px';
+      labelEl.style.fontSize = '11px';
+      labelEl.style.fontWeight = '400'; // Regular weight, not bold
+      labelEl.style.whiteSpace = 'nowrap';
+      labelEl.style.pointerEvents = 'none';
+      labelEl.style.boxShadow = '0 2px 6px rgba(0,0,0,0.4)';
+      labelEl.style.border = isHighlighted ? '2px solid #ffc107' : '1px solid rgba(255,255,255,0.3)';
+      labelEl.style.zIndex = '50'; // Lower than modal (z-[100]) so labels don't appear above comments
+      labelEl.style.fontFamily = 'system-ui, -apple-system, sans-serif';
+      labelEl.style.letterSpacing = '0.2px';
+
+      const labelMarker = new maplibregl.Marker({
+        element: labelEl,
+        anchor: 'bottom',
+        offset: [0, -15], // Offset above the place marker
+      })
+        .setLngLat([place.coordinates.lng, place.coordinates.lat])
+        .addTo(map);
+
+      placeNameMarkersRef.current.push(labelMarker);
+    });
+
+    return () => {
+      placeNameMarkersRef.current.forEach(marker => marker.remove());
+      placeNameMarkersRef.current = [];
+    };
+  }, [mapLoaded, sortedPlacesData, highlightedStepIndex]);
+
+  // Calculate and cache route distances and cumulative distances
+  useEffect(() => {
+    if (routesRef.current.length === 0 || !mapLoaded) return;
+
+    // Reset cumulative distances
+    cumulativeDistancesRef.current = [];
+    let cumulative = 0;
+
+    routesRef.current.forEach((route, index) => {
+      if (!route.coordinates || route.coordinates.length < 2) {
+        cumulativeDistancesRef.current.push(cumulative);
+        return;
+      }
+
+      // Check cache first
+      if (lineStringCacheRef.current.has(index)) {
+        const lineString = lineStringCacheRef.current.get(index)!;
+        const distance = turf.length(lineString, { units: 'kilometers' });
+        routeDistancesRef.current.set(index, distance);
+        cumulative += distance;
+        cumulativeDistancesRef.current.push(cumulative);
+      } else {
+        // Create Turf LineString
+        const lineString = turf.lineString(route.coordinates);
+        lineStringCacheRef.current.set(index, lineString);
+        
+        // Calculate distance
+        const distance = turf.length(lineString, { units: 'kilometers' });
+        routeDistancesRef.current.set(index, distance);
+        cumulative += distance;
+        cumulativeDistancesRef.current.push(cumulative);
+      }
+    });
+  }, [routesRef.current.length, mapLoaded]);
+
+  // Update route colors and visibility when highlighted step or scroll progress changes
   useEffect(() => {
     if (!mapRef.current || !mapLoaded) return;
 
     const map = mapRef.current;
+    const isScrolling = scrollProgress > 0; // Show route when any scrolling (even 0.01%)
 
-    // Update all route layers with correct active state
+    // Update all route layers with correct active state and visibility
     routesRef.current.forEach((route) => {
       const isActive = route.startIndex === highlightedStepIndex;
       const color = getModeColor(route.modeOfTravel);
       
-      if (map.getLayer(route.layerId)) {
-        map.setPaintProperty(route.layerId, 'line-color', isActive ? '#ffc107' : color);
-        map.setPaintProperty(route.layerId, 'line-width', isActive ? 4 : 3);
+      if (!map.getLayer(route.layerId)) {
+        return;
+      }
+      
+      // Always show routes - never hide them
+      // Active route (from current step to next step)
+      if (isActive) {
+        if (isScrolling) {
+          // Show route prominently when scrolling - make it very thick and visible
+          map.setPaintProperty(route.layerId, 'line-color', '#ffc107'); // Yellow highlight
+          map.setPaintProperty(route.layerId, 'line-width', 10); // Thick when scrolling
+          map.setPaintProperty(route.layerId, 'line-opacity', 1.0);
+        } else {
+          // Show route but less prominent when at step
+          map.setPaintProperty(route.layerId, 'line-color', '#ffc107'); // Yellow highlight
+          map.setPaintProperty(route.layerId, 'line-width', 6); // Medium thickness when at step
+          map.setPaintProperty(route.layerId, 'line-opacity', 0.8);
+        }
+        map.setLayoutProperty(route.layerId, 'visibility', 'visible');
+      } else {
+        // Inactive routes - show with mode color but dimmed
+        map.setPaintProperty(route.layerId, 'line-color', color);
+        map.setPaintProperty(route.layerId, 'line-width', 3);
+        map.setPaintProperty(route.layerId, 'line-opacity', isScrolling ? 0.4 : 0.6);
+        map.setLayoutProperty(route.layerId, 'visibility', 'visible');
       }
     });
-  }, [highlightedStepIndex, mapLoaded]);
+  }, [highlightedStepIndex, scrollProgress, mapLoaded]);
 
   // Animate vehicle along active route using leafmap-style approach
   useEffect(() => {
@@ -635,19 +917,17 @@ export default function TripMapbox({
     }
     
     if (!activeRoute || !activeRoute.coordinates || activeRoute.coordinates.length === 0) {
-      // Clear route markers if no active route
-      if (routeStartMarkerRef.current) {
-        routeStartMarkerRef.current.remove();
-        routeStartMarkerRef.current = null;
-      }
-      if (routeEndMarkerRef.current) {
-        routeEndMarkerRef.current.remove();
-        routeEndMarkerRef.current = null;
-      }
+      // Don't remove markers - keep them visible even if route is being calculated
+      // Only remove vehicle marker if no route
       if (vehicleMarkerRef.current) {
         vehicleMarkerRef.current.remove();
         vehicleMarkerRef.current = null;
       }
+      
+      // Check if routes are still being created
+      const isCreatingRoutes = routeCreationAbortRef.current !== null;
+      
+      // Routes are being created or not available yet
       return;
     }
 
@@ -656,20 +936,29 @@ export default function TripMapbox({
     const endPlace = sortedPlacesData[activeRoute.endIndex];
     
     // Get mode of travel for vehicle icon (from the destination place - where you're going)
+    // Use the next step's mode of travel, or the route's mode if not available
     const mode = endPlace?.modeOfTravel || activeRoute.modeOfTravel;
+    
+    // Update vehicle icon if mode changed
+    if (vehicleMarkerRef.current) {
+      const vehicleEl = vehicleMarkerRef.current.getElement();
+      if (vehicleEl) {
+        vehicleEl.innerHTML = getVehicleIcon(mode);
+      }
+    }
 
-    // Create/update start point marker (circular)
+    // Create/update start point marker (circular) - always keep visible
     if (startPlace && startPlace.coordinates && startPlace.coordinates.lat && startPlace.coordinates.lng) {
       if (!routeStartMarkerRef.current) {
         const startEl = document.createElement('div');
         startEl.className = 'route-start-marker';
-        startEl.style.width = '12px';
-        startEl.style.height = '12px';
+        startEl.style.width = '14px';
+        startEl.style.height = '14px';
         startEl.style.borderRadius = '50%';
         startEl.style.backgroundColor = '#22c55e';
-        startEl.style.border = '2px solid white';
-        startEl.style.boxShadow = '0 2px 4px rgba(0,0,0,0.3)';
-        startEl.style.zIndex = '9999';
+        startEl.style.border = '3px solid white';
+        startEl.style.boxShadow = '0 2px 6px rgba(0,0,0,0.5)';
+        startEl.style.zIndex = '50'; // Lower than modal (z-[100]) so markers don't appear above comments
         startEl.style.pointerEvents = 'none';
 
         routeStartMarkerRef.current = new maplibregl.Marker({
@@ -679,22 +968,23 @@ export default function TripMapbox({
           .setLngLat([startPlace.coordinates.lng, startPlace.coordinates.lat])
           .addTo(map);
       } else {
+        // Always update position, don't remove
         routeStartMarkerRef.current.setLngLat([startPlace.coordinates.lng, startPlace.coordinates.lat]);
       }
     }
 
-    // Create/update end point marker (circular)
+    // Create/update end point marker (circular) - always keep visible
     if (endPlace && endPlace.coordinates && endPlace.coordinates.lat && endPlace.coordinates.lng) {
       if (!routeEndMarkerRef.current) {
         const endEl = document.createElement('div');
         endEl.className = 'route-end-marker';
-        endEl.style.width = '12px';
-        endEl.style.height = '12px';
+        endEl.style.width = '14px';
+        endEl.style.height = '14px';
         endEl.style.borderRadius = '50%';
         endEl.style.backgroundColor = '#ef4444';
-        endEl.style.border = '2px solid white';
-        endEl.style.boxShadow = '0 2px 4px rgba(0,0,0,0.3)';
-        endEl.style.zIndex = '9999';
+        endEl.style.border = '3px solid white';
+        endEl.style.boxShadow = '0 2px 6px rgba(0,0,0,0.5)';
+        endEl.style.zIndex = '50'; // Lower than modal (z-[100]) so markers don't appear above comments
         endEl.style.pointerEvents = 'none';
 
         routeEndMarkerRef.current = new maplibregl.Marker({
@@ -704,6 +994,7 @@ export default function TripMapbox({
           .setLngLat([endPlace.coordinates.lng, endPlace.coordinates.lat])
           .addTo(map);
       } else {
+        // Always update position, don't remove
         routeEndMarkerRef.current.setLngLat([endPlace.coordinates.lng, endPlace.coordinates.lat]);
       }
     }
@@ -717,20 +1008,54 @@ export default function TripMapbox({
       return;
     }
 
+    // Get route index for distance lookup
+    const routeIndex = routesRef.current.findIndex(
+      r => r.startIndex === activeRoute.startIndex && r.endIndex === activeRoute.endIndex
+    );
+
+    // Get or create Turf LineString for this route
+    let lineString: turf.Feature<turf.LineString>;
+    if (lineStringCacheRef.current.has(routeIndex)) {
+      lineString = lineStringCacheRef.current.get(routeIndex)!;
+    } else {
+      lineString = turf.lineString(activeRoute.coordinates);
+      lineStringCacheRef.current.set(routeIndex, lineString);
+    }
+
+    // Calculate route distance (in km)
+    const routeDistance = routeDistancesRef.current.get(routeIndex) || 
+      turf.length(lineString, { units: 'kilometers' });
+    
+    // Normalize scroll progress to route distance
+    // Target: 1% scroll = 1km movement (adjustable)
+    const TARGET_DISTANCE_PER_SCROLL = 1; // km per 1% scroll
+    const normalizedProgress = Math.max(0, Math.min(1, scrollProgress));
+    
     // Calculate progress based on scroll position (0 = start, 1 = end)
-    // scrollProgress is the progress between current step and next step
-    const routeCoords = activeRoute.coordinates;
     // If at last step, vehicle should be at destination (progress = 1)
-    const finalProgress = highlightedStepIndex === sortedPlacesData.length - 1 ? 1 : Math.max(0, Math.min(1, scrollProgress));
-    const coordIndex = Math.floor(routeCoords.length * finalProgress);
-    const [initialLng, initialLat] = routeCoords[Math.min(coordIndex, routeCoords.length - 1)];
+    let finalProgress: number;
+    if (highlightedStepIndex === sortedPlacesData.length - 1) {
+      finalProgress = 1;
+    } else {
+      // Normalize scroll progress to actual route distance
+      const targetDistance = normalizedProgress * routeDistance;
+      const normalizedDistance = Math.min(routeDistance, targetDistance);
+      finalProgress = routeDistance > 0 ? normalizedDistance / routeDistance : 0;
+    }
+
+    // Use Turf's along() for distance-based interpolation
+    // Fix reverse direction: invert progress so vehicle moves forward as scrollProgress increases
+    const reversedProgress = 1 - finalProgress; // Invert to fix reverse direction
+    const targetDistanceAlongRoute = reversedProgress * routeDistance;
+    const point = turf.along(lineString, targetDistanceAlongRoute, { units: 'kilometers' });
+    const [initialLng, initialLat] = point.geometry.coordinates;
 
     // Create or update vehicle marker (no circle, just icon)
     if (!vehicleMarkerRef.current) {
       const vehicleEl = document.createElement('div');
       vehicleEl.className = 'vehicle-marker';
-      vehicleEl.style.fontSize = '20px';
-      vehicleEl.style.zIndex = '10000';
+      vehicleEl.style.fontSize = '32px'; // Increased from 20px to 32px for better visibility
+      vehicleEl.style.zIndex = '50'; // Lower than modal (z-[100]) so vehicle doesn't appear above comments
       vehicleEl.style.pointerEvents = 'none';
       vehicleEl.style.filter = 'drop-shadow(0 2px 4px rgba(0,0,0,0.5))';
       vehicleEl.innerHTML = getVehicleIcon(mode);
@@ -742,60 +1067,279 @@ export default function TripMapbox({
         .setLngLat([initialLng, initialLat])
         .addTo(map);
     } else {
-      vehicleMarkerRef.current.setLngLat([initialLng, initialLat]);
+      // Update vehicle icon if mode changed
+      const vehicleEl = vehicleMarkerRef.current.getElement();
+      if (vehicleEl) {
+        const currentIcon = vehicleEl.innerHTML;
+        const newIcon = getVehicleIcon(mode);
+        if (currentIcon !== newIcon) {
+          vehicleEl.innerHTML = newIcon;
+        }
+      }
+      // Don't set position here - let animation handle it
     }
 
-    // Update vehicle position based on scroll progress (no animation, direct update)
+    // Calculate target position based on scroll progress using Turf (distance-based)
+    const calculateTargetPosition = (): [number, number] => {
+      // Get route index for distance lookup
+      const routeIdx = routesRef.current.findIndex(
+        r => r.startIndex === activeRoute.startIndex && r.endIndex === activeRoute.endIndex
+      );
+
+      // Get or create Turf LineString
+      let lineStr: turf.Feature<turf.LineString>;
+      if (lineStringCacheRef.current.has(routeIdx)) {
+        lineStr = lineStringCacheRef.current.get(routeIdx)!;
+      } else {
+        lineStr = turf.lineString(activeRoute.coordinates);
+        lineStringCacheRef.current.set(routeIdx, lineStr);
+      }
+
+      // Get route distance
+      const routeDist = routeDistancesRef.current.get(routeIdx) || 
+        turf.length(lineStr, { units: 'kilometers' });
+
+      // Calculate progress based on scroll
+      let progress: number;
+      if (highlightedStepIndex === sortedPlacesData.length - 1) {
+        progress = 1;
+      } else if (highlightedStepIndex === 0 && scrollProgress === 0) {
+        progress = 0;
+      } else {
+        // Normalize scroll progress to route distance
+        // scrollProgress: 0 = at current step (start), 1 = at next step (end)
+        const normalizedProgress = Math.max(0, Math.min(1, scrollProgress));
+        const targetDistance = normalizedProgress * routeDist;
+        const normalizedDistance = Math.min(routeDist, targetDistance);
+        progress = routeDist > 0 ? normalizedDistance / routeDist : 0;
+      }
+
+      // Use Turf's along() for precise distance-based interpolation
+      // Fix reverse direction: invert progress so vehicle moves forward as scrollProgress increases
+      const reversedProgress = 1 - progress; // Invert progress to fix reverse direction
+      const targetDistanceAlongRoute = reversedProgress * routeDist;
+      const point = turf.along(lineStr, targetDistanceAlongRoute, { units: 'kilometers' });
+      return point.geometry.coordinates as [number, number];
+    };
+
+    // Update target position
+    targetVehiclePosRef.current = calculateTargetPosition();
+
+    // If vehicle doesn't exist yet, set directly
+    if (!vehicleMarkerRef.current) {
+      return;
+    }
+
+    // Check if step changed - trigger step transition state
+    const stepChanged = lastHighlightedStepRef.current !== highlightedStepIndex;
+    if (stepChanged) {
+      animationStateRef.current = 'STEP_TRANSITION';
+      // Cancel any pending camera animations
+      if (map.isMoving()) {
+        map.stop();
+      }
+    }
+
+    // Update vehicle position directly based on scroll progress (smooth and responsive)
     // Cancel any existing animation
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
       animationFrameRef.current = null;
     }
-    if (animationIntervalRef.current) {
-      clearInterval(animationIntervalRef.current);
-      animationIntervalRef.current = null;
-    }
 
-    // Update vehicle position directly based on scroll progress
-    const updateVehiclePosition = () => {
-      // If at last step, vehicle should be at destination (progress = 1)
-      let progress: number;
-      if (highlightedStepIndex === sortedPlacesData.length - 1) {
-        // At the last step, vehicle is at destination
-        progress = 1;
-      } else if (highlightedStepIndex === 0 && scrollProgress === 0) {
-        // At the first step with no scroll, vehicle is at start
-        progress = 0;
-      } else {
-        // Normalize scroll progress between 0 and 1
-        progress = Math.max(0, Math.min(1, scrollProgress));
+    // Get route distance and mode for speed normalization
+    const routeIdx = routesRef.current.findIndex(
+      r => r.startIndex === activeRoute.startIndex && r.endIndex === activeRoute.endIndex
+    );
+    const routeDist = routeDistancesRef.current.get(routeIdx) || 1; // Default 1km if not calculated
+    const vehicleSpeed = getVehicleSpeed(mode); // km/h
+    const baseRouteLength = 10; // Base route length for normalization (10km)
+    
+    // Normalize easing factor based on route length and vehicle speed
+    // Longer routes or faster vehicles get higher easing factor for smoother movement
+    const speedMultiplier = vehicleSpeed / 50; // Normalize to 50 km/h base
+    const lengthMultiplier = Math.min(2, Math.max(0.5, baseRouteLength / routeDist));
+    const baseEasingFactor = 0.25;
+    const normalizedEasingFactor = baseEasingFactor * speedMultiplier * lengthMultiplier;
+
+    // Smooth animation loop that moves vehicle along the exact route path
+    const animateVehicle = () => {
+      if (!vehicleMarkerRef.current || !map || !activeRoute) {
+        animationFrameRef.current = null;
+        return;
       }
-      
-      const coordIndex = Math.floor(routeCoords.length * progress);
-      const targetIndex = Math.min(Math.max(0, coordIndex), routeCoords.length - 1);
-      const [lng, lat] = routeCoords[targetIndex];
-      
-      if (vehicleMarkerRef.current) {
-        vehicleMarkerRef.current.setLngLat([lng, lat]);
+
+      // Don't animate camera during step transition
+      if (animationStateRef.current === 'STEP_TRANSITION') {
+        animationFrameRef.current = requestAnimationFrame(animateVehicle);
+        return;
       }
+
+      // Set state to FOLLOWING after step transition completes
+      if (animationStateRef.current === 'IDLE') {
+        animationStateRef.current = 'FOLLOWING';
+      }
+
+      // Recalculate target position based on scroll progress
+      const targetPos = calculateTargetPosition();
+      targetVehiclePosRef.current = targetPos;
+
+      const currentLngLat = vehicleMarkerRef.current.getLngLat();
+      const [currentLng, currentLat] = [currentLngLat.lng, currentLngLat.lat];
+      const [targetLng, targetLat] = targetVehiclePosRef.current;
+
+      // Calculate distance
+      const deltaLng = targetLng - currentLng;
+      const deltaLat = targetLat - currentLat;
+      const distance = Math.sqrt(deltaLng * deltaLng + deltaLat * deltaLat);
+
+      // If very close, snap to target
+      if (distance < 0.00001) {
+        vehicleMarkerRef.current.setLngLat(targetVehiclePosRef.current);
+        // Continue checking for new targets
+        animationFrameRef.current = requestAnimationFrame(animateVehicle);
+        return;
+      }
+
+      // Smooth interpolation with normalized easing
+      const newLng = currentLng + deltaLng * normalizedEasingFactor;
+      const newLat = currentLat + deltaLat * normalizedEasingFactor;
+      const newPos: [number, number] = [newLng, newLat];
+
+      // Update vehicle marker position
+      vehicleMarkerRef.current.setLngLat(newPos);
+
+      // Throttle camera updates (only update every 100-200ms, not every frame)
+      const now = Date.now();
+      const timeSinceLastUpdate = now - lastCameraUpdateRef.current;
+      const CAMERA_UPDATE_INTERVAL = 100; // ms (reduced for smoother camera following)
+
+      // Camera follows the vehicle smoothly (only if moving and enough time passed)
+      // Note: Zoom changes are handled by a separate useEffect to avoid conflicts
+      if (distance > 0.0001 && timeSinceLastUpdate >= CAMERA_UPDATE_INTERVAL && animationStateRef.current === 'FOLLOWING') {
+        // Don't update camera if map is already animating (prevents conflicts)
+        if (!map.isMoving() && scrollProgress > 0.05) {
+          // Follow vehicle position while maintaining zoom (zoom is handled by separate effect)
+          const bearing = Math.atan2(deltaLng, deltaLat) * (180 / Math.PI);
+          map.easeTo({
+            center: newPos,
+            zoom: 15, // 100% zoom (maintained by separate effect)
+            pitch: 60,
+            bearing: bearing,
+            duration: CAMERA_UPDATE_INTERVAL,
+            easing: (t) => t,
+          });
+          
+          lastCameraUpdateRef.current = now;
+        }
+      }
+
+      // Log vehicle position and distances during animation (throttled to once per second)
+      const LOG_UPDATE_INTERVAL = 1000; // 1 second
+      const timeSinceLastLog = now - lastLogUpdateRef.current;
+      if (timeSinceLastLog >= LOG_UPDATE_INTERVAL && activeRoute) {
+        const currentPlace = sortedPlacesData[highlightedStepIndex];
+        const nextPlace = sortedPlacesData[highlightedStepIndex + 1];
+        
+        if (currentPlace?.coordinates) {
+          // Calculate distance from current step to vehicle position
+          const distanceFromCurrent = calculateDistance(
+            currentPlace.coordinates.lat,
+            currentPlace.coordinates.lng,
+            targetLat,
+            targetLng
+          );
+          
+          // Calculate distance to next step if it exists
+          let distanceToNext = null;
+          if (nextPlace?.coordinates) {
+            distanceToNext = calculateDistance(
+              targetLat,
+              targetLng,
+              nextPlace.coordinates.lat,
+              nextPlace.coordinates.lng
+            );
+          }
+          
+          
+          lastLogUpdateRef.current = now;
+        }
+      }
+
+      // Continue animation loop
+      animationFrameRef.current = requestAnimationFrame(animateVehicle);
     };
 
-    updateVehiclePosition();
+    // Start animation loop
+    animationFrameRef.current = requestAnimationFrame(animateVehicle);
     
-    // Also pan map to show the active route when highlighted step changes
-    if (activeRoute && activeRoute.coordinates && activeRoute.coordinates.length > 0) {
+    // Handle zoom to step location when step changes (with state machine coordination)
+    if (stepChanged && activeRoute) {
       try {
-        const bounds = activeRoute.coordinates.reduce((bounds: maplibregl.LngLatBounds, coord: [number, number]) => {
-          return bounds.extend(coord);
-        }, new maplibregl.LngLatBounds(activeRoute.coordinates[0], activeRoute.coordinates[0]));
+        const currentPlace = sortedPlacesData[highlightedStepIndex];
+        const nextPlace = sortedPlacesData[highlightedStepIndex + 1];
         
-        map.fitBounds(bounds, {
-          padding: { top: 50, bottom: 50, left: 50, right: 50 },
-          duration: 500,
-          maxZoom: 12,
-        });
+        
+        // Cancel any pending animations before starting step transition
+        if (map.isMoving()) {
+          map.stop();
+        }
+        
+        // Set transition state
+        animationStateRef.current = 'STEP_TRANSITION';
+        
+        // When step changes, show route at 100% zoom with both places visible
+        if (currentPlace?.coordinates?.lat && currentPlace?.coordinates?.lng) {
+          const nextPlace = sortedPlacesData[highlightedStepIndex + 1];
+          if (nextPlace?.coordinates?.lat && nextPlace?.coordinates?.lng) {
+            // Calculate bounding box to fit both places
+            const lngs = [currentPlace.coordinates.lng, nextPlace.coordinates.lng];
+            const lats = [currentPlace.coordinates.lat, nextPlace.coordinates.lat];
+            
+            const minLng = Math.min(...lngs);
+            const maxLng = Math.max(...lngs);
+            const minLat = Math.min(...lats);
+            const maxLat = Math.max(...lats);
+            
+            // Add padding to the bounds
+            const padding = 0.01; // ~1km padding
+            
+            map.fitBounds(
+              [
+                [minLng - padding, minLat - padding],
+                [maxLng + padding, maxLat + padding]
+              ],
+              {
+                padding: { top: 50, bottom: 50, left: 50, right: 50 },
+                maxZoom: 15, // 100% zoom
+                duration: 800,
+              }
+            );
+            
+            // Transition complete, allow following
+            setTimeout(() => {
+              animationStateRef.current = 'FOLLOWING';
+            }, 800);
+          } else {
+            // No next place, just zoom to current step at 80%
+            map.flyTo({
+              center: [currentPlace.coordinates.lng, currentPlace.coordinates.lat],
+              zoom: 8, // 80% zoom level
+              duration: 800,
+              essential: true,
+            }, () => {
+              animationStateRef.current = 'FOLLOWING';
+            });
+          }
+        } else {
+          animationStateRef.current = 'FOLLOWING';
+        }
+        
+        // Update refs
+        lastHighlightedStepRef.current = highlightedStepIndex;
       } catch (error) {
-        console.warn('Failed to fit bounds for active route:', error);
+        console.warn('Failed to update map view:', error);
+        animationStateRef.current = 'FOLLOWING';
       }
     }
 
@@ -822,6 +1366,63 @@ export default function TripMapbox({
     };
   }, [mapLoaded, highlightedStepIndex, sortedPlacesData, animationSpeed, scrollProgress]);
 
+  // Separate effect to handle zoom changes when step changes
+  // Vehicle animation is now automatic, so zoom is based on step changes only
+  useEffect(() => {
+    if (!mapRef.current || !mapLoaded) return;
+    
+    const map = mapRef.current;
+    
+    // Don't update if map is already animating
+    if (map.isMoving()) {
+      return;
+    }
+    
+    // When step changes: show route at 100% zoom with both places visible
+    const currentPlace = sortedPlacesData[highlightedStepIndex];
+    const nextPlace = sortedPlacesData[highlightedStepIndex + 1];
+    
+    if (currentPlace?.coordinates && nextPlace?.coordinates) {
+      // Calculate bounding box to fit both places
+      const lngs = [currentPlace.coordinates.lng, nextPlace.coordinates.lng];
+      const lats = [currentPlace.coordinates.lat, nextPlace.coordinates.lat];
+      
+      const minLng = Math.min(...lngs);
+      const maxLng = Math.max(...lngs);
+      const minLat = Math.min(...lats);
+      const maxLat = Math.max(...lats);
+      
+      // Add padding to the bounds (percentage of the range)
+      const lngRange = maxLng - minLng;
+      const latRange = maxLat - minLat;
+      const paddingLng = Math.max(0.01, lngRange * 0.1); // 10% padding or minimum 0.01
+      const paddingLat = Math.max(0.01, latRange * 0.1);
+      
+      // Use fitBounds to show both places at 100% zoom
+      map.fitBounds(
+        [
+          [minLng - paddingLng, minLat - paddingLat],
+          [maxLng + paddingLng, maxLat + paddingLat]
+        ],
+        {
+          padding: { top: 50, bottom: 50, left: 50, right: 50 },
+          maxZoom: 15, // 100% zoom
+          duration: 500,
+        }
+      );
+    } else if (currentPlace?.coordinates) {
+      // No next place, just zoom to current step at 80%
+      map.easeTo({
+        center: [currentPlace.coordinates.lng, currentPlace.coordinates.lat],
+        zoom: 8, // 80% zoom
+        pitch: 0,
+        bearing: 0,
+        duration: 500,
+        easing: (t) => t,
+      });
+    }
+  }, [mapLoaded, highlightedStepIndex, sortedPlacesData]);
+
   // Optionally pan to highlighted step (without zoom) - commented out to prevent zoom changes
   // useEffect(() => {
   //   if (!mapRef.current || !mapLoaded || highlightedStepIndex < 0) return;
@@ -838,13 +1439,20 @@ export default function TripMapbox({
 
   return (
     <>
-      {/* Hide MapLibre attribution with CSS */}
+      {/* Hide MapLibre attribution with CSS and ensure map stays below modals */}
       <style jsx global>{`
         .maplibregl-ctrl-attrib {
           display: none !important;
         }
         .maplibregl-ctrl-bottom-right {
           display: none !important;
+        }
+        /* Ensure map canvas stays below modals on all browsers including mobile Safari */
+        .maplibregl-map,
+        .maplibregl-canvas-container,
+        .maplibregl-canvas {
+          z-index: 1 !important;
+          position: relative !important;
         }
       `}</style>
       <div
@@ -854,6 +1462,7 @@ export default function TripMapbox({
           height,
           position: 'relative',
           background: '#000',
+          zIndex: 1, // Lower z-index to ensure it stays below modals
         }}
       />
     </>

@@ -10,6 +10,8 @@ import type {
   User,
   TravelDiary,
   PlaceComment,
+  TripComment,
+  Notification,
 } from '@tripmatrix/types';
 
 // Normalize API URL - remove port from HTTPS URLs (Railway uses default HTTPS port)
@@ -135,6 +137,22 @@ export async function addParticipants(
   return result.data;
 }
 
+export async function removeParticipants(
+  tripId: string,
+  participants: string[],
+  token: string | null
+): Promise<{ participants: any[] }> {
+  const response = await fetchWithAuth(`/api/trips/${tripId}/participants`, {
+    method: 'DELETE',
+    body: JSON.stringify({ participants }),
+  }, token);
+  const result: ApiResponse<{ participants: any[] }> = await response.json();
+  if (!result.success || !result.data) {
+    throw new Error(result.error || 'Failed to remove participants');
+  }
+  return result.data;
+}
+
 export async function getPublicTrips(search?: string): Promise<Trip[]> {
   const url = new URL(`${API_URL}/api/trips/public/list`);
   if (search) {
@@ -219,6 +237,7 @@ export async function searchTrips(
   token?: string | null
 ): Promise<{
   trips: Trip[];
+  users: User[];
   hasMore: boolean;
   lastTripId: string | null;
 }> {
@@ -252,6 +271,7 @@ export async function searchTrips(
   
   const result: ApiResponse<{
     trips: Trip[];
+    users: User[];
     hasMore: boolean;
     lastTripId: string | null;
   }> = await response.json();
@@ -537,6 +557,66 @@ export async function getUser(userId: string, token: string | null): Promise<Use
   return result.data;
 }
 
+// Notification APIs
+export async function getNotifications(token: string | null): Promise<Notification[]> {
+  const response = await fetchWithAuth(`/api/notifications`, {}, token);
+  const result: ApiResponse<Notification[]> = await response.json();
+  if (!result.success || !result.data) {
+    throw new Error(result.error || 'Failed to get notifications');
+  }
+  return result.data;
+}
+
+export async function getUnreadNotificationCount(token: string | null): Promise<number> {
+  const response = await fetchWithAuth(`/api/notifications/unread/count`, {}, token);
+  const result: ApiResponse<{ count: number }> = await response.json();
+  if (!result.success || !result.data) {
+    throw new Error(result.error || 'Failed to get notification count');
+  }
+  return result.data.count;
+}
+
+export async function markNotificationAsRead(notificationId: string, token: string | null): Promise<void> {
+  const response = await fetchWithAuth(`/api/notifications/${notificationId}/read`, {
+    method: 'PATCH',
+  }, token);
+  const result: ApiResponse<void> = await response.json();
+  if (!result.success) {
+    throw new Error(result.error || 'Failed to mark notification as read');
+  }
+}
+
+export async function markAllNotificationsAsRead(token: string | null): Promise<void> {
+  const response = await fetchWithAuth(`/api/notifications/read-all`, {
+    method: 'PATCH',
+  }, token);
+  const result: ApiResponse<void> = await response.json();
+  if (!result.success) {
+    throw new Error(result.error || 'Failed to mark all notifications as read');
+  }
+}
+
+export async function acceptTripInvitation(notificationId: string, token: string | null): Promise<Trip> {
+  const response = await fetchWithAuth(`/api/notifications/${notificationId}/accept-invitation`, {
+    method: 'POST',
+  }, token);
+  const result: ApiResponse<{ trip: Trip }> = await response.json();
+  if (!result.success || !result.data) {
+    throw new Error(result.error || 'Failed to accept invitation');
+  }
+  return result.data.trip;
+}
+
+export async function rejectTripInvitation(notificationId: string, token: string | null): Promise<void> {
+  const response = await fetchWithAuth(`/api/notifications/${notificationId}/reject-invitation`, {
+    method: 'POST',
+  }, token);
+  const result: ApiResponse<void> = await response.json();
+  if (!result.success) {
+    throw new Error(result.error || 'Failed to reject invitation');
+  }
+}
+
 // Comment APIs
 export async function addPlaceComment(
   placeId: string,
@@ -557,6 +637,32 @@ export async function addPlaceComment(
 export async function getPlaceComments(placeId: string, token: string | null): Promise<PlaceComment[]> {
   const response = await fetchWithAuth(`/api/places/${placeId}/comments`, {}, token);
   const result: ApiResponse<PlaceComment[]> = await response.json();
+  if (!result.success || !result.data) {
+    throw new Error(result.error || 'Failed to get comments');
+  }
+  return result.data;
+}
+
+// Trip Comment APIs
+export async function addTripComment(
+  tripId: string,
+  text: string,
+  token: string | null
+): Promise<TripComment> {
+  const response = await fetchWithAuth(`/api/trips/${tripId}/comments`, {
+    method: 'POST',
+    body: JSON.stringify({ text }),
+  }, token);
+  const result: ApiResponse<TripComment> = await response.json();
+  if (!result.success || !result.data) {
+    throw new Error(result.error || 'Failed to add comment');
+  }
+  return result.data;
+}
+
+export async function getTripComments(tripId: string, token: string | null): Promise<TripComment[]> {
+  const response = await fetchWithAuth(`/api/trips/${tripId}/comments`, {}, token);
+  const result: ApiResponse<TripComment[]> = await response.json();
   if (!result.success || !result.data) {
     throw new Error(result.error || 'Failed to get comments');
   }
@@ -683,21 +789,30 @@ export async function uploadImage(
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${API_URL}/api/upload/image`, {
-    method: 'POST',
-    headers,
-    body: formData,
-  });
+  try {
+    const response = await fetch(`${API_URL}/api/upload/image`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
 
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: 'Unknown error' }));
-    throw new Error(error.error || `HTTP ${response.status}`);
-  }
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+      throw new Error(error.error || `HTTP ${response.status}`);
+    }
 
-  const result: ApiResponse<{ url: string; isPublic: boolean }> = await response.json();
-  if (!result.success || !result.data) {
-    throw new Error(result.error || 'Failed to upload image');
+    const result: ApiResponse<{ url: string; isPublic: boolean }> = await response.json();
+    if (!result.success || !result.data) {
+      throw new Error(result.error || 'Failed to upload image');
+    }
+    return result.data;
+  } catch (error: any) {
+    // Handle connection errors
+    if (error.message?.includes('Failed to fetch') || error.message?.includes('ERR_CONNECTION_RESET')) {
+      throw new Error('Connection failed. Please check if the backend server is running and try again.');
+    }
+    // Re-throw other errors
+    throw error;
   }
-  return result.data;
 }
 

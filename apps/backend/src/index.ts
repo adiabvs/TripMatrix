@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import { connectDB, isMongoDBConnected } from './config/mongodb.js';
 import { initializeFirebase } from './config/firebase.js';
 import { initializeSupabase, isSupabaseInitialized } from './config/supabase.js';
 import { authenticateToken } from './middleware/auth.js';
@@ -15,16 +16,17 @@ import geocodingRoutes from './routes/geocoding.js';
 import uploadRoutes from './routes/upload.js';
 import diaryRoutes from './routes/diary.js';
 import canvaOAuthRoutes from './routes/canva-oauth.js';
+import notificationRoutes from './routes/notifications.js';
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Initialize Firebase Admin
+// Initialize Firebase Admin (for authentication)
 initializeFirebase();
 
-// Initialize Supabase
+// Initialize Supabase (for storage only)
 initializeSupabase();
 
 // Ensure images bucket exists (async, don't block server start)
@@ -60,33 +62,45 @@ const corsOptions = {
     
     // Check if origin is allowed
     if (allowedOrigins.includes(origin)) {
-      console.log('Origin allowed:', origin);
+      console.log('Origin allowed (in list):', origin);
       callback(null, true);
-    } else {
-      // In production on Railway, be more permissive (Railway may modify headers)
-      // Allow any Railway subdomain
-      if (origin.includes('.railway.app') || origin.includes('.up.railway.app')) {
-        console.log('Railway origin detected, allowing:', origin);
-        callback(null, true);
-      } else if (process.env.NODE_ENV !== 'production') {
-        // In development, allow all origins for easier testing
-        console.log('Development mode, allowing origin:', origin);
-        callback(null, true);
-      } else {
-        console.log('Origin not allowed:', origin);
-        callback(new Error(`Not allowed by CORS: ${origin}`));
-      }
+      return;
     }
+    
+    // In production on Railway, be more permissive (Railway may modify headers)
+    // Allow any Railway subdomain
+    if (origin.includes('.railway.app') || origin.includes('.up.railway.app')) {
+      console.log('Railway origin detected, allowing:', origin);
+      callback(null, true);
+      return;
+    }
+    
+    // In development, allow all origins for easier testing
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('Development mode, allowing origin:', origin);
+      callback(null, true);
+      return;
+    }
+    
+    // Default: reject
+    console.log('Origin not allowed:', origin);
+    callback(new Error(`Not allowed by CORS: ${origin}`));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+  exposedHeaders: ['Content-Type', 'Authorization'],
   preflightContinue: false,
   optionsSuccessStatus: 204,
 };
 
 // Middleware
+// Apply CORS before other middleware
 app.use(cors(corsOptions));
+
+// Handle preflight requests explicitly
+app.options('*', cors(corsOptions));
+
 app.use(express.json());
 
 // Health check
@@ -99,16 +113,10 @@ app.get('/health', (req, res) => {
 app.get('/api/trips/public/list', async (req, res) => {
   try {
     const { limit, search } = req.query;
-    const { getFirestore } = await import('./config/firebase.js');
-    const db = getFirestore();
-    const snapshot = await db.collection('trips')
-      .where('isPublic', '==', true)
-      .get();
-
-    let trips = snapshot.docs.map((doc) => ({
-      tripId: doc.id,
-      ...doc.data(),
-    }));
+    const { TripModel } = await import('./models/Trip.js');
+    
+    const tripsDocs = await TripModel.find({ isPublic: true }).sort({ createdAt: -1 });
+    let trips = tripsDocs.map((doc: any) => doc.toJSON());
 
     // Filter by search query if provided
     if (search && typeof search === 'string') {
@@ -148,7 +156,8 @@ app.use('/api/ai', authenticateToken, aiRoutes);
 app.use('/api/expenses', optionalAuth, expenseRoutes);
 app.use('/api/routes', optionalAuth, routeRoutes);
 app.use('/api/places', optionalAuth, placeRoutes);
-app.use('/api/users', authenticateToken, userRoutes);
+app.use('/api/users', optionalAuth, userRoutes);
+app.use('/api/notifications', authenticateToken, notificationRoutes); // Notifications routes
 app.use('/api/geocoding', geocodingRoutes); // Public endpoint for geocoding
 app.use('/api/upload', authenticateToken, uploadRoutes); // Image upload endpoint
 app.use('/api/diary', authenticateToken, diaryRoutes); // Travel diary routes
@@ -249,17 +258,61 @@ app.get('/return-nav', async (req, res) => {
 });
 app.use('/api/canva', authenticateToken, canvaOAuthRoutes); // Other Canva API routes (authenticated)
 
-// Error handling
+// Error handling - must be after CORS middleware
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 app.use((err: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error('Error:', err);
+  
+  // Ensure CORS headers are set even on errors
+  const origin = req.headers.origin;
+  if (origin) {
+    // Check if origin should be allowed (same logic as CORS config)
+    if (origin.includes('.railway.app') || origin.includes('.up.railway.app') || 
+        origin === 'http://localhost:3000' || origin === 'http://localhost:3001' ||
+        origin === process.env.FRONTEND_URL) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+    }
+  }
+  
+  // Handle CORS errors
+  if (err.message && err.message.includes('CORS')) {
+    console.error('CORS error:', err.message);
+    return res.status(403).json({
+      success: false,
+      error: 'CORS policy violation',
+    });
+  }
+  
   res.status(500).json({
     success: false,
     error: process.env.NODE_ENV === 'production' ? 'Internal server error' : err.message,
   });
 });
 
-app.listen(PORT, () => {
-  console.log(`🚀 Backend server running on port ${PORT}`);
-});
+// Start server after MongoDB connection is established
+async function startServer() {
+  try {
+    // Initialize MongoDB and wait for connection
+    console.log('🔄 Connecting to MongoDB...');
+    await connectDB();
+    console.log('✅ MongoDB connection established');
+  } catch (error: any) {
+    console.error('❌ Failed to connect to MongoDB:', error.message);
+    console.error('   Server will start but database operations will fail');
+    console.error('   Make sure MONGODB_URI is set correctly in your environment variables');
+    // Don't exit - allow server to start so we can see CORS errors and other issues
+  }
+  
+  // Start the server regardless of MongoDB connection status
+  // This allows us to see CORS and other errors even if DB is down
+  app.listen(PORT, () => {
+    console.log(`🚀 Backend server running on port ${PORT}`);
+    if (!isMongoDBConnected()) {
+      console.warn('⚠️  WARNING: MongoDB is not connected. Database operations will fail.');
+    }
+  });
+}
+
+startServer();
 

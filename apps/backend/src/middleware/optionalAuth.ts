@@ -6,6 +6,8 @@ export interface OptionalAuthRequest extends Request {
   user?: {
     uid: string;
     email?: string;
+    name?: string;
+    picture?: string;
   };
 }
 
@@ -20,13 +22,19 @@ export async function optionalAuth(
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.split('Bearer ')[1];
       const auth = getAuth();
-      const decodedToken = await auth.verifyIdToken(token);
       
-      req.uid = decodedToken.uid;
-      req.user = {
-        uid: decodedToken.uid,
-        email: decodedToken.email,
-      };
+      try {
+        const decodedToken = await auth.verifyIdToken(token);
+        req.uid = decodedToken.uid;
+        req.user = {
+          uid: decodedToken.uid,
+          email: decodedToken.email,
+          name: decodedToken.name || undefined, // Google display name
+          picture: decodedToken.picture || undefined, // Google photo URL
+        };
+      } catch (error) {
+        // Token is invalid, but continue without auth (for public routes)
+      }
     }
     
     next();

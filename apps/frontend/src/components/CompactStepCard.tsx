@@ -1,15 +1,16 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { format } from 'date-fns';
 import { toDate } from '@/lib/dateUtils';
 import type { TripPlace, TripExpense, User } from '@tripmatrix/types';
 import PhotoViewer from './PhotoViewer';
-import Link from 'next/link';
-import { MdDelete, MdLocationOn, MdStar, MdAttachMoney, MdFavorite, MdChatBubbleOutline, MdMoreVert, MdPerson } from 'react-icons/md';
-import { formatCurrency } from '@/lib/currencyUtils';
-import { likePlace, unlikePlace, getPlaceLikes, getPlaceComments } from '@/lib/api';
+import { MdDelete, MdLocationOn, MdStar, MdFavorite, MdChatBubbleOutline, MdMoreVert, MdPerson, MdSend, MdEdit } from 'react-icons/md';
+import { formatCurrency, getCurrencySymbol } from '@/lib/currencyUtils';
+import { likePlace, unlikePlace, getPlaceLikes, getPlaceComments, addPlaceComment, getUser } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import BottomModal from '@/components/ui/BottomModal';
+import type { PlaceComment } from '@tripmatrix/types';
 
 interface CompactStepCardProps {
   place: TripPlace;
@@ -39,8 +40,16 @@ export default function CompactStepCard({
   const [likes, setLikes] = useState<{ count: number; isLiked: boolean }>({ count: 0, isLiked: false });
   const [commentCount, setCommentCount] = useState(0);
   const [loadingLikes, setLoadingLikes] = useState(true);
+  const [showComments, setShowComments] = useState(false);
+  const [comments, setComments] = useState<PlaceComment[]>([]);
+  const [commentText, setCommentText] = useState('');
+  const [addingComment, setAddingComment] = useState(false);
+  const [loadingComments, setLoadingComments] = useState(false);
+  const [commentUserNamesMap, setCommentUserNamesMap] = useState<Record<string, string>>({});
   const [touchStart, setTouchStart] = useState(0);
   const [touchEnd, setTouchEnd] = useState(0);
+  const [showMenu, setShowMenu] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
   const visitedDate = toDate(place.visitedAt);
   
   // Get image list
@@ -57,29 +66,129 @@ export default function CompactStepCard({
 
   // Load likes and comment count
   useEffect(() => {
+    let isMounted = true;
+    
     const loadLikesAndComments = async () => {
       try {
         const token = user ? await getIdToken() : null;
-        const [likesData, comments] = await Promise.all([
+        const [likesData, commentsData] = await Promise.all([
           getPlaceLikes(place.placeId, token).catch(() => ({ likeCount: 0, isLiked: false })),
           getPlaceComments(place.placeId, token).catch(() => []),
         ]);
-        setLikes({ count: likesData.likeCount, isLiked: likesData.isLiked });
-        setCommentCount(comments.length);
+        
+        // Only update state if component is still mounted
+        if (isMounted) {
+          setLikes({ count: likesData.likeCount, isLiked: likesData.isLiked });
+          setCommentCount(commentsData.length);
+          setLoadingLikes(false);
+        }
       } catch (error) {
         console.error('Failed to load likes/comments:', error);
-      } finally {
-        setLoadingLikes(false);
+        if (isMounted) {
+          setLoadingLikes(false);
+        }
       }
     };
 
-    loadLikesAndComments();
-  }, [place.placeId, user, getIdToken]);
+    if (place.placeId) {
+      loadLikesAndComments();
+    }
+    
+    return () => {
+      isMounted = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [place.placeId, user?.uid]);
+
+  // Load comments when modal opens
+  useEffect(() => {
+    if (showComments) {
+      loadPlaceComments();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showComments]);
+
+  const loadPlaceComments = async () => {
+    try {
+      setLoadingComments(true);
+      const token = user ? await getIdToken() : null;
+      const commentsData = await getPlaceComments(place.placeId, token);
+      setComments(commentsData);
+
+      // Load user names for comment authors
+      const uniqueUserIds = [...new Set(commentsData.map((c: PlaceComment) => c.userId))];
+      const userNames: Record<string, string> = {};
+      for (const uid of uniqueUserIds) {
+        try {
+          const userData = await getUser(uid, token);
+          userNames[uid] = userData.name || 'Unknown User';
+        } catch (error) {
+          console.error(`Failed to fetch user ${uid}:`, error);
+          userNames[uid] = 'Unknown User';
+        }
+      }
+      setCommentUserNamesMap(userNames);
+    } catch (error) {
+      console.error('Failed to load comments:', error);
+    } finally {
+      setLoadingComments(false);
+    }
+  };
+
+  const handleCommentClick = () => {
+    const newShowComments = !showComments;
+    setShowComments(newShowComments);
+    if (newShowComments) {
+      loadPlaceComments();
+    }
+  };
+
+  const handleAddPlaceComment = async () => {
+    if (!commentText.trim() || !user) return;
+    
+    setAddingComment(true);
+    try {
+      const token = await getIdToken();
+      const newComment = await addPlaceComment(place.placeId, commentText.trim(), token);
+      setComments([newComment, ...comments]);
+      setCommentCount(prev => prev + 1);
+      setCommentText('');
+      
+      // Load user name for the new comment
+      if (user) {
+        setCommentUserNamesMap(prev => ({
+          ...prev,
+          [user.uid]: user.name,
+        }));
+      }
+    } catch (error: any) {
+      console.error('Failed to add comment:', error);
+      alert(`Failed to add comment: ${error.message || 'Unknown error'}`);
+    } finally {
+      setAddingComment(false);
+    }
+  };
 
   // Reset image index when place changes
   useEffect(() => {
     setCurrentImageIndex(0);
   }, [place.placeId]);
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setShowMenu(false);
+      }
+    };
+
+    if (showMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [showMenu]);
 
   // Use first image as cover, or placeholder
   const coverImage = imageList.length > 0 ? imageList[0] : null;
@@ -117,27 +226,63 @@ export default function CompactStepCard({
   return (
     <div className="w-full">
       <div className="bg-black border border-gray-800 rounded-lg overflow-hidden">
-        {/* Post Header - Only delete button if creator */}
-        {isCreator && onDelete && (
-          <div className="flex items-center justify-end px-4 py-3 border-b border-gray-800">
-            <button
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                if (confirm(`Are you sure you want to delete "${place.name}"?`)) {
-                  onDelete(place.placeId);
-                }
-              }}
-              className="text-white hover:opacity-70"
-            >
-              <MdMoreVert className="w-5 h-5" />
-            </button>
+        {/* Post Header - Menu button if creator */}
+        {isCreator && (onEdit || onDelete) && (
+          <div className="flex items-center justify-end px-4 py-3 border-b border-gray-800 relative">
+            <div ref={menuRef} className="relative">
+              <button
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setShowMenu(!showMenu);
+                }}
+                className="text-white hover:opacity-70 transition-opacity"
+              >
+                <MdMoreVert className="w-5 h-5" />
+              </button>
+              
+              {/* Dropdown Menu */}
+              {showMenu && (
+                <div className="absolute right-0 top-8 bg-gray-800 border border-gray-700 rounded-lg shadow-lg z-50 min-w-[140px] overflow-hidden">
+                  {onEdit && (
+                    <button
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setShowMenu(false);
+                        onEdit(place);
+                      }}
+                      className="w-full px-4 py-3 text-left text-white hover:bg-gray-700 flex items-center gap-2 transition-colors"
+                    >
+                      <MdEdit className="w-4 h-4" />
+                      <span>Edit</span>
+                    </button>
+                  )}
+                  {onDelete && (
+                    <button
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setShowMenu(false);
+                        if (confirm(`Are you sure you want to delete "${place.name}"?`)) {
+                          onDelete(place.placeId);
+                        }
+                      }}
+                      className="w-full px-4 py-3 text-left text-red-400 hover:bg-gray-700 flex items-center gap-2 transition-colors"
+                    >
+                      <MdDelete className="w-4 h-4" />
+                      <span>Delete</span>
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
         {/* Cover Image with Carousel */}
         <div 
-          className="relative w-full aspect-square bg-gray-900 overflow-hidden cursor-pointer"
+          className="relative w-full aspect-square bg-gray-900 overflow-hidden"
           onTouchStart={(e) => {
             e.stopPropagation();
             setTouchStart(e.targetTouches[0].clientX);
@@ -145,7 +290,8 @@ export default function CompactStepCard({
           }}
           onTouchMove={(e) => {
             e.stopPropagation();
-            e.preventDefault();
+            // Note: preventDefault() removed - passive listeners don't allow it
+            // This is fine as we're just tracking touch position for swipe detection
             setTouchEnd(e.targetTouches[0].clientX);
           }}
           onTouchEnd={(e) => {
@@ -183,46 +329,20 @@ export default function CompactStepCard({
                         pointerEvents: idx === currentImageIndex ? 'auto' : 'none'
                       }}
                     >
-                      {isCreator ? (
-                        <Link 
-                          href={`/trips/${tripId}/steps/${place.placeId}/edit`}
+                      <div className="block w-full h-full">
+                        <img
+                          src={img}
+                          alt={`${place.name} - Image ${idx + 1}`}
+                          className="w-full h-full object-cover select-none pointer-events-none"
+                          draggable={false}
+                          loading="lazy"
                           onClick={(e) => {
-                            // Only navigate if not swiping
-                            if (touchStart && touchEnd && Math.abs(touchStart - touchEnd) > 10) {
-                              e.preventDefault();
-                            }
+                            e.preventDefault();
+                            e.stopPropagation();
+                            handlePhotoClick(idx);
                           }}
-                          className="block w-full h-full"
-                        >
-                          <img
-                            src={img}
-                            alt={`${place.name} - Image ${idx + 1}`}
-                            className="w-full h-full object-cover select-none pointer-events-none"
-                            draggable={false}
-                            loading="lazy"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              handlePhotoClick(idx);
-                            }}
-                          />
-                        </Link>
-                      ) : (
-                        <div className="block w-full h-full">
-                          <img
-                            src={img}
-                            alt={`${place.name} - Image ${idx + 1}`}
-                            className="w-full h-full object-cover select-none pointer-events-none"
-                            draggable={false}
-                            loading="lazy"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              handlePhotoClick(idx);
-                            }}
-                          />
-                        </div>
-                      )}
+                        />
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -286,25 +406,21 @@ export default function CompactStepCard({
             >
               <MdFavorite className={`w-6 h-6 ${likes.isLiked ? 'text-red-500 fill-red-500' : ''}`} />
             </button>
-            {isCreator ? (
-              <Link 
-                href={`/trips/${tripId}/steps/${place.placeId}/edit`} 
-                className="text-white hover:opacity-70 active:scale-95 transition-transform p-1 rounded-full flex items-center gap-1"
-              >
-                <MdChatBubbleOutline className="w-6 h-6" />
-              </Link>
-            ) : (
-              <button
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  handlePhotoClick(0);
-                }}
-                className="text-white hover:opacity-70 active:scale-95 transition-transform p-1 rounded-full flex items-center gap-1"
-              >
-                <MdChatBubbleOutline className="w-6 h-6" />
-              </button>
-            )}
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleCommentClick();
+              }}
+              className="text-white hover:opacity-70 active:scale-95 transition-transform p-1 rounded-full flex items-center gap-1 relative"
+            >
+              <MdChatBubbleOutline className={`w-6 h-6 ${showComments ? 'text-[#1976d2]' : ''}`} />
+              {commentCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-[#1976d2] text-white text-xs font-semibold rounded-full w-5 h-5 flex items-center justify-center">
+                  {commentCount > 99 ? '99+' : commentCount}
+                </span>
+              )}
+            </button>
           </div>
           {(likes.count > 0 || commentCount > 0) && (
             <div className="flex items-center gap-4 text-sm">
@@ -313,35 +429,19 @@ export default function CompactStepCard({
                   {likes.count} {likes.count === 1 ? 'like' : 'likes'}
                 </span>
               )}
-              {commentCount > 0 && (isCreator ? (
-                <Link 
-                  href={`/trips/${tripId}/steps/${place.placeId}/edit`} 
-                  className="text-gray-400 hover:text-white"
-                >
-                  {commentCount} {commentCount === 1 ? 'comment' : 'comments'}
-                </Link>
-              ) : (
+              {commentCount > 0 && (
                 <span className="text-gray-400">
                   {commentCount} {commentCount === 1 ? 'comment' : 'comments'}
                 </span>
-              ))}
+              )}
             </div>
           )}
 
           {/* Place Info */}
           <div>
-            {isCreator ? (
-              <Link
-                href={`/trips/${tripId}/steps/${place.placeId}/edit`}
-                className="text-white font-semibold text-sm hover:opacity-70"
-              >
-                {place.name}
-              </Link>
-            ) : (
-              <span className="text-white font-semibold text-sm">
-                {place.name}
-              </span>
-            )}
+            <span className="text-white font-semibold text-sm">
+              {place.name}
+            </span>
             {place.comment && (
               <p className="text-gray-300 text-sm mt-1 line-clamp-2">
                 {place.comment}
@@ -354,10 +454,9 @@ export default function CompactStepCard({
             )}
             {Object.keys(expensesByCurrency).length > 0 && (
               <div className="flex items-center gap-1 mt-2 text-gray-400 text-xs">
-                <MdAttachMoney className="w-4 h-4" />
                 <span>
                   {Object.entries(expensesByCurrency).map(([curr, total]) => 
-                    formatCurrency(total, curr, false)
+                    `${getCurrencySymbol(curr)}${total.toFixed(2)}`
                   ).join(', ')}
                 </span>
               </div>
@@ -367,12 +466,9 @@ export default function CompactStepCard({
           {/* Creator name and date at bottom */}
           <div className="mt-2 pt-2 border-t border-gray-800">
             <div className="flex items-center gap-2">
-              <Link
-                href={`/trips?user=${creator?.uid || tripId}`}
-                className="text-white font-semibold text-sm hover:opacity-70"
-              >
+              <span className="text-white font-semibold text-sm">
                 {creator?.name || 'Trip'}
-              </Link>
+              </span>
               {visitedDate && !isNaN(visitedDate.getTime()) && (
                 <>
                   <span className="text-gray-500">•</span>
@@ -394,6 +490,75 @@ export default function CompactStepCard({
           onClose={() => setViewingPhotos(false)}
         />
       )}
+
+      {/* Comments Modal */}
+      <BottomModal
+        isOpen={showComments}
+        onClose={() => setShowComments(false)}
+        title={`Comments (${commentCount})`}
+      >
+        <div className="bg-black px-4 py-4">
+          {/* Add Comment Form */}
+          {user && (
+            <div className="mb-4 bg-gray-900 rounded-lg p-3 border border-gray-800">
+              <textarea
+                value={commentText}
+                onChange={(e) => setCommentText(e.target.value)}
+                placeholder="Add a comment..."
+                className="w-full bg-gray-800 text-white rounded-lg p-2 text-sm resize-none mb-2 border border-gray-700 focus:outline-none focus:border-[#1976d2]"
+                rows={3}
+                disabled={addingComment}
+              />
+              <button
+                onClick={handleAddPlaceComment}
+                disabled={!commentText.trim() || addingComment}
+                className="w-full bg-[#1976d2] text-white py-2 px-4 rounded-lg text-sm font-medium disabled:opacity-50 hover:bg-[#1565c0] transition-colors flex items-center justify-center gap-2"
+              >
+                {addingComment ? (
+                  'Adding...'
+                ) : (
+                  <>
+                    <MdSend className="w-4 h-4" />
+                    <span>Add Comment</span>
+                  </>
+                )}
+              </button>
+            </div>
+          )}
+
+          {/* Comments List */}
+          {loadingComments ? (
+            <p className="text-sm text-gray-400 text-center py-4">Loading comments...</p>
+          ) : (
+            <div className="space-y-3">
+              {comments.length === 0 ? (
+                <p className="text-sm text-gray-400 text-center py-4">No comments yet</p>
+              ) : (
+                comments.map((comment) => (
+                  <div key={comment.commentId} className="bg-gray-900 rounded-lg p-3 border border-gray-800">
+                    <div className="flex items-start gap-2 mb-2">
+                      <div className="w-8 h-8 rounded-full bg-[#1976d2] flex items-center justify-center flex-shrink-0">
+                        <span className="text-xs text-white font-semibold">
+                          {commentUserNamesMap[comment.userId]?.charAt(0).toUpperCase() || 'U'}
+                        </span>
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-semibold text-white">
+                          {commentUserNamesMap[comment.userId] || 'Loading...'}
+                        </p>
+                        <p className="text-xs text-gray-400">
+                          {format(toDate(comment.createdAt), 'MMM dd, yyyy HH:mm')}
+                        </p>
+                      </div>
+                    </div>
+                    <p className="text-sm text-gray-200 ml-10">{comment.text}</p>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+      </BottomModal>
     </div>
   );
 }

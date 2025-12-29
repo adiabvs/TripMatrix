@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -14,17 +14,21 @@ import {
   Divider,
   Typography,
   Box,
+  Badge,
 } from '@mui/material';
 import {
   AccountCircle as ProfileIcon,
   Logout as LogoutIcon,
   ExpandMore as ExpandMoreIcon,
+  Notifications as NotificationsIcon,
 } from '@mui/icons-material';
+import { getUnreadNotificationCount } from '@/lib/api';
 
 export default function UserMenu() {
-  const { user, signOut } = useAuth();
+  const { user, signOut, getIdToken } = useAuth();
   const router = useRouter();
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const [unreadCount, setUnreadCount] = useState(0);
   const open = Boolean(anchorEl);
 
   const handleClick = (event: React.MouseEvent<HTMLElement>) => {
@@ -47,6 +51,25 @@ export default function UserMenu() {
     }
   };
 
+  useEffect(() => {
+    const loadUnreadCount = async () => {
+      if (user) {
+        try {
+          const token = await getIdToken();
+          const count = await getUnreadNotificationCount(token);
+          setUnreadCount(count);
+        } catch (error) {
+          console.error('Failed to load notification count:', error);
+        }
+      }
+    };
+
+    loadUnreadCount();
+    // Refresh count every 30 seconds
+    const interval = setInterval(loadUnreadCount, 30000);
+    return () => clearInterval(interval);
+  }, [user, getIdToken]);
+
   if (!user) {
     return null;
   }
@@ -65,12 +88,39 @@ export default function UserMenu() {
           minWidth: 'auto',
         }}
       >
-        <Avatar
-          src={user.photoUrl || undefined}
-          sx={{ width: 24, height: 24 }}
-        >
-          {!user.photoUrl && user.name.charAt(0).toUpperCase()}
-        </Avatar>
+        {unreadCount > 0 ? (
+          <Badge
+            badgeContent={unreadCount > 9 ? '9+' : unreadCount}
+            color="error"
+            overlap="circular"
+            anchorOrigin={{
+              vertical: 'bottom',
+              horizontal: 'right',
+            }}
+            sx={{
+              '& .MuiBadge-badge': {
+                fontSize: '0.65rem',
+                minWidth: '18px',
+                height: '18px',
+                padding: '0 4px',
+              },
+            }}
+          >
+            <Avatar
+              src={user.photoUrl || undefined}
+              sx={{ width: 24, height: 24 }}
+            >
+              {!user.photoUrl && user.name.charAt(0).toUpperCase()}
+            </Avatar>
+          </Badge>
+        ) : (
+          <Avatar
+            src={user.photoUrl || undefined}
+            sx={{ width: 24, height: 24 }}
+          >
+            {!user.photoUrl && user.name.charAt(0).toUpperCase()}
+          </Avatar>
+        )}
       </IconButton>
       <Menu
         anchorEl={anchorEl}
@@ -97,6 +147,25 @@ export default function UserMenu() {
           </Typography>
         </Box>
         <Divider />
+        <MenuItem
+          component={Link}
+          href="/notifications"
+          onClick={handleClose}
+        >
+          <ListItemIcon>
+            <Badge badgeContent={unreadCount} color="error">
+              <NotificationsIcon fontSize="small" />
+            </Badge>
+          </ListItemIcon>
+          <ListItemText>
+            Notifications
+            {unreadCount > 0 && (
+              <Typography variant="caption" color="error" sx={{ ml: 1 }}>
+                ({unreadCount})
+              </Typography>
+            )}
+          </ListItemText>
+        </MenuItem>
         <MenuItem
           component={Link}
           href="/profile"

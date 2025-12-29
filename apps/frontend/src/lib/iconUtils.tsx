@@ -38,3 +38,63 @@ export const getModeIconSVG = (mode: string | null | undefined, color: string = 
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${icon.viewBox}" style="width: 20px; height: 20px; display: block;">${pathsHTML}</svg>`;
 };
 
+// Get animated GIF URL for mode of travel
+// Priority: Local GIFs in /public/gifs/ folder, then fallback to CDN URLs
+// 
+// TO USE YOUR OWN GIFs:
+// 1. Create a folder: apps/frontend/public/gifs/
+// 2. Add your GIF files with these exact names:
+//    - walking-man-bag.gif (for walk mode - animated person walking with bag)
+//    - bicycle.gif (for bike mode - animated bicycle)
+//    - car.gif (for car mode - animated car)
+//    - train.gif (for train mode - animated train)
+//    - bus.gif (for bus mode - animated bus)
+//    - flight-shaking.gif (for flight mode - animated airplane shaking)
+// 3. The code will automatically use local files if they exist, otherwise use CDN fallback
+export const getModeGifUrl = (mode: string | null | undefined): string | null => {
+  if (!mode) return null;
+  
+  // Local GIFs from /public/gifs/ folder (served at /gifs/ in Next.js)
+  // These will be used if files exist in public/gifs/ folder
+  const localGifMap: Record<string, string> = {
+    walk: '/gifs/walking-man-bag.gif',
+    bike: '/gifs/bicycle.gif',
+    car: '/gifs/car.gif',
+    train: '/gifs/train.gif',
+    bus: '/gifs/bus.gif',
+    flight: '/gifs/flight-shaking.gif',
+  };
+  
+  // CDN fallback URLs (replace these with better GIF URLs from Giphy, Tenor, etc.)
+  // Or set to null to force using local files only
+  const cdnGifMap: Record<string, string | null> = {
+    // Walking man with bag - find on Giphy: https://giphy.com/search/walking-man-bag
+    walk: null, // Set to null to use local file, or provide CDN URL
+    
+    // Bicycle animation - find on Giphy: https://giphy.com/search/bicycle-animation
+    bike: null, // Set to null to use local file, or provide CDN URL
+    
+    // Car animation - find on Giphy: https://giphy.com/search/car-animation
+    car: null, // Set to null to use local file, or provide CDN URL
+    
+    // Train animation - find on Giphy: https://giphy.com/search/train-animation
+    train: null, // Set to null to use local file, or provide CDN URL
+    
+    // Bus animation - find on Giphy: https://giphy.com/search/bus-animation
+    bus: null, // Set to null to use local file, or provide CDN URL
+    
+    // Flight/airplane shaking - find on Giphy: https://giphy.com/search/airplane-shaking
+    flight: null, // Set to null to use local file, or provide CDN URL
+  };
+  
+  // Prefer local files, fallback to CDN if local doesn't exist
+  // Browser will handle 404 if local file doesn't exist, so we try local first
+  return localGifMap[mode] || cdnGifMap[mode] || null;
+};
+
+// Get mode icon as HTML (SVG icons)
+export const getModeIconHTML = (mode: string | null | undefined, color: string = 'currentColor', useGif: boolean = false): string => {
+  // Return SVG icons
+  return getModeIconSVG(mode, color);
+};
+

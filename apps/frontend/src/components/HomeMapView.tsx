@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { Trip, TripPlace, TripRoute } from '@tripmatrix/types';
-import { getModeIconSVG } from '@/lib/iconUtils';
+import { getModeIconHTML } from '@/lib/iconUtils';
 
 interface HomeMapViewProps {
   places: TripPlace[];
@@ -240,7 +240,7 @@ export default function HomeMapView({
             const midLat = (currentPlace.coordinates.lat + nextPlace.coordinates.lat) / 2;
             const midLng = (currentPlace.coordinates.lng + nextPlace.coordinates.lng) / 2;
             
-            const iconHTML = getModeIconSVG(nextPlace.modeOfTravel, color);
+            const iconHTML = getModeIconHTML(nextPlace.modeOfTravel, color, true);
             
             // Remove previous animation layer
             if (animationLayerRef.current) {

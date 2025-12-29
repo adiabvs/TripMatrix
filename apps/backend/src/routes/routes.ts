@@ -1,14 +1,11 @@
 import express from 'express';
-import { getFirestore } from '../config/firebase.js';
 import { OptionalAuthRequest } from '../middleware/optionalAuth.js';
 import { calculateTotalDistance } from '@tripmatrix/utils';
 import type { TripRoute, RoutePoint } from '@tripmatrix/types';
+import { TripModel } from '../models/Trip.js';
+import { TripRouteModel } from '../models/TripRoute.js';
 
 const router = express.Router();
-
-function getDb() {
-  return getFirestore();
-}
 
 // Record route points
 router.post('/:tripId/points', async (req: OptionalAuthRequest, res) => {
@@ -25,9 +22,8 @@ router.post('/:tripId/points', async (req: OptionalAuthRequest, res) => {
     }
 
     // Verify trip exists
-    const db = getDb();
-    const tripDoc = await db.collection('trips').doc(tripId).get();
-    if (!tripDoc.exists) {
+    const trip = await TripModel.findById(tripId);
+    if (!trip) {
       return res.status(404).json({
         success: false,
         error: 'Trip not found',
@@ -35,22 +31,17 @@ router.post('/:tripId/points', async (req: OptionalAuthRequest, res) => {
     }
 
     // Get or create route document
-    const routeQuery = await db.collection('tripRoutes')
-      .where('tripId', '==', tripId)
-      .where('modeOfTravel', '==', modeOfTravel || 'car')
-      .limit(1)
-      .get();
+    let route = await TripRouteModel.findOne({
+      tripId,
+      modeOfTravel: modeOfTravel || 'car'
+    });
 
-    let routeRef: FirebaseFirestore.DocumentReference;
     let existingPoints: RoutePoint[] = [];
 
-    if (!routeQuery.empty) {
-      routeRef = routeQuery.docs[0].ref;
-      const routeData = routeQuery.docs[0].data() as TripRoute;
-      existingPoints = routeData.points || [];
+    if (route) {
+      existingPoints = route.points || [];
     } else {
-      routeRef = db.collection('tripRoutes').doc();
-      await routeRef.set({
+      route = new TripRouteModel({
         tripId,
         points: [],
         modeOfTravel: modeOfTravel || 'car',
@@ -73,31 +64,22 @@ router.post('/:tripId/points', async (req: OptionalAuthRequest, res) => {
     const totalDistance = calculateTotalDistance(mergedPoints);
 
     // Update route
-    await routeRef.update({
-      points: mergedPoints,
-      updatedAt: new Date(),
-    });
+    route.points = mergedPoints;
+    route.updatedAt = new Date();
+    const savedRoute = await route.save();
 
     // Update trip total distance
-    const trip = tripDoc.data()!;
-    const currentDistance = trip.totalDistance || 0;
-    await db.collection('trips').doc(tripId).update({
-      totalDistance: Math.max(currentDistance, totalDistance),
-      updatedAt: new Date(),
-    });
+    const tripData = trip.toJSON();
+    const currentDistance = tripData.totalDistance || 0;
+    trip.totalDistance = Math.max(currentDistance, totalDistance);
+    trip.updatedAt = new Date();
+    await trip.save();
 
-    const route: TripRoute = {
-      routeId: routeRef.id,
-      tripId,
-      points: mergedPoints,
-      modeOfTravel: modeOfTravel || 'car',
-      createdAt: routeQuery.empty ? new Date() : routeQuery.docs[0].data().createdAt,
-      updatedAt: new Date(),
-    };
+    const routeData: TripRoute = savedRoute.toJSON() as TripRoute;
 
     res.json({
       success: true,
-      data: route,
+      data: routeData,
     });
   } catch (error: any) {
     res.status(500).json({
@@ -113,26 +95,25 @@ router.get('/:tripId', async (req: OptionalAuthRequest, res) => {
     const { tripId } = req.params;
     
     // Check if trip is public
-    const db = getDb();
-    const tripDoc = await db.collection('trips').doc(tripId).get();
-    if (!tripDoc.exists) {
+    const trip = await TripModel.findById(tripId);
+    if (!trip) {
       return res.status(404).json({
         success: false,
         error: 'Trip not found',
       });
     }
 
-    const trip = tripDoc.data()!;
+    const tripData = trip.toJSON();
     // Allow access if trip is public or user is authenticated participant
-    if (!trip.isPublic) {
+    if (!tripData.isPublic) {
       if (!req.uid) {
         return res.status(401).json({
           success: false,
           error: 'Authentication required',
         });
       }
-      if (trip.creatorId !== req.uid && 
-          !trip.participants?.some((p: any) => p.uid === req.uid)) {
+      if (tripData.creatorId !== req.uid && 
+          !tripData.participants?.some((p: any) => p.uid === req.uid)) {
         return res.status(403).json({
           success: false,
           error: 'Not authorized',
@@ -140,21 +121,8 @@ router.get('/:tripId', async (req: OptionalAuthRequest, res) => {
       }
     }
     
-    const snapshot = await db.collection('tripRoutes')
-      .where('tripId', '==', tripId)
-      .get();
-
-    const routes = snapshot.docs.map((doc) => ({
-      routeId: doc.id,
-      ...doc.data(),
-    })) as TripRoute[];
-
-    // Sort by createdAt in memory (avoids needing composite index)
-    routes.sort((a, b) => {
-      const aTime = new Date(a.createdAt).getTime();
-      const bTime = new Date(b.createdAt).getTime();
-      return aTime - bTime;
-    });
+    const routesDocs = await TripRouteModel.find({ tripId }).sort({ createdAt: 1 });
+    const routes = routesDocs.map(doc => doc.toJSON() as TripRoute);
 
     res.json({ success: true, data: routes });
   } catch (error: any) {

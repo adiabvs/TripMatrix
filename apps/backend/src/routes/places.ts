@@ -1,14 +1,13 @@
 import express from 'express';
-import { getFirestore } from '../config/firebase.js';
 import { OptionalAuthRequest } from '../middleware/optionalAuth.js';
 import { authenticateToken, AuthenticatedRequest } from '../middleware/auth.js';
 import type { TripPlace, PlaceComment } from '@tripmatrix/types';
+import { TripModel } from '../models/Trip.js';
+import { TripPlaceModel } from '../models/TripPlace.js';
+import { PlaceCommentModel } from '../models/PlaceComment.js';
+import { PlaceLikeModel } from '../models/PlaceLike.js';
 
 const router = express.Router();
-
-function getDb() {
-  return getFirestore();
-}
 
 // Calculate distance between two coordinates (Haversine formula)
 function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -51,18 +50,17 @@ router.post('/', async (req: OptionalAuthRequest, res) => {
     }
 
     // Verify trip exists and user has permission
-    const db = getDb();
-    const tripDoc = await db.collection('trips').doc(tripId).get();
-    if (!tripDoc.exists) {
+    const trip = await TripModel.findById(tripId);
+    if (!trip) {
       return res.status(404).json({
         success: false,
         error: 'Trip not found',
       });
     }
 
-    const trip = tripDoc.data()!;
+    const tripData = trip.toJSON();
     
-    // Check authorization - allow creator or participants to add places
+    // Check authorization - allow creator or accepted participants to add places
     if (!uid) {
       return res.status(401).json({
         success: false,
@@ -70,13 +68,19 @@ router.post('/', async (req: OptionalAuthRequest, res) => {
       });
     }
     
-    const isCreator = trip.creatorId === uid;
-    const isParticipant = trip.participants?.some((p: any) => p.uid === uid);
+    const isCreator = tripData.creatorId === uid;
+    // Check if user is an accepted participant (status is 'accepted' or undefined for backward compatibility)
+    // Pending participants cannot add places until they accept the invitation
+    const isParticipant = tripData.participants?.some((p: any) => 
+      p.uid === uid && 
+      !p.isGuest && 
+      (p.status === 'accepted' || p.status === undefined)
+    );
     
     if (!isCreator && !isParticipant) {
       return res.status(403).json({
         success: false,
-        error: 'Not authorized to add places. Only the creator or participants can add places.',
+        error: 'Not authorized to add places. Only the creator or accepted participants can add places.',
       });
     }
 
@@ -86,10 +90,10 @@ router.post('/', async (req: OptionalAuthRequest, res) => {
       finalVisitedAt = new Date(visitedAt);
     } else if (nextPlaceId) {
       // If inserting between steps, set timestamp between previous and next
-      const nextPlaceDoc = await db.collection('tripPlaces').doc(nextPlaceId).get();
-      if (nextPlaceDoc.exists) {
-        const nextPlace = nextPlaceDoc.data() as TripPlace;
-        const nextVisitedAt = new Date(nextPlace.visitedAt);
+      const nextPlace = await TripPlaceModel.findById(nextPlaceId);
+      if (nextPlace) {
+        const nextPlaceData = nextPlace.toJSON() as TripPlace;
+        const nextVisitedAt = new Date(nextPlaceData.visitedAt);
         // Set new place's visitedAt to be 1 hour before the next place
         finalVisitedAt = new Date(nextVisitedAt.getTime() - 60 * 60 * 1000);
       } else {
@@ -125,33 +129,30 @@ router.post('/', async (req: OptionalAuthRequest, res) => {
     if (images && images.length > 0) placeData.images = images; // Legacy support
     if (imageMetadata && imageMetadata.length > 0) placeData.imageMetadata = imageMetadata; // New format with privacy
 
-    const placeRef = await db.collection('tripPlaces').add(placeData);
+    const placeDoc = new TripPlaceModel(placeData);
+    const savedPlace = await placeDoc.save();
     
-    const place: TripPlace = {
-      placeId: placeRef.id,
-      ...placeData,
-    };
+    const place: TripPlace = savedPlace.toJSON() as TripPlace;
 
     // If inserting between steps, update the next place's distance/time from the newly inserted place
     if (nextPlaceId) {
-      const nextPlaceDoc = await db.collection('tripPlaces').doc(nextPlaceId).get();
-      if (nextPlaceDoc.exists) {
-        const nextPlace = nextPlaceDoc.data() as TripPlace;
+      const nextPlace = await TripPlaceModel.findById(nextPlaceId);
+      if (nextPlace) {
+        const nextPlaceData = nextPlace.toJSON() as TripPlace;
         const newDistance = calculateDistance(
           coordinates.lat,
           coordinates.lng,
-          nextPlace.coordinates.lat,
-          nextPlace.coordinates.lng
+          nextPlaceData.coordinates.lat,
+          nextPlaceData.coordinates.lng
         );
         
         // Update the next place to recalculate from the newly inserted place
         // Clear modeOfTravel so user can set it again if needed
-        await db.collection('tripPlaces').doc(nextPlaceId).update({
-          distanceFromPrevious: newDistance,
-          timeFromPrevious: null, // Clear time, user can recalculate with mode
-          modeOfTravel: null, // Clear mode, user needs to set it again
-          updatedAt: new Date(),
-        });
+        nextPlace.distanceFromPrevious = newDistance;
+        nextPlace.timeFromPrevious = undefined; // Clear time, user can recalculate with mode
+        nextPlace.modeOfTravel = undefined; // Clear mode, user needs to set it again
+        (nextPlace as any).updatedAt = new Date();
+        await nextPlace.save();
       }
     }
 
@@ -173,26 +174,29 @@ router.get('/trip/:tripId', async (req: OptionalAuthRequest, res) => {
     const { tripId } = req.params;
     
     // Check if trip is public
-    const db = getDb();
-    const tripDoc = await db.collection('trips').doc(tripId).get();
-    if (!tripDoc.exists) {
+    const trip = await TripModel.findById(tripId);
+    if (!trip) {
       return res.status(404).json({
         success: false,
         error: 'Trip not found',
       });
     }
 
-    const trip = tripDoc.data()!;
+    const tripData = trip.toJSON();
     // Allow access if trip is public or user is authenticated participant
-    if (!trip.isPublic) {
+    if (!tripData.isPublic) {
       if (!req.uid) {
         return res.status(401).json({
           success: false,
           error: 'Authentication required',
         });
       }
-      if (trip.creatorId !== req.uid && 
-          !trip.participants?.some((p: any) => p.uid === req.uid)) {
+      if (tripData.creatorId !== req.uid && 
+          !tripData.participants?.some((p: any) => 
+            p.uid === req.uid && 
+            !p.isGuest && 
+            (p.status === 'accepted' || p.status === undefined)
+          )) {
         return res.status(403).json({
           success: false,
           error: 'Not authorized',
@@ -200,21 +204,8 @@ router.get('/trip/:tripId', async (req: OptionalAuthRequest, res) => {
       }
     }
     
-    const snapshot = await db.collection('tripPlaces')
-      .where('tripId', '==', tripId)
-      .get();
-
-    const places = snapshot.docs.map((doc) => ({
-      placeId: doc.id,
-      ...doc.data(),
-    })) as TripPlace[];
-
-    // Sort by visitedAt in memory (avoids needing composite index)
-    places.sort((a, b) => {
-      const aTime = new Date(a.visitedAt).getTime();
-      const bTime = new Date(b.visitedAt).getTime();
-      return bTime - aTime; // Descending order
-    });
+    const placesDocs = await TripPlaceModel.find({ tripId }).sort({ visitedAt: 1 }); // Sort ascending by visitedAt
+    const places = placesDocs.map(doc => doc.toJSON() as TripPlace);
 
     res.json({ success: true, data: places });
   } catch (error: any) {
@@ -238,32 +229,33 @@ router.delete('/:placeId', authenticateToken, async (req: AuthenticatedRequest, 
       });
     }
 
-    const db = getDb();
-    const placeRef = db.collection('tripPlaces').doc(placeId);
-    const placeDoc = await placeRef.get();
-
-    if (!placeDoc.exists) {
+    const place = await TripPlaceModel.findById(placeId);
+    if (!place) {
       return res.status(404).json({
         success: false,
         error: 'Place not found',
       });
     }
 
-    const place = placeDoc.data() as TripPlace;
+    const placeData = place.toJSON() as TripPlace;
     
     // Verify trip exists and user has permission
-    const tripDoc = await db.collection('trips').doc(place.tripId).get();
-    if (!tripDoc.exists) {
+    const trip = await TripModel.findById(placeData.tripId);
+    if (!trip) {
       return res.status(404).json({
         success: false,
         error: 'Trip not found',
       });
     }
 
-    const trip = tripDoc.data()!;
-    // Check if user is creator or participant
-    if (trip.creatorId !== uid && 
-        !trip.participants?.some((p: any) => p.uid === uid)) {
+    const tripData = trip.toJSON();
+    // Check if user is creator or accepted participant
+    if (tripData.creatorId !== uid && 
+        !tripData.participants?.some((p: any) => 
+          p.uid === uid && 
+          !p.isGuest && 
+          (p.status === 'accepted' || p.status === undefined)
+        )) {
       return res.status(403).json({
         success: false,
         error: 'Not authorized to delete this place',
@@ -272,13 +264,10 @@ router.delete('/:placeId', authenticateToken, async (req: AuthenticatedRequest, 
 
     // If deleting a place, we may need to update the next place's distance/time
     // Get all places for the trip to find the next one
-    const allPlacesSnapshot = await db.collection('tripPlaces')
-      .where('tripId', '==', place.tripId)
-      .get();
-    
-    const allPlaces = allPlacesSnapshot.docs
-      .map((doc) => ({ placeId: doc.id, ...doc.data() }))
-      .filter((p) => p.placeId !== placeId) as TripPlace[];
+    const allPlacesDocs = await TripPlaceModel.find({ tripId: placeData.tripId });
+    const allPlaces = allPlacesDocs
+      .map((doc) => doc.toJSON() as TripPlace)
+      .filter((p) => p.placeId !== placeId);
     
     // Sort by visitedAt
     allPlaces.sort((a, b) => {
@@ -288,7 +277,7 @@ router.delete('/:placeId', authenticateToken, async (req: AuthenticatedRequest, 
     });
 
     // Find the place that was before the deleted one
-    const deletedTime = new Date(place.visitedAt).getTime();
+    const deletedTime = new Date(placeData.visitedAt).getTime();
     const previousPlace = allPlaces
       .filter((p) => new Date(p.visitedAt).getTime() < deletedTime)
       .sort((a, b) => new Date(b.visitedAt).getTime() - new Date(a.visitedAt).getTime())[0];
@@ -299,7 +288,7 @@ router.delete('/:placeId', authenticateToken, async (req: AuthenticatedRequest, 
       .sort((a, b) => new Date(a.visitedAt).getTime() - new Date(b.visitedAt).getTime())[0];
 
     // Delete the place
-    await placeRef.delete();
+    await TripPlaceModel.findByIdAndDelete(placeId);
 
     // If there's a next place and a previous place, update next place's distance from previous
     if (nextPlace && previousPlace) {
@@ -310,20 +299,24 @@ router.delete('/:placeId', authenticateToken, async (req: AuthenticatedRequest, 
         nextPlace.coordinates.lng
       );
       
-      await db.collection('tripPlaces').doc(nextPlace.placeId).update({
-        distanceFromPrevious: newDistance,
-        timeFromPrevious: null, // Clear time, user can recalculate with mode
-        modeOfTravel: null, // Clear mode, user needs to set it again
-        updatedAt: new Date(),
-      });
+      const nextPlaceDoc = await TripPlaceModel.findById(nextPlace.placeId);
+      if (nextPlaceDoc) {
+        nextPlaceDoc.distanceFromPrevious = newDistance;
+        nextPlaceDoc.timeFromPrevious = undefined;
+        nextPlaceDoc.modeOfTravel = undefined;
+        (nextPlaceDoc as any).updatedAt = new Date();
+        await nextPlaceDoc.save();
+      }
     } else if (nextPlace && !previousPlace) {
       // If this was the first place, clear the next place's distance/time
-      await db.collection('tripPlaces').doc(nextPlace.placeId).update({
-        distanceFromPrevious: null,
-        timeFromPrevious: null,
-        modeOfTravel: null,
-        updatedAt: new Date(),
-      });
+      const nextPlaceDoc = await TripPlaceModel.findById(nextPlace.placeId);
+      if (nextPlaceDoc) {
+        nextPlaceDoc.distanceFromPrevious = undefined;
+        nextPlaceDoc.timeFromPrevious = undefined;
+        nextPlaceDoc.modeOfTravel = undefined;
+        (nextPlaceDoc as any).updatedAt = new Date();
+        await nextPlaceDoc.save();
+      }
     }
 
     res.json({
@@ -352,88 +345,58 @@ router.patch('/:placeId', authenticateToken, async (req: AuthenticatedRequest, r
       });
     }
 
-    const db = getDb();
-    const placeRef = db.collection('tripPlaces').doc(placeId);
-    const placeDoc = await placeRef.get();
-
-    if (!placeDoc.exists) {
+    const place = await TripPlaceModel.findById(placeId);
+    if (!place) {
       return res.status(404).json({
         success: false,
         error: 'Place not found',
       });
     }
 
-    const place = placeDoc.data() as TripPlace;
+    const placeData = place.toJSON() as TripPlace;
     
     // Verify trip exists and user has permission
-    const tripDoc = await db.collection('trips').doc(place.tripId).get();
-    if (!tripDoc.exists) {
+    const trip = await TripModel.findById(placeData.tripId);
+    if (!trip) {
       return res.status(404).json({
         success: false,
         error: 'Trip not found',
       });
     }
 
-    const trip = tripDoc.data()!;
-    // Check if user is creator or participant
-    if (trip.creatorId !== uid && 
-        !trip.participants?.some((p: any) => p.uid === uid)) {
+    const tripData = trip.toJSON();
+    // Check if user is creator or accepted participant
+    if (tripData.creatorId !== uid && 
+        !tripData.participants?.some((p: any) => 
+          p.uid === uid && 
+          !p.isGuest && 
+          (p.status === 'accepted' || p.status === undefined)
+        )) {
       return res.status(403).json({
         success: false,
         error: 'Not authorized to update this place',
       });
     }
 
-    // Build update object, filtering out undefined values
-    const cleanUpdates: any = {};
+    // Apply updates
+    if (updates.name !== undefined) place.name = updates.name;
+    if (updates.coordinates !== undefined) place.coordinates = updates.coordinates;
+    if (updates.visitedAt !== undefined) place.visitedAt = updates.visitedAt instanceof Date ? updates.visitedAt : new Date(updates.visitedAt);
+    if (updates.rating !== undefined) place.rating = updates.rating;
+    if (updates.comment !== undefined) place.comment = updates.comment;
+    if (updates.rewrittenComment !== undefined) place.rewrittenComment = updates.rewrittenComment;
+    if (updates.modeOfTravel !== undefined) place.modeOfTravel = updates.modeOfTravel || null;
+    if (updates.distanceFromPrevious !== undefined) place.distanceFromPrevious = updates.distanceFromPrevious;
+    if (updates.timeFromPrevious !== undefined) place.timeFromPrevious = updates.timeFromPrevious || undefined;
+    if (updates.images !== undefined) place.images = updates.images;
+    if (updates.imageMetadata !== undefined) place.imageMetadata = updates.imageMetadata;
     
-    // Handle all possible update fields
-    if (updates.name !== undefined) {
-      cleanUpdates.name = updates.name;
-    }
-    if (updates.coordinates !== undefined) {
-      cleanUpdates.coordinates = updates.coordinates;
-    }
-    if (updates.visitedAt !== undefined) {
-      cleanUpdates.visitedAt = updates.visitedAt instanceof Date ? updates.visitedAt : new Date(updates.visitedAt);
-    }
-    if (updates.rating !== undefined) {
-      cleanUpdates.rating = updates.rating;
-    }
-    if (updates.comment !== undefined) {
-      cleanUpdates.comment = updates.comment;
-    }
-    if (updates.rewrittenComment !== undefined) {
-      cleanUpdates.rewrittenComment = updates.rewrittenComment;
-    }
-    if (updates.modeOfTravel !== undefined) {
-      cleanUpdates.modeOfTravel = updates.modeOfTravel || null;
-    }
-    if (updates.distanceFromPrevious !== undefined) {
-      cleanUpdates.distanceFromPrevious = updates.distanceFromPrevious;
-    }
-    if (updates.timeFromPrevious !== undefined) {
-      cleanUpdates.timeFromPrevious = updates.timeFromPrevious || null;
-    }
-    // Handle images - support both legacy and new format
-    if (updates.images !== undefined) {
-      cleanUpdates.images = updates.images;
-    }
-    if (updates.imageMetadata !== undefined) {
-      cleanUpdates.imageMetadata = updates.imageMetadata;
-    }
-    
-    // Always update the updatedAt timestamp
-    cleanUpdates.updatedAt = new Date();
-
-    await placeRef.update(cleanUpdates);
-
-    const updatedDoc = await placeRef.get();
-    const updatedPlace = { placeId: updatedDoc.id, ...updatedDoc.data() } as TripPlace;
+    (place as any).updatedAt = new Date();
+    const updatedPlace = await place.save();
 
     res.json({
       success: true,
-      data: updatedPlace,
+      data: updatedPlace.toJSON() as TripPlace,
     });
   } catch (error: any) {
     res.status(500).json({
@@ -457,34 +420,35 @@ router.post('/:placeId/comments', authenticateToken, async (req: AuthenticatedRe
       });
     }
 
-    const db = getDb();
-    const placeRef = db.collection('tripPlaces').doc(placeId);
-    const placeDoc = await placeRef.get();
-
-    if (!placeDoc.exists) {
+    const place = await TripPlaceModel.findById(placeId);
+    if (!place) {
       return res.status(404).json({
         success: false,
         error: 'Place not found',
       });
     }
 
-    const place = placeDoc.data() as TripPlace;
+    const placeData = place.toJSON() as TripPlace;
     
     // Check if trip is public or user has access
-    const tripDoc = await db.collection('trips').doc(place.tripId).get();
-    if (!tripDoc.exists) {
+    const trip = await TripModel.findById(placeData.tripId);
+    if (!trip) {
       return res.status(404).json({
         success: false,
         error: 'Trip not found',
       });
     }
 
-    const trip = tripDoc.data()!;
+    const tripData = trip.toJSON();
     
     // Allow comments if trip is public, or if user is creator/participant
-    if (!trip.isPublic) {
-      if (trip.creatorId !== uid && 
-          !trip.participants?.some((p: any) => p.uid === uid)) {
+    if (!tripData.isPublic) {
+      if (tripData.creatorId !== uid && 
+          !tripData.participants?.some((p: any) => 
+            p.uid === uid && 
+            !p.isGuest && 
+            (p.status === 'accepted' || p.status === undefined)
+          )) {
         return res.status(403).json({
           success: false,
           error: 'Not authorized to comment on this place',
@@ -493,16 +457,14 @@ router.post('/:placeId/comments', authenticateToken, async (req: AuthenticatedRe
     }
 
     // Create comment
-    const commentId = db.collection('placeComments').doc().id;
-    const comment: PlaceComment = {
-      commentId,
+    const commentDoc = new PlaceCommentModel({
       placeId,
       userId: uid,
       text: text.trim(),
       createdAt: new Date(),
-    };
-
-    await db.collection('placeComments').doc(commentId).set(comment);
+    });
+    const savedComment = await commentDoc.save();
+    const comment = savedComment.toJSON() as PlaceComment;
 
     res.json({
       success: true,
@@ -520,41 +482,42 @@ router.post('/:placeId/comments', authenticateToken, async (req: AuthenticatedRe
 router.get('/:placeId/comments', async (req: OptionalAuthRequest, res) => {
   try {
     const { placeId } = req.params;
-    const db = getDb();
 
-    const placeRef = db.collection('tripPlaces').doc(placeId);
-    const placeDoc = await placeRef.get();
-
-    if (!placeDoc.exists) {
+    const place = await TripPlaceModel.findById(placeId);
+    if (!place) {
       return res.status(404).json({
         success: false,
         error: 'Place not found',
       });
     }
 
-    const place = placeDoc.data() as TripPlace;
+    const placeData = place.toJSON() as TripPlace;
     
     // Check if trip is public or user has access
-    const tripDoc = await db.collection('trips').doc(place.tripId).get();
-    if (!tripDoc.exists) {
+    const trip = await TripModel.findById(placeData.tripId);
+    if (!trip) {
       return res.status(404).json({
         success: false,
         error: 'Trip not found',
       });
     }
 
-    const trip = tripDoc.data()!;
+    const tripData = trip.toJSON();
     
     // Allow viewing comments if trip is public, or if user is authenticated and has access
-    if (!trip.isPublic) {
+    if (!tripData.isPublic) {
       if (!req.uid) {
         return res.status(401).json({
           success: false,
           error: 'Authentication required',
         });
       }
-      if (trip.creatorId !== req.uid && 
-          !trip.participants?.some((p: any) => p.uid === req.uid)) {
+      if (tripData.creatorId !== req.uid && 
+          !tripData.participants?.some((p: any) => 
+            p.uid === req.uid && 
+            !p.isGuest && 
+            (p.status === 'accepted' || p.status === undefined)
+          )) {
         return res.status(403).json({
           success: false,
           error: 'Not authorized to view comments',
@@ -563,33 +526,8 @@ router.get('/:placeId/comments', async (req: OptionalAuthRequest, res) => {
     }
 
     // Get all comments for this place
-    const commentsSnapshot = await db.collection('placeComments')
-      .where('placeId', '==', placeId)
-      .get();
-
-    const comments = (commentsSnapshot.docs
-      .map((doc) => {
-        const data = doc.data();
-        return {
-          commentId: doc.id,
-          ...data,
-          // Convert Firestore Timestamp to Date if needed
-          createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : data.createdAt,
-        };
-      }) as PlaceComment[])
-      .sort((a, b) => {
-        const aTime = a.createdAt instanceof Date 
-          ? a.createdAt.getTime() 
-          : typeof a.createdAt === 'string' 
-            ? new Date(a.createdAt).getTime() 
-            : 0;
-        const bTime = b.createdAt instanceof Date 
-          ? b.createdAt.getTime() 
-          : typeof b.createdAt === 'string' 
-            ? new Date(b.createdAt).getTime() 
-            : 0;
-        return bTime - aTime; // Sort descending (newest first)
-      });
+    const commentsDocs = await PlaceCommentModel.find({ placeId }).sort({ createdAt: -1 });
+    const comments = commentsDocs.map(doc => doc.toJSON() as PlaceComment);
 
     res.json({
       success: true,
@@ -614,35 +552,36 @@ router.post('/:placeId/like', async (req: OptionalAuthRequest, res) => {
     }
     const { placeId } = req.params;
     const uid = req.uid;
-    const db = getDb();
 
-    const placeRef = db.collection('tripPlaces').doc(placeId);
-    const placeDoc = await placeRef.get();
-
-    if (!placeDoc.exists) {
+    const place = await TripPlaceModel.findById(placeId);
+    if (!place) {
       return res.status(404).json({
         success: false,
         error: 'Place not found',
       });
     }
 
-    const place = placeDoc.data() as TripPlace;
+    const placeData = place.toJSON() as TripPlace;
     
     // Check if trip is public or user has access
-    const tripDoc = await db.collection('trips').doc(place.tripId).get();
-    if (!tripDoc.exists) {
+    const trip = await TripModel.findById(placeData.tripId);
+    if (!trip) {
       return res.status(404).json({
         success: false,
         error: 'Trip not found',
       });
     }
 
-    const trip = tripDoc.data()!;
+    const tripData = trip.toJSON();
     
     // Allow likes if trip is public, or if user is creator/participant
-    if (!trip.isPublic) {
-      if (trip.creatorId !== uid && 
-          !trip.participants?.some((p: any) => p.uid === uid)) {
+    if (!tripData.isPublic) {
+      if (tripData.creatorId !== uid && 
+          !tripData.participants?.some((p: any) => 
+            p.uid === uid && 
+            !p.isGuest && 
+            (p.status === 'accepted' || p.status === undefined)
+          )) {
         return res.status(403).json({
           success: false,
           error: 'Not authorized to like this place',
@@ -651,13 +590,9 @@ router.post('/:placeId/like', async (req: OptionalAuthRequest, res) => {
     }
 
     // Check if already liked
-    const likeDoc = await db.collection('placeLikes')
-      .where('placeId', '==', placeId)
-      .where('userId', '==', uid)
-      .limit(1)
-      .get();
+    const existingLike = await PlaceLikeModel.findOne({ placeId, userId: uid });
 
-    if (!likeDoc.empty) {
+    if (existingLike) {
       return res.json({
         success: true,
         data: { liked: true, message: 'Already liked' },
@@ -665,7 +600,7 @@ router.post('/:placeId/like', async (req: OptionalAuthRequest, res) => {
     }
 
     // Add like
-    await db.collection('placeLikes').add({
+    await PlaceLikeModel.create({
       placeId,
       userId: uid,
       createdAt: new Date(),
@@ -694,23 +629,16 @@ router.delete('/:placeId/like', async (req: OptionalAuthRequest, res) => {
     }
     const { placeId } = req.params;
     const uid = req.uid;
-    const db = getDb();
 
     // Find and delete like
-    const likeSnapshot = await db.collection('placeLikes')
-      .where('placeId', '==', placeId)
-      .where('userId', '==', uid)
-      .limit(1)
-      .get();
+    const like = await PlaceLikeModel.findOneAndDelete({ placeId, userId: uid });
 
-    if (likeSnapshot.empty) {
+    if (!like) {
       return res.json({
         success: true,
         data: { liked: false, message: 'Not liked' },
       });
     }
-
-    await likeSnapshot.docs[0].ref.delete();
 
     res.json({
       success: true,
@@ -729,15 +657,12 @@ router.get('/:placeId/likes', async (req: OptionalAuthRequest, res) => {
   try {
     const { placeId } = req.params;
     const uid = req.uid;
-    const db = getDb();
 
     // Get all likes for this place
-    const likesSnapshot = await db.collection('placeLikes')
-      .where('placeId', '==', placeId)
-      .get();
+    const likes = await PlaceLikeModel.find({ placeId });
 
-    const likeCount = likesSnapshot.size;
-    const isLiked = uid ? likesSnapshot.docs.some(doc => doc.data().userId === uid) : false;
+    const likeCount = likes.length;
+    const isLiked = uid ? likes.some(like => like.userId === uid) : false;
 
     res.json({
       success: true,

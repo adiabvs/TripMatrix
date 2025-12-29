@@ -1,7 +1,6 @@
 import express from 'express';
 import crypto from 'node:crypto';
 import { AuthenticatedRequest } from '../middleware/auth.js';
-import { getFirestore } from '../config/firebase.js';
 import {
   getCanvaAuthUrl,
   exchangeCodeForToken,
@@ -10,12 +9,11 @@ import {
   generatePKCE,
   getCanvaConfig,
 } from '../services/canvaOAuthService.js';
+import { CanvaTokenModel } from '../models/CanvaToken.js';
+import { CanvaOAuthStateModel } from '../models/CanvaOAuthState.js';
+import { TravelDiaryModel } from '../models/TravelDiary.js';
 
 const router = express.Router();
-
-function getDb() {
-  return getFirestore();
-}
 
 
 /**
@@ -49,10 +47,10 @@ router.get('/auth', async (req: AuthenticatedRequest, res) => {
     const state = crypto.randomBytes(96).toString('base64url');
     
     // Store state and code verifier in database for verification
-    const db = getDb();
-    await db.collection('canvaOAuthStates').doc(state).set({
+    await CanvaOAuthStateModel.create({
+      _id: state,
       uid,
-      diaryId: diaryId || null,
+      diaryId: diaryId || undefined,
       codeVerifier, // Store code verifier for later use
       createdAt: new Date(),
       expiresAt: new Date(Date.now() + 10 * 60 * 1000), // 10 minutes
@@ -95,26 +93,25 @@ router.get('/redirect', async (req, res) => {
     }
 
     // Verify state
-    const db = getDb();
-    const stateDoc = await db.collection('canvaOAuthStates').doc(state as string).get();
+    const stateDoc = await CanvaOAuthStateModel.findById(state as string);
     
-    if (!stateDoc.exists) {
+    if (!stateDoc) {
       return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/trips?canva_error=invalid_state`);
     }
 
-    const stateData = stateDoc.data()!;
+    const stateData = stateDoc.toJSON();
     const uid = stateData.uid;
     const diaryId = stateData.diaryId;
     const codeVerifier = stateData.codeVerifier;
 
     if (!codeVerifier) {
-      await db.collection('canvaOAuthStates').doc(state as string).delete();
+      await CanvaOAuthStateModel.findByIdAndDelete(state as string);
       return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/trips?canva_error=missing_code_verifier`);
     }
 
     // Check if state expired
-    if (new Date(stateData.expiresAt.toDate()) < new Date()) {
-      await db.collection('canvaOAuthStates').doc(state as string).delete();
+    if (new Date(stateData.expiresAt) < new Date()) {
+      await CanvaOAuthStateModel.findByIdAndDelete(state as string);
       return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/trips?canva_error=state_expired`);
     }
 
@@ -123,16 +120,20 @@ router.get('/redirect', async (req, res) => {
     const tokenResponse = await exchangeCodeForToken(config, code as string, codeVerifier);
 
     // Store tokens in database (associated with user)
-    await db.collection('canvaTokens').doc(uid).set({
-      accessToken: tokenResponse.access_token,
-      refreshToken: tokenResponse.refresh_token || null,
-      expiresAt: new Date(Date.now() + (tokenResponse.expires_in * 1000)),
-      scope: tokenResponse.scope,
-      updatedAt: new Date(),
-    });
+    await CanvaTokenModel.findOneAndUpdate(
+      { userId: uid },
+      {
+        userId: uid,
+        accessToken: tokenResponse.access_token,
+        refreshToken: tokenResponse.refresh_token || null,
+        expiresAt: new Date(Date.now() + (tokenResponse.expires_in * 1000)),
+        updatedAt: new Date(),
+      },
+      { upsert: true, new: true }
+    );
 
     // Clean up state
-    await db.collection('canvaOAuthStates').doc(state as string).delete();
+    await CanvaOAuthStateModel.findByIdAndDelete(state as string);
 
     // Redirect to frontend
     if (diaryId) {
@@ -153,46 +154,40 @@ router.get('/access-token', async (req: AuthenticatedRequest, res) => {
   try {
     const uid = req.uid!;
 
-    const db = getDb();
-    const tokenDoc = await db.collection('canvaTokens').doc(uid).get();
+    let tokenDoc = await CanvaTokenModel.findOne({ userId: uid });
 
-    if (!tokenDoc.exists) {
+    if (!tokenDoc) {
       return res.status(404).json({
         success: false,
         error: 'Canva not connected. Please authorize with Canva first.',
       });
     }
 
-    let tokenData = tokenDoc.data()!;
+    let tokenData = tokenDoc.toJSON();
     
     // Check if token expired and refresh if needed
-    if (new Date(tokenData.expiresAt.toDate()) < new Date()) {
+    if (new Date(tokenData.expiresAt) < new Date()) {
       if (tokenData.refreshToken) {
         try {
           const config = getCanvaConfig();
           const newToken = await refreshAccessToken(config, tokenData.refreshToken);
           
-          await db.collection('canvaTokens').doc(uid).update({
-            accessToken: newToken.access_token,
-            refreshToken: newToken.refresh_token || tokenData.refreshToken,
-            expiresAt: new Date(Date.now() + (newToken.expires_in * 1000)),
-            updatedAt: new Date(),
-          });
+          tokenDoc.accessToken = newToken.access_token;
+          tokenDoc.refreshToken = newToken.refresh_token || tokenData.refreshToken;
+          tokenDoc.expiresAt = new Date(Date.now() + (newToken.expires_in * 1000));
+          tokenDoc.updatedAt = new Date();
+          await tokenDoc.save();
 
-          tokenData = {
-            ...tokenData,
-            accessToken: newToken.access_token,
-            expiresAt: new Date(Date.now() + (newToken.expires_in * 1000)),
-          };
+          tokenData = tokenDoc.toJSON();
         } catch (refreshError: any) {
-          await db.collection('canvaTokens').doc(uid).delete();
+          await CanvaTokenModel.findOneAndDelete({ userId: uid });
           return res.status(401).json({
             success: false,
             error: 'Token expired and refresh failed. Please re-authorize with Canva.',
           });
         }
       } else {
-        await db.collection('canvaTokens').doc(uid).delete();
+        await CanvaTokenModel.findOneAndDelete({ userId: uid });
         return res.status(401).json({
           success: false,
           error: 'Token expired. Please re-authorize with Canva.',
@@ -203,7 +198,7 @@ router.get('/access-token', async (req: AuthenticatedRequest, res) => {
     res.json({
       success: true,
       accessToken: tokenData.accessToken,
-      expiresAt: tokenData.expiresAt.toDate(),
+      expiresAt: tokenData.expiresAt,
     });
   } catch (error: any) {
     console.error('Failed to get Canva access token:', error);
@@ -221,32 +216,30 @@ router.get('/token', async (req: AuthenticatedRequest, res) => {
   try {
     const uid = req.uid!;
 
-    const db = getDb();
-    const tokenDoc = await db.collection('canvaTokens').doc(uid).get();
+    let tokenDoc = await CanvaTokenModel.findOne({ userId: uid });
 
-    if (!tokenDoc.exists) {
+    if (!tokenDoc) {
       return res.status(404).json({
         success: false,
         error: 'Canva not connected. Please authorize with Canva first.',
       });
     }
 
-    const tokenData = tokenDoc.data()!;
+    const tokenData = tokenDoc.toJSON();
     
     // Check if token expired
-    if (new Date(tokenData.expiresAt.toDate()) < new Date()) {
+    if (new Date(tokenData.expiresAt) < new Date()) {
       // Try to refresh
       if (tokenData.refreshToken) {
         try {
           const config = getCanvaConfig();
           const newToken = await refreshAccessToken(config, tokenData.refreshToken);
           
-          await db.collection('canvaTokens').doc(uid).update({
-            accessToken: newToken.access_token,
-            refreshToken: newToken.refresh_token || tokenData.refreshToken,
-            expiresAt: new Date(Date.now() + (newToken.expires_in * 1000)),
-            updatedAt: new Date(),
-          });
+          tokenDoc.accessToken = newToken.access_token;
+          tokenDoc.refreshToken = newToken.refresh_token || tokenData.refreshToken;
+          tokenDoc.expiresAt = new Date(Date.now() + (newToken.expires_in * 1000));
+          tokenDoc.updatedAt = new Date();
+          await tokenDoc.save();
 
           return res.json({
             success: true,
@@ -255,7 +248,7 @@ router.get('/token', async (req: AuthenticatedRequest, res) => {
           });
         } catch (refreshError: any) {
           // Refresh failed, user needs to re-authorize
-          await db.collection('canvaTokens').doc(uid).delete();
+          await CanvaTokenModel.findOneAndDelete({ userId: uid });
           return res.status(401).json({
             success: false,
             error: 'Token expired and refresh failed. Please re-authorize with Canva.',
@@ -263,7 +256,7 @@ router.get('/token', async (req: AuthenticatedRequest, res) => {
         }
       } else {
         // No refresh token, user needs to re-authorize
-        await db.collection('canvaTokens').doc(uid).delete();
+        await CanvaTokenModel.findOneAndDelete({ userId: uid });
         return res.status(401).json({
           success: false,
           error: 'Token expired. Please re-authorize with Canva.',
@@ -274,7 +267,7 @@ router.get('/token', async (req: AuthenticatedRequest, res) => {
     res.json({
       success: true,
       hasToken: true,
-      expiresAt: tokenData.expiresAt.toDate(),
+      expiresAt: tokenData.expiresAt,
     });
   } catch (error: any) {
     console.error('Failed to get Canva token:', error);
@@ -301,32 +294,30 @@ router.post('/designs', async (req: AuthenticatedRequest, res) => {
     }
 
     // Get access token
-    const db = getDb();
-    const tokenDoc = await db.collection('canvaTokens').doc(uid).get();
+    let tokenDoc = await CanvaTokenModel.findOne({ userId: uid });
 
-    if (!tokenDoc.exists) {
+    if (!tokenDoc) {
       return res.status(401).json({
         success: false,
         error: 'Canva not connected. Please authorize with Canva first.',
       });
     }
 
-    const tokenData = tokenDoc.data()!;
+    let tokenData = tokenDoc.toJSON();
     let accessToken = tokenData.accessToken;
 
     // Check if token expired and refresh if needed
-    if (new Date(tokenData.expiresAt.toDate()) < new Date()) {
+    if (new Date(tokenData.expiresAt) < new Date()) {
       if (tokenData.refreshToken) {
         const config = getCanvaConfig();
         const newToken = await refreshAccessToken(config, tokenData.refreshToken);
         accessToken = newToken.access_token;
         
-        await db.collection('canvaTokens').doc(uid).update({
-          accessToken: newToken.access_token,
-          refreshToken: newToken.refresh_token || tokenData.refreshToken,
-          expiresAt: new Date(Date.now() + (newToken.expires_in * 1000)),
-          updatedAt: new Date(),
-        });
+        tokenDoc.accessToken = newToken.access_token;
+        tokenDoc.refreshToken = newToken.refresh_token || tokenData.refreshToken;
+        tokenDoc.expiresAt = new Date(Date.now() + (newToken.expires_in * 1000));
+        tokenDoc.updatedAt = new Date();
+        await tokenDoc.save();
       } else {
         return res.status(401).json({
           success: false,
@@ -358,7 +349,11 @@ router.post('/designs', async (req: AuthenticatedRequest, res) => {
         updateData.canvaEditorUrl = design.editUrl;
       }
       
-      await db.collection('travelDiaries').doc(diaryId).update(updateData);
+      const diaryDoc = await TravelDiaryModel.findById(diaryId);
+      if (diaryDoc) {
+        Object.assign(diaryDoc, updateData);
+        await diaryDoc.save();
+      }
     }
 
     res.json({
