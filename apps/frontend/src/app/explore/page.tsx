@@ -19,7 +19,6 @@ const UserMenu = dynamic(() => import('@/components/UserMenu'), {
   ),
 });
 
-type TripStatus = 'upcoming' | 'in_progress' | 'completed' | 'all';
 
 export default function ExplorePage() {
   const { user, getIdToken } = useAuth();
@@ -32,7 +31,6 @@ export default function ExplorePage() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const [lastTripId, setLastTripId] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState<TripStatus>('all');
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const observerRef = useRef<IntersectionObserver | null>(null);
 
@@ -59,8 +57,7 @@ export default function ExplorePage() {
         'all', // Search all types
         20,
         loadMore && lastTripId ? lastTripId : undefined,
-        token,
-        statusFilter !== 'all' ? statusFilter : undefined
+        token
       );
 
       if (loadMore) {
@@ -116,7 +113,7 @@ export default function ExplorePage() {
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [user, lastTripId, getIdToken, statusFilter]);
+  }, [user, lastTripId, getIdToken]);
 
   // Debounced search
   useEffect(() => {
@@ -142,13 +139,6 @@ export default function ExplorePage() {
     };
   }, [searchQuery, performSearch]);
 
-  // Re-search when status filter changes
-  useEffect(() => {
-    if (searchQuery.trim()) {
-      setLastTripId(null);
-      performSearch(searchQuery, false);
-    }
-  }, [statusFilter]);
 
   // Intersection Observer for lazy loading
   const lastTripElementRef = useCallback((node: HTMLDivElement | null) => {
@@ -189,51 +179,6 @@ export default function ExplorePage() {
             />
           </div>
 
-          {/* Status Filter */}
-          {searchQuery.trim() && (
-            <div className="flex items-center gap-2 overflow-x-auto pb-2">
-              <button
-                onClick={() => setStatusFilter('all')}
-                className={`px-3 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-all ${
-                  statusFilter === 'all'
-                    ? 'bg-blue-500 text-white'
-                    : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-                }`}
-              >
-                All
-              </button>
-              <button
-                onClick={() => setStatusFilter('upcoming')}
-                className={`px-3 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-all ${
-                  statusFilter === 'upcoming'
-                    ? 'bg-blue-500 text-white'
-                    : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-                }`}
-              >
-                Upcoming
-              </button>
-              <button
-                onClick={() => setStatusFilter('in_progress')}
-                className={`px-3 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-all ${
-                  statusFilter === 'in_progress'
-                    ? 'bg-blue-500 text-white'
-                    : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-                }`}
-              >
-                Ongoing
-              </button>
-              <button
-                onClick={() => setStatusFilter('completed')}
-                className={`px-3 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-all ${
-                  statusFilter === 'completed'
-                    ? 'bg-blue-500 text-white'
-                    : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-                }`}
-              >
-                Completed
-              </button>
-            </div>
-          )}
         </div>
       </header>
 

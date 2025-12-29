@@ -744,7 +744,7 @@ router.get('/public/list/with-data', async (req: OptionalAuthRequest, res) => {
 // Search trips by user, place, or keyword
 router.get('/search', async (req: OptionalAuthRequest, res) => {
   try {
-    const { q, type, limit = '20', lastTripId, status } = req.query;
+    const { q, type, limit = '20', lastTripId } = req.query;
     
     if (!q || typeof q !== 'string') {
       return res.status(400).json({
@@ -779,11 +779,6 @@ router.get('/search', async (req: OptionalAuthRequest, res) => {
           isPublic: true
         };
         
-        // Filter by status if provided
-        if (status && typeof status === 'string' && ['upcoming', 'in_progress', 'completed'].includes(status)) {
-          tripQuery.status = status;
-        }
-        
         const tripsDocs = await TripModel.find(tripQuery);
         const userTrips = tripsDocs.map(doc => doc.toJSON() as Trip);
         trips.push(...userTrips);
@@ -800,14 +795,32 @@ router.get('/search', async (req: OptionalAuthRequest, res) => {
         ]
       };
       
-      // Filter by status if provided
-      if (status && typeof status === 'string' && ['upcoming', 'in_progress', 'completed'].includes(status)) {
-        tripQuery.status = status;
-      }
-      
       const tripsDocs = await TripModel.find(tripQuery);
       const matchingTrips = tripsDocs.map(doc => doc.toJSON() as Trip);
       trips.push(...matchingTrips);
+      
+      // Also search by participants (members in trip)
+      // First find users matching the search query
+      const matchingUsers = await UserModel.find({
+        $or: [
+          { name: { $regex: searchLower, $options: 'i' } },
+          { email: { $regex: searchLower, $options: 'i' } },
+          { username: { $regex: searchLower, $options: 'i' } }
+        ]
+      });
+      
+      const matchingUserIds = matchingUsers.map(u => u.uid || u._id?.toString()).filter(Boolean);
+      
+      if (matchingUserIds.length > 0) {
+        // Find trips where these users are participants
+        const participantTripsDocs = await TripModel.find({
+          isPublic: true,
+          'participants.uid': { $in: matchingUserIds }
+        });
+        
+        const participantTrips = participantTripsDocs.map(doc => doc.toJSON() as Trip);
+        trips.push(...participantTrips);
+      }
     }
 
     if (searchType === 'place' || searchType === 'all') {
@@ -823,11 +836,6 @@ router.get('/search', async (req: OptionalAuthRequest, res) => {
           _id: { $in: tripIds },
           isPublic: true
         };
-        
-        // Filter by status if provided
-        if (status && typeof status === 'string' && ['upcoming', 'in_progress', 'completed'].includes(status)) {
-          tripQuery.status = status;
-        }
         
         const tripsDocs = await TripModel.find(tripQuery);
         const placeTrips = tripsDocs.map(doc => doc.toJSON() as Trip);

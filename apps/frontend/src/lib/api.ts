@@ -234,8 +234,7 @@ export async function searchTrips(
   type?: 'user' | 'place' | 'trip' | 'all',
   limit: number = 20,
   lastTripId?: string,
-  token?: string | null,
-  status?: 'upcoming' | 'in_progress' | 'completed'
+  token?: string | null
 ): Promise<{
   trips: Trip[];
   users: User[];
@@ -250,9 +249,6 @@ export async function searchTrips(
   url.searchParams.append('limit', limit.toString());
   if (lastTripId) {
     url.searchParams.append('lastTripId', lastTripId);
-  }
-  if (status) {
-    url.searchParams.append('status', status);
   }
   
   const headers: Record<string, string> = {
