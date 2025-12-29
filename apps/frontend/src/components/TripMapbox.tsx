@@ -1439,13 +1439,20 @@ export default function TripMapbox({
 
   return (
     <>
-      {/* Hide MapLibre attribution with CSS */}
+      {/* Hide MapLibre attribution with CSS and ensure map stays below modals */}
       <style jsx global>{`
         .maplibregl-ctrl-attrib {
           display: none !important;
         }
         .maplibregl-ctrl-bottom-right {
           display: none !important;
+        }
+        /* Ensure map canvas stays below modals on all browsers including mobile Safari */
+        .maplibregl-map,
+        .maplibregl-canvas-container,
+        .maplibregl-canvas {
+          z-index: 1 !important;
+          position: relative !important;
         }
       `}</style>
       <div
@@ -1455,6 +1462,7 @@ export default function TripMapbox({
           height,
           position: 'relative',
           background: '#000',
+          zIndex: 1, // Lower z-index to ensure it stays below modals
         }}
       />
     </>

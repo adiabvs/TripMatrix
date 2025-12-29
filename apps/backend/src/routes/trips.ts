@@ -786,12 +786,15 @@ router.get('/search', async (req: OptionalAuthRequest, res) => {
     }
 
     if (searchType === 'trip' || searchType === 'all') {
-      // Search by trip title/description
+      // Escape special regex characters for safe searching
+      const escapedQuery = searchLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      
+      // Search by trip title/description (case-insensitive contains)
       const tripQuery: any = {
         isPublic: true,
         $or: [
-          { title: { $regex: searchLower, $options: 'i' } },
-          { description: { $regex: searchLower, $options: 'i' } }
+          { title: { $regex: escapedQuery, $options: 'i' } },
+          { description: { $regex: escapedQuery, $options: 'i' } }
         ]
       };
       
@@ -803,9 +806,9 @@ router.get('/search', async (req: OptionalAuthRequest, res) => {
       // First find users matching the search query
       const matchingUsers = await UserModel.find({
         $or: [
-          { name: { $regex: searchLower, $options: 'i' } },
-          { email: { $regex: searchLower, $options: 'i' } },
-          { username: { $regex: searchLower, $options: 'i' } }
+          { name: { $regex: escapedQuery, $options: 'i' } },
+          { email: { $regex: escapedQuery, $options: 'i' } },
+          { username: { $regex: escapedQuery, $options: 'i' } }
         ]
       });
       
@@ -824,9 +827,12 @@ router.get('/search', async (req: OptionalAuthRequest, res) => {
     }
 
     if (searchType === 'place' || searchType === 'all') {
-      // Search by place name
+      // Escape special regex characters for safe searching
+      const escapedQuery = searchLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      
+      // Search by place name (case-insensitive contains)
       const placesDocs = await TripPlaceModel.find({
-        name: { $regex: searchLower, $options: 'i' }
+        name: { $regex: escapedQuery, $options: 'i' }
       }).limit(50);
       
       const tripIds = [...new Set(placesDocs.map(doc => doc.tripId))];

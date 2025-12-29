@@ -25,8 +25,9 @@ router.get('/search', async (req: OptionalAuthRequest, res) => {
       });
     }
 
-    // Search by email, name, or username
-    const searchQuery = q.toLowerCase();
+    // Search by email, name, or username (case-insensitive contains)
+    // Escape special regex characters for safe searching
+    const searchQuery = q.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const usersDocs = await UserModel.find({
       $or: [
         { email: { $regex: searchQuery, $options: 'i' } },

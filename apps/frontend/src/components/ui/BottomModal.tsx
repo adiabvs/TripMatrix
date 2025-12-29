@@ -44,16 +44,32 @@ export default function BottomModal({
     <>
       <div
         ref={backdropRef}
-        className="fixed inset-0 z-[100] flex items-end justify-center bg-black/50 backdrop-blur-sm"
+        className="fixed inset-0 flex items-end justify-center bg-black/50 backdrop-blur-sm"
         onClick={handleBackdropClick}
-        style={{ animation: 'fadeIn 0.2s ease-out' }}
+        style={{ 
+          animation: 'fadeIn 0.2s ease-out',
+          zIndex: 99999,
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          WebkitTransform: 'translateZ(0)',
+          transform: 'translateZ(0)',
+          isolation: 'isolate' // Create new stacking context
+        }}
       >
         <div
           ref={modalRef}
           className="w-full max-w-[600px] bg-black rounded-t-3xl shadow-2xl flex flex-col"
           style={{ 
             maxHeight,
-            animation: 'slideUpFromBottom 0.3s ease-out'
+            animation: 'slideUpFromBottom 0.3s ease-out',
+            position: 'relative',
+            zIndex: 100000,
+            WebkitTransform: 'translateZ(0)',
+            transform: 'translateZ(0)',
+            isolation: 'isolate' // Create new stacking context
           }}
           onClick={(e) => e.stopPropagation()}
         >
