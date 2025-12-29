@@ -83,7 +83,7 @@ const getVehicleSpeed = (mode: ModeOfTravel | null | undefined): number => {
 // Animation state machine
 type AnimationState = 'IDLE' | 'STEP_TRANSITION' | 'FOLLOWING';
 
-// Get vehicle icon HTML
+// Get vehicle icon HTML (using SVG icons)
 const getVehicleIcon = (mode: ModeOfTravel | null | undefined): string => {
   return getModeIconSVG(mode, '#000');
 };
@@ -147,6 +147,9 @@ export default function TripMapbox({
   const cumulativeDistancesRef = useRef<number[]>([]); // Cumulative distances for all steps
   const lineStringCacheRef = useRef<Map<number, turf.Feature<turf.LineString>>>(new Map()); // Cache Turf LineStrings
   const lastScrollYRef = useRef<number>(0); // Track scroll direction
+  const animationProgressRef = useRef<number>(0); // Time-based animation progress (0-1)
+  const animationStartTimeRef = useRef<number>(0); // When animation started
+  const animationDurationRef = useRef<number>(10000); // Animation duration in ms (10 seconds default)
 
   // Initialize map
   useEffect(() => {
@@ -837,19 +840,6 @@ export default function TripMapbox({
     const map = mapRef.current;
     const isScrolling = scrollProgress > 0; // Show route when any scrolling (even 0.01%)
 
-    console.log('🗺️ Route Update:', {
-      scrollProgress,
-      isScrolling,
-      highlightedStepIndex,
-      routesCount: routesRef.current.length,
-      routeDetails: routesRef.current.map(r => ({
-        layerId: r.layerId,
-        startIndex: r.startIndex,
-        endIndex: r.endIndex,
-        hasLayer: map.getLayer(r.layerId) ? true : false
-      }))
-    });
-
     // Update all route layers with correct active state and visibility
     routesRef.current.forEach((route) => {
       const isActive = route.startIndex === highlightedStepIndex;
@@ -1064,7 +1054,7 @@ export default function TripMapbox({
     if (!vehicleMarkerRef.current) {
       const vehicleEl = document.createElement('div');
       vehicleEl.className = 'vehicle-marker';
-      vehicleEl.style.fontSize = '20px';
+      vehicleEl.style.fontSize = '32px'; // Increased from 20px to 32px for better visibility
       vehicleEl.style.zIndex = '10000';
       vehicleEl.style.pointerEvents = 'none';
       vehicleEl.style.filter = 'drop-shadow(0 2px 4px rgba(0,0,0,0.5))';
@@ -1109,7 +1099,7 @@ export default function TripMapbox({
       const routeDist = routeDistancesRef.current.get(routeIdx) || 
         turf.length(lineStr, { units: 'kilometers' });
 
-      // Calculate progress
+      // Calculate progress based on scroll
       let progress: number;
       if (highlightedStepIndex === sortedPlacesData.length - 1) {
         progress = 1;
@@ -1126,8 +1116,6 @@ export default function TripMapbox({
 
       // Use Turf's along() for precise distance-based interpolation
       // Fix reverse direction: invert progress so vehicle moves forward as scrollProgress increases
-      // When scrollProgress = 0, vehicle at start. When scrollProgress = 1, vehicle at end.
-      // If vehicle moves backwards, use reversed distance
       const reversedProgress = 1 - progress; // Invert progress to fix reverse direction
       const targetDistanceAlongRoute = reversedProgress * routeDist;
       const point = turf.along(lineStr, targetDistanceAlongRoute, { units: 'kilometers' });
@@ -1174,9 +1162,9 @@ export default function TripMapbox({
     const baseEasingFactor = 0.25;
     const normalizedEasingFactor = baseEasingFactor * speedMultiplier * lengthMultiplier;
 
-    // Smooth animation loop that moves vehicle and camera follows it
+    // Smooth animation loop that moves vehicle along the exact route path
     const animateVehicle = () => {
-      if (!vehicleMarkerRef.current || !targetVehiclePosRef.current || !map) {
+      if (!vehicleMarkerRef.current || !map || !activeRoute) {
         animationFrameRef.current = null;
         return;
       }
@@ -1191,6 +1179,10 @@ export default function TripMapbox({
       if (animationStateRef.current === 'IDLE') {
         animationStateRef.current = 'FOLLOWING';
       }
+
+      // Recalculate target position based on scroll progress
+      const targetPos = calculateTargetPosition();
+      targetVehiclePosRef.current = targetPos;
 
       const currentLngLat = vehicleMarkerRef.current.getLngLat();
       const [currentLng, currentLat] = [currentLngLat.lng, currentLngLat.lat];
@@ -1220,14 +1212,13 @@ export default function TripMapbox({
       // Throttle camera updates (only update every 100-200ms, not every frame)
       const now = Date.now();
       const timeSinceLastUpdate = now - lastCameraUpdateRef.current;
-      const CAMERA_UPDATE_INTERVAL = 150; // ms
+      const CAMERA_UPDATE_INTERVAL = 100; // ms (reduced for smoother camera following)
 
       // Camera follows the vehicle smoothly (only if moving and enough time passed)
       // Note: Zoom changes are handled by a separate useEffect to avoid conflicts
       if (distance > 0.0001 && timeSinceLastUpdate >= CAMERA_UPDATE_INTERVAL && animationStateRef.current === 'FOLLOWING') {
         // Don't update camera if map is already animating (prevents conflicts)
         if (!map.isMoving() && scrollProgress > 0.05) {
-          // Only follow vehicle when scrolling (not when at step)
           // Follow vehicle position while maintaining zoom (zoom is handled by separate effect)
           const bearing = Math.atan2(deltaLng, deltaLat) * (180 / Math.PI);
           map.easeTo({
@@ -1243,7 +1234,7 @@ export default function TripMapbox({
         }
       }
 
-      // Log vehicle position and distances during scrolling (throttled to once per second)
+      // Log vehicle position and distances during animation (throttled to once per second)
       const LOG_UPDATE_INTERVAL = 1000; // 1 second
       const timeSinceLastLog = now - lastLogUpdateRef.current;
       if (timeSinceLastLog >= LOG_UPDATE_INTERVAL && activeRoute) {
@@ -1255,29 +1246,21 @@ export default function TripMapbox({
           const distanceFromCurrent = calculateDistance(
             currentPlace.coordinates.lat,
             currentPlace.coordinates.lng,
-            newLat,
-            newLng
+            targetLat,
+            targetLng
           );
           
           // Calculate distance to next step if it exists
           let distanceToNext = null;
           if (nextPlace?.coordinates) {
             distanceToNext = calculateDistance(
-              newLat,
-              newLng,
+              targetLat,
+              targetLng,
               nextPlace.coordinates.lat,
               nextPlace.coordinates.lng
             );
           }
           
-          console.log('🚗 Vehicle Position:', {
-            gps: { lat: newLat, lng: newLng },
-            distanceFromCurrentStep: `${distanceFromCurrent.toFixed(2)} km`,
-            distanceToNextStep: distanceToNext ? `${distanceToNext.toFixed(2)} km` : 'N/A',
-            scrollProgress: `${(scrollProgress * 100).toFixed(1)}%`,
-            stepIndex: highlightedStepIndex,
-            stepName: currentPlace.name
-          });
           
           lastLogUpdateRef.current = now;
         }
@@ -1305,63 +1288,48 @@ export default function TripMapbox({
         // Set transition state
         animationStateRef.current = 'STEP_TRANSITION';
         
-        // When step changes, always zoom to 80% (zoom level 8) at current step location
-        // If scrollProgress > 0, we'll transition to route view in the animation loop
+        // When step changes, show route at 100% zoom with both places visible
         if (currentPlace?.coordinates?.lat && currentPlace?.coordinates?.lng) {
-          if (scrollProgress === 0) {
-            // Completely on step - zoom to 80% at step location
+          const nextPlace = sortedPlacesData[highlightedStepIndex + 1];
+          if (nextPlace?.coordinates?.lat && nextPlace?.coordinates?.lng) {
+            // Calculate bounding box to fit both places
+            const lngs = [currentPlace.coordinates.lng, nextPlace.coordinates.lng];
+            const lats = [currentPlace.coordinates.lat, nextPlace.coordinates.lat];
+            
+            const minLng = Math.min(...lngs);
+            const maxLng = Math.max(...lngs);
+            const minLat = Math.min(...lats);
+            const maxLat = Math.max(...lats);
+            
+            // Add padding to the bounds
+            const padding = 0.01; // ~1km padding
+            
+            map.fitBounds(
+              [
+                [minLng - padding, minLat - padding],
+                [maxLng + padding, maxLat + padding]
+              ],
+              {
+                padding: { top: 50, bottom: 50, left: 50, right: 50 },
+                maxZoom: 15, // 100% zoom
+                duration: 800,
+              }
+            );
+            
+            // Transition complete, allow following
+            setTimeout(() => {
+              animationStateRef.current = 'FOLLOWING';
+            }, 800);
+          } else {
+            // No next place, just zoom to current step at 80%
             map.flyTo({
               center: [currentPlace.coordinates.lng, currentPlace.coordinates.lat],
               zoom: 8, // 80% zoom level
               duration: 800,
               essential: true,
             }, () => {
-              // Transition complete, allow following
               animationStateRef.current = 'FOLLOWING';
             });
-          } else {
-            // Moving towards next step - show route at 100% zoom with both places visible
-            const nextPlace = sortedPlacesData[highlightedStepIndex + 1];
-            if (nextPlace?.coordinates?.lat && nextPlace?.coordinates?.lng) {
-              // Calculate bounding box to fit both places
-              const lngs = [currentPlace.coordinates.lng, nextPlace.coordinates.lng];
-              const lats = [currentPlace.coordinates.lat, nextPlace.coordinates.lat];
-              
-              const minLng = Math.min(...lngs);
-              const maxLng = Math.max(...lngs);
-              const minLat = Math.min(...lats);
-              const maxLat = Math.max(...lats);
-              
-              // Add padding to the bounds
-              const padding = 0.01; // ~1km padding
-              
-              map.fitBounds(
-                [
-                  [minLng - padding, minLat - padding],
-                  [maxLng + padding, maxLat + padding]
-                ],
-                {
-                  padding: { top: 50, bottom: 50, left: 50, right: 50 },
-                  maxZoom: 15, // 100% zoom
-                  duration: 800,
-                }
-              );
-              
-              // Transition complete, allow following
-              setTimeout(() => {
-                animationStateRef.current = 'FOLLOWING';
-              }, 800);
-            } else {
-              // No next place, just zoom to current step
-              map.flyTo({
-                center: [currentPlace.coordinates.lng, currentPlace.coordinates.lat],
-                zoom: 8, // 80% zoom level
-                duration: 800,
-                essential: true,
-              }, () => {
-                animationStateRef.current = 'FOLLOWING';
-              });
-            }
           }
         } else {
           animationStateRef.current = 'FOLLOWING';
@@ -1369,14 +1337,10 @@ export default function TripMapbox({
         
         // Update refs
         lastHighlightedStepRef.current = highlightedStepIndex;
-        lastScrollProgressRef.current = scrollProgress;
       } catch (error) {
         console.warn('Failed to update map view:', error);
         animationStateRef.current = 'FOLLOWING';
       }
-    } else {
-      // Update scroll progress ref even if step didn't change
-      lastScrollProgressRef.current = scrollProgress;
     }
 
     return () => {
@@ -1402,77 +1366,62 @@ export default function TripMapbox({
     };
   }, [mapLoaded, highlightedStepIndex, sortedPlacesData, animationSpeed, scrollProgress]);
 
-  // Separate effect to handle zoom changes based on scrollProgress
+  // Separate effect to handle zoom changes when step changes
+  // Vehicle animation is now automatic, so zoom is based on step changes only
   useEffect(() => {
     if (!mapRef.current || !mapLoaded) return;
     
     const map = mapRef.current;
-    const lastScrollProgress = lastScrollProgressRef.current;
-    const wasAtStep = lastScrollProgress === 0 || lastScrollProgress < 0.05;
-    const isAtStep = scrollProgress === 0 || scrollProgress < 0.05;
-    const transitionedToRoute = wasAtStep && scrollProgress > 0.05;
-    const transitionedToStep = !wasAtStep && isAtStep;
     
-    // Don't update if map is already animating (unless it's a transition)
-    if (map.isMoving() && !transitionedToRoute && !transitionedToStep) {
+    // Don't update if map is already animating
+    if (map.isMoving()) {
       return;
     }
     
-    // Update zoom based on scroll progress
-    if (isAtStep || transitionedToStep) {
-      // When completely on a step: zoom to 80% (zoom level 8) at current step location
-      const currentPlace = sortedPlacesData[highlightedStepIndex];
-      if (currentPlace?.coordinates?.lat && currentPlace?.coordinates?.lng) {
-        map.easeTo({
-          center: [currentPlace.coordinates.lng, currentPlace.coordinates.lat],
-          zoom: 8, // 80% zoom
-          pitch: 0,
-          bearing: 0,
-          duration: transitionedToStep ? 500 : 300,
-          easing: (t) => t,
-        });
-      }
-    } else if (scrollProgress > 0.05 || transitionedToRoute) {
-      // When moving towards next step: show route at 100% zoom (zoom level 15)
-      // Fit both places in view using fitBounds
-      const currentPlace = sortedPlacesData[highlightedStepIndex];
-      const nextPlace = sortedPlacesData[highlightedStepIndex + 1];
-      
-      if (currentPlace?.coordinates && nextPlace?.coordinates) {
-        
-        // Calculate bounding box to fit both places
-        const lngs = [currentPlace.coordinates.lng, nextPlace.coordinates.lng];
-        const lats = [currentPlace.coordinates.lat, nextPlace.coordinates.lat];
-        
-        const minLng = Math.min(...lngs);
-        const maxLng = Math.max(...lngs);
-        const minLat = Math.min(...lats);
-        const maxLat = Math.max(...lats);
-        
-        // Add padding to the bounds (percentage of the range)
-        const lngRange = maxLng - minLng;
-        const latRange = maxLat - minLat;
-        const paddingLng = Math.max(0.01, lngRange * 0.1); // 10% padding or minimum 0.01
-        const paddingLat = Math.max(0.01, latRange * 0.1);
-        
-        // Use fitBounds to show both places at 100% zoom
-        map.fitBounds(
-          [
-            [minLng - paddingLng, minLat - paddingLat],
-            [maxLng + paddingLng, maxLat + paddingLat]
-          ],
-          {
-            padding: { top: 50, bottom: 50, left: 50, right: 50 },
-            maxZoom: 15, // 100% zoom
-            duration: transitionedToRoute ? 500 : 300,
-          }
-        );
-      }
-    }
+    // When step changes: show route at 100% zoom with both places visible
+    const currentPlace = sortedPlacesData[highlightedStepIndex];
+    const nextPlace = sortedPlacesData[highlightedStepIndex + 1];
     
-    // Update last scroll progress ref
-    lastScrollProgressRef.current = scrollProgress;
-  }, [mapLoaded, highlightedStepIndex, scrollProgress, sortedPlacesData]);
+    if (currentPlace?.coordinates && nextPlace?.coordinates) {
+      // Calculate bounding box to fit both places
+      const lngs = [currentPlace.coordinates.lng, nextPlace.coordinates.lng];
+      const lats = [currentPlace.coordinates.lat, nextPlace.coordinates.lat];
+      
+      const minLng = Math.min(...lngs);
+      const maxLng = Math.max(...lngs);
+      const minLat = Math.min(...lats);
+      const maxLat = Math.max(...lats);
+      
+      // Add padding to the bounds (percentage of the range)
+      const lngRange = maxLng - minLng;
+      const latRange = maxLat - minLat;
+      const paddingLng = Math.max(0.01, lngRange * 0.1); // 10% padding or minimum 0.01
+      const paddingLat = Math.max(0.01, latRange * 0.1);
+      
+      // Use fitBounds to show both places at 100% zoom
+      map.fitBounds(
+        [
+          [minLng - paddingLng, minLat - paddingLat],
+          [maxLng + paddingLng, maxLat + paddingLat]
+        ],
+        {
+          padding: { top: 50, bottom: 50, left: 50, right: 50 },
+          maxZoom: 15, // 100% zoom
+          duration: 500,
+        }
+      );
+    } else if (currentPlace?.coordinates) {
+      // No next place, just zoom to current step at 80%
+      map.easeTo({
+        center: [currentPlace.coordinates.lng, currentPlace.coordinates.lat],
+        zoom: 8, // 80% zoom
+        pitch: 0,
+        bearing: 0,
+        duration: 500,
+        easing: (t) => t,
+      });
+    }
+  }, [mapLoaded, highlightedStepIndex, sortedPlacesData]);
 
   // Optionally pan to highlighted step (without zoom) - commented out to prevent zoom changes
   // useEffect(() => {
