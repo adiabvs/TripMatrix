@@ -11,6 +11,7 @@ import type {
   TravelDiary,
   PlaceComment,
   TripComment,
+  Notification,
 } from '@tripmatrix/types';
 
 // Normalize API URL - remove port from HTTPS URLs (Railway uses default HTTPS port)
