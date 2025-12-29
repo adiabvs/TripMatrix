@@ -1,12 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { format } from 'date-fns';
 import { toDate } from '@/lib/dateUtils';
 import type { TripPlace, TripExpense, User } from '@tripmatrix/types';
 import PhotoViewer from './PhotoViewer';
-import Link from 'next/link';
-import { MdDelete, MdLocationOn, MdStar, MdFavorite, MdChatBubbleOutline, MdMoreVert, MdPerson, MdSend } from 'react-icons/md';
+import { MdDelete, MdLocationOn, MdStar, MdFavorite, MdChatBubbleOutline, MdMoreVert, MdPerson, MdSend, MdEdit } from 'react-icons/md';
 import { formatCurrency, getCurrencySymbol } from '@/lib/currencyUtils';
 import { likePlace, unlikePlace, getPlaceLikes, getPlaceComments, addPlaceComment, getUser } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -49,6 +48,8 @@ export default function CompactStepCard({
   const [commentUserNamesMap, setCommentUserNamesMap] = useState<Record<string, string>>({});
   const [touchStart, setTouchStart] = useState(0);
   const [touchEnd, setTouchEnd] = useState(0);
+  const [showMenu, setShowMenu] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
   const visitedDate = toDate(place.visitedAt);
   
   // Get image list
@@ -65,6 +66,8 @@ export default function CompactStepCard({
 
   // Load likes and comment count
   useEffect(() => {
+    let isMounted = true;
+    
     const loadLikesAndComments = async () => {
       try {
         const token = user ? await getIdToken() : null;
@@ -72,17 +75,30 @@ export default function CompactStepCard({
           getPlaceLikes(place.placeId, token).catch(() => ({ likeCount: 0, isLiked: false })),
           getPlaceComments(place.placeId, token).catch(() => []),
         ]);
-        setLikes({ count: likesData.likeCount, isLiked: likesData.isLiked });
-        setCommentCount(commentsData.length);
+        
+        // Only update state if component is still mounted
+        if (isMounted) {
+          setLikes({ count: likesData.likeCount, isLiked: likesData.isLiked });
+          setCommentCount(commentsData.length);
+          setLoadingLikes(false);
+        }
       } catch (error) {
         console.error('Failed to load likes/comments:', error);
-      } finally {
-        setLoadingLikes(false);
+        if (isMounted) {
+          setLoadingLikes(false);
+        }
       }
     };
 
-    loadLikesAndComments();
-  }, [place.placeId, user, getIdToken]);
+    if (place.placeId) {
+      loadLikesAndComments();
+    }
+    
+    return () => {
+      isMounted = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [place.placeId, user?.uid]);
 
   // Load comments when modal opens
   useEffect(() => {
@@ -158,6 +174,22 @@ export default function CompactStepCard({
     setCurrentImageIndex(0);
   }, [place.placeId]);
 
+  // Close menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setShowMenu(false);
+      }
+    };
+
+    if (showMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [showMenu]);
+
   // Use first image as cover, or placeholder
   const coverImage = imageList.length > 0 ? imageList[0] : null;
 
@@ -194,27 +226,63 @@ export default function CompactStepCard({
   return (
     <div className="w-full">
       <div className="bg-black border border-gray-800 rounded-lg overflow-hidden">
-        {/* Post Header - Only delete button if creator */}
-        {isCreator && onDelete && (
-          <div className="flex items-center justify-end px-4 py-3 border-b border-gray-800">
-            <button
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                if (confirm(`Are you sure you want to delete "${place.name}"?`)) {
-                  onDelete(place.placeId);
-                }
-              }}
-              className="text-white hover:opacity-70"
-            >
-              <MdMoreVert className="w-5 h-5" />
-            </button>
+        {/* Post Header - Menu button if creator */}
+        {isCreator && (onEdit || onDelete) && (
+          <div className="flex items-center justify-end px-4 py-3 border-b border-gray-800 relative">
+            <div ref={menuRef} className="relative">
+              <button
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setShowMenu(!showMenu);
+                }}
+                className="text-white hover:opacity-70 transition-opacity"
+              >
+                <MdMoreVert className="w-5 h-5" />
+              </button>
+              
+              {/* Dropdown Menu */}
+              {showMenu && (
+                <div className="absolute right-0 top-8 bg-gray-800 border border-gray-700 rounded-lg shadow-lg z-50 min-w-[140px] overflow-hidden">
+                  {onEdit && (
+                    <button
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setShowMenu(false);
+                        onEdit(place);
+                      }}
+                      className="w-full px-4 py-3 text-left text-white hover:bg-gray-700 flex items-center gap-2 transition-colors"
+                    >
+                      <MdEdit className="w-4 h-4" />
+                      <span>Edit</span>
+                    </button>
+                  )}
+                  {onDelete && (
+                    <button
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setShowMenu(false);
+                        if (confirm(`Are you sure you want to delete "${place.name}"?`)) {
+                          onDelete(place.placeId);
+                        }
+                      }}
+                      className="w-full px-4 py-3 text-left text-red-400 hover:bg-gray-700 flex items-center gap-2 transition-colors"
+                    >
+                      <MdDelete className="w-4 h-4" />
+                      <span>Delete</span>
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
         {/* Cover Image with Carousel */}
         <div 
-          className="relative w-full aspect-square bg-gray-900 overflow-hidden cursor-pointer"
+          className="relative w-full aspect-square bg-gray-900 overflow-hidden"
           onTouchStart={(e) => {
             e.stopPropagation();
             setTouchStart(e.targetTouches[0].clientX);
@@ -222,7 +290,8 @@ export default function CompactStepCard({
           }}
           onTouchMove={(e) => {
             e.stopPropagation();
-            e.preventDefault();
+            // Note: preventDefault() removed - passive listeners don't allow it
+            // This is fine as we're just tracking touch position for swipe detection
             setTouchEnd(e.targetTouches[0].clientX);
           }}
           onTouchEnd={(e) => {
@@ -260,46 +329,20 @@ export default function CompactStepCard({
                         pointerEvents: idx === currentImageIndex ? 'auto' : 'none'
                       }}
                     >
-                      {isCreator ? (
-                        <Link 
-                          href={`/trips/${tripId}/steps/${place.placeId}/edit`}
+                      <div className="block w-full h-full">
+                        <img
+                          src={img}
+                          alt={`${place.name} - Image ${idx + 1}`}
+                          className="w-full h-full object-cover select-none pointer-events-none"
+                          draggable={false}
+                          loading="lazy"
                           onClick={(e) => {
-                            // Only navigate if not swiping
-                            if (touchStart && touchEnd && Math.abs(touchStart - touchEnd) > 10) {
-                              e.preventDefault();
-                            }
+                            e.preventDefault();
+                            e.stopPropagation();
+                            handlePhotoClick(idx);
                           }}
-                          className="block w-full h-full"
-                        >
-                          <img
-                            src={img}
-                            alt={`${place.name} - Image ${idx + 1}`}
-                            className="w-full h-full object-cover select-none pointer-events-none"
-                            draggable={false}
-                            loading="lazy"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              handlePhotoClick(idx);
-                            }}
-                          />
-                        </Link>
-                      ) : (
-                        <div className="block w-full h-full">
-                          <img
-                            src={img}
-                            alt={`${place.name} - Image ${idx + 1}`}
-                            className="w-full h-full object-cover select-none pointer-events-none"
-                            draggable={false}
-                            loading="lazy"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              handlePhotoClick(idx);
-                            }}
-                          />
-                        </div>
-                      )}
+                        />
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -386,35 +429,19 @@ export default function CompactStepCard({
                   {likes.count} {likes.count === 1 ? 'like' : 'likes'}
                 </span>
               )}
-              {commentCount > 0 && (isCreator ? (
-                <Link 
-                  href={`/trips/${tripId}/steps/${place.placeId}/edit`} 
-                  className="text-gray-400 hover:text-white"
-                >
-                  {commentCount} {commentCount === 1 ? 'comment' : 'comments'}
-                </Link>
-              ) : (
+              {commentCount > 0 && (
                 <span className="text-gray-400">
                   {commentCount} {commentCount === 1 ? 'comment' : 'comments'}
                 </span>
-              ))}
+              )}
             </div>
           )}
 
           {/* Place Info */}
           <div>
-            {isCreator ? (
-              <Link
-                href={`/trips/${tripId}/steps/${place.placeId}/edit`}
-                className="text-white font-semibold text-sm hover:opacity-70"
-              >
-                {place.name}
-              </Link>
-            ) : (
-              <span className="text-white font-semibold text-sm">
-                {place.name}
-              </span>
-            )}
+            <span className="text-white font-semibold text-sm">
+              {place.name}
+            </span>
             {place.comment && (
               <p className="text-gray-300 text-sm mt-1 line-clamp-2">
                 {place.comment}
@@ -439,12 +466,9 @@ export default function CompactStepCard({
           {/* Creator name and date at bottom */}
           <div className="mt-2 pt-2 border-t border-gray-800">
             <div className="flex items-center gap-2">
-              <Link
-                href={`/trips?user=${creator?.uid || tripId}`}
-                className="text-white font-semibold text-sm hover:opacity-70"
-              >
+              <span className="text-white font-semibold text-sm">
                 {creator?.name || 'Trip'}
-              </Link>
+              </span>
               {visitedDate && !isNaN(visitedDate.getTime()) && (
                 <>
                   <span className="text-gray-500">•</span>

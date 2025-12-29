@@ -44,3 +44,4 @@ TripCommentSchema.index({ tripId: 1, createdAt: -1 });
 
 export const TripCommentModel = mongoose.model<TripCommentDocument>('TripComment', TripCommentSchema);
 
+

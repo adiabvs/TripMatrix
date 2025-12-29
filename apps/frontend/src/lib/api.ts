@@ -726,21 +726,30 @@ export async function uploadImage(
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${API_URL}/api/upload/image`, {
-    method: 'POST',
-    headers,
-    body: formData,
-  });
+  try {
+    const response = await fetch(`${API_URL}/api/upload/image`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
 
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: 'Unknown error' }));
-    throw new Error(error.error || `HTTP ${response.status}`);
-  }
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+      throw new Error(error.error || `HTTP ${response.status}`);
+    }
 
-  const result: ApiResponse<{ url: string; isPublic: boolean }> = await response.json();
-  if (!result.success || !result.data) {
-    throw new Error(result.error || 'Failed to upload image');
+    const result: ApiResponse<{ url: string; isPublic: boolean }> = await response.json();
+    if (!result.success || !result.data) {
+      throw new Error(result.error || 'Failed to upload image');
+    }
+    return result.data;
+  } catch (error: any) {
+    // Handle connection errors
+    if (error.message?.includes('Failed to fetch') || error.message?.includes('ERR_CONNECTION_RESET')) {
+      throw new Error('Connection failed. Please check if the backend server is running and try again.');
+    }
+    // Re-throw other errors
+    throw error;
   }
-  return result.data;
 }
 
