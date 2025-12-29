@@ -8,6 +8,8 @@ import { TripRouteModel } from '../models/TripRoute.js';
 import { TripLikeModel } from '../models/TripLike.js';
 import { PlaceCommentModel } from '../models/PlaceComment.js';
 import { UserModel } from '../models/User.js';
+import { isMongoDBConnected } from '../config/mongodb.js';
+import mongoose from 'mongoose';
 
 const router = express.Router();
 
@@ -481,6 +483,15 @@ router.get('/public/list', async (req, res) => {
 // Supports pagination with lastTripId
 router.get('/public/list/with-data', async (req: OptionalAuthRequest, res) => {
   try {
+    // Check MongoDB connection
+    if (!isMongoDBConnected() && mongoose.connection.readyState !== 1) {
+      console.error('MongoDB not connected. ReadyState:', mongoose.connection.readyState);
+      return res.status(503).json({
+        success: false,
+        error: 'Database connection not available. Please try again later.',
+      });
+    }
+    
     const { limit = '20', lastTripId } = req.query;
     
     // Get user's followed list if authenticated
@@ -616,9 +627,11 @@ router.get('/public/list/with-data', async (req: OptionalAuthRequest, res) => {
       },
     });
   } catch (error: any) {
+    console.error('Error in /public/list/with-data:', error);
+    console.error('Error stack:', error.stack);
     res.status(500).json({
       success: false,
-      error: error.message,
+      error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message,
     });
   }
 });

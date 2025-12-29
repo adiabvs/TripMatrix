@@ -16,12 +16,33 @@ export async function connectDB() {
   }
 
   try {
-    await mongoose.connect(mongoUri);
+    await mongoose.connect(mongoUri, {
+      serverSelectionTimeoutMS: 30000, // 30 seconds
+      socketTimeoutMS: 45000, // 45 seconds
+      bufferMaxEntries: 0, // Disable mongoose buffering
+      bufferCommands: false, // Disable mongoose buffering
+    });
     isConnected = true;
     console.log('✅ MongoDB connected successfully');
+    
+    // Handle connection events
+    mongoose.connection.on('error', (err) => {
+      console.error('❌ MongoDB connection error:', err);
+      isConnected = false;
+    });
+    
+    mongoose.connection.on('disconnected', () => {
+      console.warn('⚠️  MongoDB disconnected');
+      isConnected = false;
+    });
+    
+    mongoose.connection.on('reconnected', () => {
+      console.log('✅ MongoDB reconnected');
+      isConnected = true;
+    });
   } catch (error: any) {
     console.error('❌ MongoDB connection error:', error.message);
-    console.warn('⚠️  Continuing without MongoDB. Some features will not work.');
+    throw error; // Re-throw to prevent server from starting without DB
   }
 }
 

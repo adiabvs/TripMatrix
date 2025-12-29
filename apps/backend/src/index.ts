@@ -22,9 +22,6 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Initialize MongoDB
-connectDB().catch(console.error);
-
 // Initialize Firebase Admin (for authentication)
 initializeFirebase();
 
@@ -257,7 +254,24 @@ app.use((err: Error, req: express.Request, res: express.Response, _next: express
   });
 });
 
-app.listen(PORT, () => {
-  console.log(`🚀 Backend server running on port ${PORT}`);
-});
+// Start server after MongoDB connection is established
+async function startServer() {
+  try {
+    // Initialize MongoDB and wait for connection
+    console.log('🔄 Connecting to MongoDB...');
+    await connectDB();
+    console.log('✅ MongoDB connection established');
+    
+    // Start the server
+    app.listen(PORT, () => {
+      console.log(`🚀 Backend server running on port ${PORT}`);
+    });
+  } catch (error: any) {
+    console.error('❌ Failed to start server:', error.message);
+    console.error('   Make sure MONGODB_URI is set correctly in your environment variables');
+    process.exit(1);
+  }
+}
+
+startServer();
 
