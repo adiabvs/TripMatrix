@@ -874,17 +874,17 @@ export default function TripMapbox({
       labelEl.textContent = place.name || 'Place';
       labelEl.style.backgroundColor = isHighlighted ? 'rgba(255, 193, 7, 0.95)' : 'rgba(0, 0, 0, 0.85)';
       labelEl.style.color = isHighlighted ? '#000' : 'white';
-      labelEl.style.padding = '6px 10px';
-      labelEl.style.borderRadius = '6px';
-      labelEl.style.fontSize = '13px';
-      labelEl.style.fontWeight = isHighlighted ? '700' : '500';
+      labelEl.style.padding = '4px 8px';
+      labelEl.style.borderRadius = '4px';
+      labelEl.style.fontSize = '11px';
+      labelEl.style.fontWeight = '400'; // Regular weight, not bold
       labelEl.style.whiteSpace = 'nowrap';
       labelEl.style.pointerEvents = 'none';
       labelEl.style.boxShadow = '0 2px 6px rgba(0,0,0,0.4)';
       labelEl.style.border = isHighlighted ? '2px solid #ffc107' : '1px solid rgba(255,255,255,0.3)';
       labelEl.style.zIndex = '10001';
       labelEl.style.fontFamily = 'system-ui, -apple-system, sans-serif';
-      labelEl.style.letterSpacing = '0.3px';
+      labelEl.style.letterSpacing = '0.2px';
 
       const labelMarker = new maplibregl.Marker({
         element: labelEl,
@@ -1173,7 +1173,9 @@ export default function TripMapbox({
     }
 
     // Use Turf's along() for distance-based interpolation
-    const targetDistanceAlongRoute = finalProgress * routeDistance;
+    // Fix reverse direction: invert progress so vehicle moves forward as scrollProgress increases
+    const reversedProgress = 1 - finalProgress; // Invert to fix reverse direction
+    const targetDistanceAlongRoute = reversedProgress * routeDistance;
     const point = turf.along(lineString, targetDistanceAlongRoute, { units: 'kilometers' });
     const [initialLng, initialLat] = point.geometry.coordinates;
 
@@ -1242,36 +1244,11 @@ export default function TripMapbox({
       }
 
       // Use Turf's along() for precise distance-based interpolation
-      // Ensure coordinates are in correct order: first coordinate = start, last = end
-      // If vehicle moves backwards, we need to reverse the coordinates or use (1 - progress)
-      const targetDistanceAlongRoute = progress * routeDist;
-      
-      // Check if coordinates are in reverse order by comparing start/end with actual places
-      const routeStartCoord = activeRoute.coordinates[0];
-      const routeEndCoord = activeRoute.coordinates[activeRoute.coordinates.length - 1];
-      const actualStartPlace = sortedPlacesData[activeRoute.startIndex];
-      const actualEndPlace = sortedPlacesData[activeRoute.endIndex];
-      
-      // Calculate distances to verify order
-      if (actualStartPlace?.coordinates && actualEndPlace?.coordinates) {
-        const distStartToRouteStart = Math.sqrt(
-          Math.pow(routeStartCoord[0] - actualStartPlace.coordinates.lng, 2) +
-          Math.pow(routeStartCoord[1] - actualStartPlace.coordinates.lat, 2)
-        );
-        const distStartToRouteEnd = Math.sqrt(
-          Math.pow(routeEndCoord[0] - actualStartPlace.coordinates.lng, 2) +
-          Math.pow(routeEndCoord[1] - actualStartPlace.coordinates.lat, 2)
-        );
-        
-        // If route end is closer to actual start, coordinates are reversed
-        if (distStartToRouteEnd < distStartToRouteStart) {
-          // Reverse the progress: use distance from end instead of from start
-          const reversedDistance = routeDist - targetDistanceAlongRoute;
-          const point = turf.along(lineStr, reversedDistance, { units: 'kilometers' });
-          return point.geometry.coordinates as [number, number];
-        }
-      }
-      
+      // Fix reverse direction: invert progress so vehicle moves forward as scrollProgress increases
+      // When scrollProgress = 0, vehicle at start. When scrollProgress = 1, vehicle at end.
+      // If vehicle moves backwards, use reversed distance
+      const reversedProgress = 1 - progress; // Invert progress to fix reverse direction
+      const targetDistanceAlongRoute = reversedProgress * routeDist;
       const point = turf.along(lineStr, targetDistanceAlongRoute, { units: 'kilometers' });
       return point.geometry.coordinates as [number, number];
     };

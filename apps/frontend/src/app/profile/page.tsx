@@ -41,6 +41,8 @@ export default function ProfilePage() {
     try {
       const token = await getIdToken();
       if (token) {
+        // getUserTrips already returns trips where user is creator OR participant (contributor)
+        // The backend combines both and deduplicates them
         const userTrips = await getUserTrips(token);
         setTrips(userTrips);
 
