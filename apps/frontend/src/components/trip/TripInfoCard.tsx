@@ -202,7 +202,7 @@ export default function TripInfoCard({
               )}
               <div>
                 <Link
-                  href={`/trips?user=${trip.creatorId}`}
+                  href={`/users/${trip.creatorId}`}
                   className="text-white font-semibold text-sm hover:opacity-70"
                 >
                   {creator?.name || 'Trip Creator'}

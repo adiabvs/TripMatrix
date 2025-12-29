@@ -9,6 +9,7 @@ import { TripLikeModel } from '../models/TripLike.js';
 import { PlaceCommentModel } from '../models/PlaceComment.js';
 import { TripCommentModel } from '../models/TripComment.js';
 import { UserModel } from '../models/User.js';
+import { NotificationModel } from '../models/Notification.js';
 import { isMongoDBConnected } from '../config/mongodb.js';
 import mongoose from 'mongoose';
 
@@ -224,15 +225,24 @@ router.post('/:tripId/participants', async (req: OptionalAuthRequest, res) => {
       });
     }
 
+    // Get creator info for notification
+    const creator = await UserModel.findOne({ uid: tripData.creatorId });
+    const creatorName = creator?.name || 'Someone';
+
     // Process participants (can be uids or guest names)
     const newParticipants: TripParticipant[] = participants.map((p: string | TripParticipant) => {
       if (typeof p === 'string') {
         // Check if it's a uid (starts with alphanumeric, no spaces)
         if (/^[a-zA-Z0-9]+$/.test(p)) {
-          return { uid: p, isGuest: false };
+          // For non-creator users, set status to pending
+          return { uid: p, isGuest: false, status: p === tripData.creatorId ? 'accepted' : 'pending' };
         } else {
           return { guestName: p, isGuest: true };
         }
+      }
+      // If already a participant object, ensure status is set
+      if (p.uid && p.uid !== tripData.creatorId && !p.status) {
+        return { ...p, status: 'pending' };
       }
       return p;
     });
@@ -242,10 +252,16 @@ router.post('/:tripId/participants', async (req: OptionalAuthRequest, res) => {
     const existingGuests = new Set(tripData.participants.map((p) => p.guestName).filter(Boolean));
     
     const mergedParticipants = [...tripData.participants];
+    const newUserParticipants: string[] = [];
+    
     newParticipants.forEach((newP) => {
       if (newP.uid && !existingUids.has(newP.uid)) {
         mergedParticipants.push(newP);
         existingUids.add(newP.uid);
+        // Track new user participants for notifications
+        if (newP.uid !== tripData.creatorId) {
+          newUserParticipants.push(newP.uid);
+        }
       } else if (newP.guestName && !existingGuests.has(newP.guestName)) {
         mergedParticipants.push(newP);
         existingGuests.add(newP.guestName);
@@ -255,6 +271,23 @@ router.post('/:tripId/participants', async (req: OptionalAuthRequest, res) => {
     trip.participants = mergedParticipants;
     trip.updatedAt = new Date();
     await trip.save();
+
+    // Create notifications for new user participants
+    if (newUserParticipants.length > 0) {
+      const notificationPromises = newUserParticipants.map(async (userId) => {
+        const notification = new NotificationModel({
+          userId,
+          type: 'trip_invitation',
+          title: 'Trip Invitation',
+          message: `${creatorName} invited you to join "${tripData.title}"`,
+          tripId: tripId,
+          fromUserId: uid,
+          isRead: false,
+        });
+        return notification.save();
+      });
+      await Promise.all(notificationPromises);
+    }
 
     res.json({
       success: true,
@@ -701,7 +734,7 @@ router.get('/public/list/with-data', async (req: OptionalAuthRequest, res) => {
 // Search trips by user, place, or keyword
 router.get('/search', async (req: OptionalAuthRequest, res) => {
   try {
-    const { q, type, limit = '20', lastTripId } = req.query;
+    const { q, type, limit = '20', lastTripId, status } = req.query;
     
     if (!q || typeof q !== 'string') {
       return res.status(400).json({
@@ -713,27 +746,35 @@ router.get('/search', async (req: OptionalAuthRequest, res) => {
     const searchType = type || 'all'; // 'user', 'place', 'trip', 'all'
     const searchLower = q.toLowerCase();
     let trips: Trip[] = [];
+    let users: any[] = [];
 
     if (searchType === 'user' || searchType === 'all') {
-      // Search by user name/email
+      // Search by user name, email, or username
       const usersDocs = await UserModel.find({
         $or: [
           { name: { $regex: searchLower, $options: 'i' } },
-          { email: { $regex: searchLower, $options: 'i' } }
+          { email: { $regex: searchLower, $options: 'i' } },
+          { username: { $regex: searchLower, $options: 'i' } }
         ]
       }).limit(10);
       
-      const userIds = usersDocs.map(doc => {
-        const userData = doc.toJSON();
-        return userData.uid || doc._id?.toString() || doc.uid;
-      });
+      users = usersDocs.map(doc => doc.toJSON());
+      
+      const userIds = users.map(user => user.uid || user._id?.toString());
       
       if (userIds.length > 0) {
         // Get trips by these users
-        const tripsDocs = await TripModel.find({
+        const tripQuery: any = {
           creatorId: { $in: userIds },
           isPublic: true
-        });
+        };
+        
+        // Filter by status if provided
+        if (status && typeof status === 'string' && ['upcoming', 'in_progress', 'completed'].includes(status)) {
+          tripQuery.status = status;
+        }
+        
+        const tripsDocs = await TripModel.find(tripQuery);
         const userTrips = tripsDocs.map(doc => doc.toJSON() as Trip);
         trips.push(...userTrips);
       }
@@ -741,13 +782,20 @@ router.get('/search', async (req: OptionalAuthRequest, res) => {
 
     if (searchType === 'trip' || searchType === 'all') {
       // Search by trip title/description
-      const tripsDocs = await TripModel.find({
+      const tripQuery: any = {
         isPublic: true,
         $or: [
           { title: { $regex: searchLower, $options: 'i' } },
           { description: { $regex: searchLower, $options: 'i' } }
         ]
-      });
+      };
+      
+      // Filter by status if provided
+      if (status && typeof status === 'string' && ['upcoming', 'in_progress', 'completed'].includes(status)) {
+        tripQuery.status = status;
+      }
+      
+      const tripsDocs = await TripModel.find(tripQuery);
       const matchingTrips = tripsDocs.map(doc => doc.toJSON() as Trip);
       trips.push(...matchingTrips);
     }
@@ -761,10 +809,17 @@ router.get('/search', async (req: OptionalAuthRequest, res) => {
       const tripIds = [...new Set(placesDocs.map(doc => doc.tripId))];
       
       if (tripIds.length > 0) {
-        const tripsDocs = await TripModel.find({
+        const tripQuery: any = {
           _id: { $in: tripIds },
           isPublic: true
-        });
+        };
+        
+        // Filter by status if provided
+        if (status && typeof status === 'string' && ['upcoming', 'in_progress', 'completed'].includes(status)) {
+          tripQuery.status = status;
+        }
+        
+        const tripsDocs = await TripModel.find(tripQuery);
         const placeTrips = tripsDocs.map(doc => doc.toJSON() as Trip);
         trips.push(...placeTrips);
       }
@@ -802,6 +857,7 @@ router.get('/search', async (req: OptionalAuthRequest, res) => {
       success: true,
       data: {
         trips: paginatedTrips,
+        users: users.slice(0, 10), // Return up to 10 matching users
         hasMore,
         lastTripId: newLastTripId,
       },

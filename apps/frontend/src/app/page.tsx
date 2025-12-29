@@ -236,7 +236,7 @@ export default function Home() {
                       )}
                       <div>
                         <Link
-                          href={`/trips?user=${creator?.uid || trip.creatorId}`}
+                          href={`/users/${creator?.uid || trip.creatorId}`}
                           className="text-white font-semibold text-sm hover:opacity-70"
                         >
                           {creator?.name || 'Unknown User'}

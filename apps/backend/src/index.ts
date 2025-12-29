@@ -16,6 +16,7 @@ import geocodingRoutes from './routes/geocoding.js';
 import uploadRoutes from './routes/upload.js';
 import diaryRoutes from './routes/diary.js';
 import canvaOAuthRoutes from './routes/canva-oauth.js';
+import notificationRoutes from './routes/notifications.js';
 
 dotenv.config();
 
@@ -156,6 +157,7 @@ app.use('/api/expenses', optionalAuth, expenseRoutes);
 app.use('/api/routes', optionalAuth, routeRoutes);
 app.use('/api/places', optionalAuth, placeRoutes);
 app.use('/api/users', optionalAuth, userRoutes);
+app.use('/api/notifications', authenticateToken, notificationRoutes); // Notifications routes
 app.use('/api/geocoding', geocodingRoutes); // Public endpoint for geocoding
 app.use('/api/upload', authenticateToken, uploadRoutes); // Image upload endpoint
 app.use('/api/diary', authenticateToken, diaryRoutes); // Travel diary routes

@@ -343,7 +343,6 @@ export default function TripMapbox({
     
     // Only proceed if places data actually changed or we have routes from props
     if (!placesChanged && routes.length === 0 && routesRef.current.length > 0) {
-      console.log('⏭️ Skipping route creation - places data unchanged and routes already exist');
       return;
     }
 
@@ -357,7 +356,6 @@ export default function TripMapbox({
 
     // Cancel any ongoing route creation
     if (routeCreationAbortRef.current) {
-      console.log('🛑 Aborting previous route creation');
       routeCreationAbortRef.current.abort();
       routeCreationAbortRef.current = null;
     }
@@ -370,7 +368,6 @@ export default function TripMapbox({
     // 1. Places data changed AND we need to create new routes AND routes aren't currently being created
     // 2. OR we have routes from props to replace existing ones
     if ((placesChanged && shouldCreateRoutes && !isCreatingRoutes) || (routes.length > 0 && !isCreatingRoutes)) {
-      console.log('🗑️ Clearing existing routes. Current count:', routesRef.current.length, 'isCreating:', isCreatingRoutes, 'placesChanged:', placesChanged);
       routesRef.current.forEach(route => {
         if (route.layerId && map.getLayer(route.layerId)) {
           map.removeLayer(route.layerId);
@@ -380,36 +377,14 @@ export default function TripMapbox({
         }
       });
       routesRef.current = [];
-      console.log('🗑️ Routes cleared. routesRef.current.length:', routesRef.current.length);
-    } else if (isCreatingRoutes) {
-      console.log('⏸️ Skipping route clear - routes are currently being created');
-    } else if (!placesChanged) {
-      console.log('⏸️ Skipping route clear - places data unchanged');
     }
     
     // Update the places key tracker
     lastPlacesDataRef.current = placesKey;
     
-    console.log('🗺️ Route creation starting:', {
-      routesPropLength: routes.length,
-      sortedPlacesCount: sortedPlacesData.length,
-      willCreateRoutes: shouldCreateRoutes,
-      existingRoutesCleared: shouldCreateRoutes || routes.length > 0
-    });
-
-    // Add routes FIRST (before markers) to ensure they're created
-    console.log('🛣️ Route creation check:', {
-      routesPropLength: routes.length,
-      sortedPlacesCount: sortedPlacesData.length,
-      willUseProps: routes.length > 0,
-      willCreateRoutes: routes.length === 0 && sortedPlacesData.length > 1
-    });
-    
     if (routes.length > 0) {
-      console.log('📦 Using routes from props');
       routes.forEach((route, routeIndex) => {
         if (!route.points || route.points.length < 2) {
-          console.warn('⚠️ Route skipped - insufficient points:', routeIndex, route.points?.length);
           return;
         }
 
@@ -439,7 +414,6 @@ export default function TripMapbox({
         }).filter(coord => coord !== null) as [number, number][];
 
         if (validCoordinates.length < 2) {
-          console.warn(`⚠️ Not enough valid coordinates for route from props, skipping`);
           return;
         }
 
@@ -463,14 +437,12 @@ export default function TripMapbox({
           // Update existing source data using setData() method (as per MapLibre docs)
           const source = map.getSource(sourceId) as maplibregl.GeoJSONSource;
           source.setData(geojsonFeature);
-          console.log(`🔄 Updated route source (from props): ${sourceId}`);
         } else {
           // Add new GeoJSON source following MapLibre GL JS documentation pattern
           map.addSource(sourceId, {
             type: 'geojson',
             data: geojsonFeature,
           });
-          console.log(`➕ Added route source (from props): ${sourceId} with ${validCoordinates.length} coordinates`);
         }
         
         // Immediately add route to routesRef so it's available for animation
@@ -491,11 +463,9 @@ export default function TripMapbox({
         if (existingRouteIndex >= 0) {
           // Update existing route
           routesRef.current[existingRouteIndex] = routeInfo;
-          console.log(`🔄 Updated route from props in routesRef`);
         } else {
           // Add new route
           routesRef.current.push(routeInfo);
-          console.log(`📝 Route from props added to routesRef. Total routes now: ${routesRef.current.length}`);
         }
 
         // Check if layer already exists and update it, otherwise add new layer
@@ -522,8 +492,6 @@ export default function TripMapbox({
           }
         } else {
           // Initial layer creation using MapLibre GL JS - always visible
-          console.log('🛣️ Creating route layer with MapLibre GL JS (from routes prop):', layerId, 'isActive:', isActive, 'isScrolling:', isScrolling);
-          
           map.addLayer({
             id: layerId,
             type: 'line',
@@ -539,56 +507,30 @@ export default function TripMapbox({
               'line-opacity': isActive ? (isScrolling ? 1.0 : 0.8) : (isScrolling ? 0.4 : 0.6),
             },
           });
-          
-          console.log(`✅ Route layer added to map (from props): ${layerId}`);
         }
-        
-        console.log('✅ Route fully created from props:', {
-          layerId,
-          startIndex,
-          endIndex,
-          coordinatesCount: validCoordinates.length,
-          totalRoutes: routesRef.current.length,
-          hasSource: !!map.getSource(sourceId),
-          hasLayer: !!map.getLayer(layerId)
-        });
       });
-      
-      console.log('📦 Finished adding routes from props. Total:', routesRef.current.length);
     } else {
       // Create routes between consecutive places
-      console.log('🚀 About to call createRoutes() - routes.length:', routes.length, 'sortedPlacesData.length:', sortedPlacesData.length);
       const createRoutes = async () => {
-        console.log('✅ createRoutes() function called!');
         try {
           // Create abort controller for this route creation
           const abortController = new AbortController();
           routeCreationAbortRef.current = abortController;
 
           const routesToCreate = sortedPlacesData.length - 1;
-          console.log('🔄 Starting route creation loop for', routesToCreate, 'routes. Places:', sortedPlacesData.map(p => p.name || 'Unnamed'));
           
           if (routesToCreate <= 0) {
-            console.warn('⚠️ No routes to create - need at least 2 places');
             return;
           }
 
           for (let i = 0; i < routesToCreate; i++) {
             // Check if operation was aborted
             if (abortController.signal.aborted) {
-              console.warn('⚠️ Route creation aborted at index', i);
               return;
             }
 
             const current = sortedPlacesData[i];
             const next = sortedPlacesData[i + 1];
-
-            console.log(`🔄 Processing route ${i}:`, {
-              current: current?.name,
-              next: next?.name,
-              currentCoords: current?.coordinates,
-              nextCoords: next?.coordinates
-            });
 
             if (
               !current.coordinates ||
@@ -598,10 +540,6 @@ export default function TripMapbox({
               !next.coordinates.lat ||
               !next.coordinates.lng
             ) {
-              console.warn(`⚠️ Skipping route ${i} - missing coordinates`, {
-                current: current?.name,
-                next: next?.name
-              });
               continue;
             }
 
@@ -650,7 +588,6 @@ export default function TripMapbox({
                 return;
               }
               // Fetch road route from OSRM
-              console.log(`🌐 Fetching route from OSRM for route ${i}:`, current.name, '->', next.name);
               coordinates = await fetchRoadRoute(
                 current.coordinates.lng,
                 current.coordinates.lat,
@@ -659,7 +596,6 @@ export default function TripMapbox({
               );
               
               if (!coordinates || coordinates.length === 0) {
-                console.warn(`⚠️ No coordinates returned from OSRM for route ${i}, using direct path`);
                 // Fallback: create direct path
                 coordinates = [
                   [current.coordinates.lng, current.coordinates.lat],
@@ -667,11 +603,8 @@ export default function TripMapbox({
                 ];
               }
               
-              console.log(`✅ Got ${coordinates.length} coordinates for route ${i}`);
-              
               // Check again after async operation
               if (abortController.signal.aborted) {
-                console.warn('⚠️ Route creation aborted after fetch');
                 return;
               }
               routeCoordinatesCache.current.set(cacheKey, coordinates);
@@ -680,12 +613,10 @@ export default function TripMapbox({
 
           // Final check before adding to map
           if (abortController.signal.aborted) {
-            console.warn('⚠️ Route creation aborted before adding to map');
             return;
           }
           
           if (!coordinates || coordinates.length < 2) {
-            console.warn(`⚠️ Invalid coordinates for route ${i}, skipping`);
             continue;
           }
 
@@ -698,7 +629,6 @@ export default function TripMapbox({
           }).filter(coord => coord !== null) as [number, number][];
 
           if (validCoordinates.length < 2) {
-            console.warn(`⚠️ Not enough valid coordinates for route ${i}, skipping`);
             continue;
           }
 
@@ -723,14 +653,12 @@ export default function TripMapbox({
             // Update existing source data using setData() method (as per MapLibre docs)
             const source = map.getSource(sourceId) as maplibregl.GeoJSONSource;
             source.setData(geojsonFeature);
-            console.log(`🔄 Updated route source: ${sourceId} with ${validCoordinates.length} coordinates`);
           } else {
             // Add new GeoJSON source following MapLibre GL JS documentation pattern
             map.addSource(sourceId, {
               type: 'geojson',
               data: geojsonFeature,
             });
-            console.log(`➕ Added route source: ${sourceId} with ${validCoordinates.length} coordinates`);
           }
           
           // Immediately add route to routesRef so it's available for animation
@@ -752,11 +680,9 @@ export default function TripMapbox({
           if (existingRouteIndex >= 0) {
             // Update existing route
             routesRef.current[existingRouteIndex] = routeInfo;
-            console.log(`🔄 Updated route ${i} in routesRef`);
           } else {
             // Add new route
             routesRef.current.push(routeInfo);
-            console.log(`📝 Route ${i} added to routesRef. Total routes now: ${routesRef.current.length}`);
           }
 
           // Check if layer already exists and update it, otherwise add new layer
@@ -783,8 +709,6 @@ export default function TripMapbox({
             }
           } else {
             // Initial layer creation - always visible
-            console.log('🛣️ Creating route layer with MapLibre GL JS:', layerId, 'isActive:', isActive, 'isScrolling:', isScrolling);
-            
             map.addLayer({
               id: layerId,
               type: 'line',
@@ -800,42 +724,15 @@ export default function TripMapbox({
                 'line-opacity': isActive ? (isScrolling ? 1.0 : 0.8) : (isScrolling ? 0.4 : 0.6),
               },
             });
-            
-            console.log(`✅ Route layer added to map: ${layerId}`);
           }
-          
-          console.log('✅ Route fully created:', {
-            layerId,
-            startIndex: i,
-            endIndex: i + 1,
-            coordinatesCount: validCoordinates.length,
-            modeOfTravel: mode,
-            totalRoutesNow: routesRef.current.length,
-            hasSource: !!map.getSource(sourceId),
-            hasLayer: !!map.getLayer(layerId)
-          });
         }
         
           // Clear abort controller when done
           if (routeCreationAbortRef.current === abortController) {
             routeCreationAbortRef.current = null;
           }
-          
-          console.log('🛣️ All routes created successfully!', {
-            totalRoutes: routesRef.current.length,
-            routes: routesRef.current.map(r => `${r.startIndex}->${r.endIndex}`),
-            routesRefLength: routesRef.current.length,
-            allRouteDetails: routesRef.current.map(r => ({
-              startIndex: r.startIndex,
-              endIndex: r.endIndex,
-              layerId: r.layerId,
-              hasSource: !!map.getSource(r.sourceId),
-              hasLayer: !!map.getLayer(r.layerId),
-              coordinatesCount: r.coordinates?.length || 0
-            }))
-          });
         } catch (error) {
-          console.error('❌ Error in route creation:', error);
+          console.error('Error in route creation:', error);
           // Clear abort controller on error
           if (routeCreationAbortRef.current) {
             routeCreationAbortRef.current = null;
@@ -843,12 +740,7 @@ export default function TripMapbox({
         }
       };
       
-      console.log('🎬 Calling createRoutes() now...');
-      createRoutes().then(() => {
-        console.log('✅ createRoutes() promise resolved. routesRef.current.length:', routesRef.current.length);
-      }).catch((error) => {
-        console.error('❌ createRoutes() promise rejected:', error);
-      });
+      createRoutes();
     }
   }, [mapLoaded, sortedPlacesData, routes]); // Removed scrollProgress - route creation shouldn't depend on scroll
 
@@ -964,7 +856,6 @@ export default function TripMapbox({
       const color = getModeColor(route.modeOfTravel);
       
       if (!map.getLayer(route.layerId)) {
-        console.warn('⚠️ Route layer not found:', route.layerId, 'startIndex:', route.startIndex, 'endIndex:', route.endIndex);
         return;
       }
       
@@ -973,13 +864,11 @@ export default function TripMapbox({
       if (isActive) {
         if (isScrolling) {
           // Show route prominently when scrolling - make it very thick and visible
-          console.log('✅ Highlighting active route (scrolling):', route.layerId, 'at scrollProgress:', scrollProgress);
           map.setPaintProperty(route.layerId, 'line-color', '#ffc107'); // Yellow highlight
           map.setPaintProperty(route.layerId, 'line-width', 10); // Thick when scrolling
           map.setPaintProperty(route.layerId, 'line-opacity', 1.0);
         } else {
           // Show route but less prominent when at step
-          console.log('✅ Showing active route (at step):', route.layerId);
           map.setPaintProperty(route.layerId, 'line-color', '#ffc107'); // Yellow highlight
           map.setPaintProperty(route.layerId, 'line-width', 6); // Medium thickness when at step
           map.setPaintProperty(route.layerId, 'line-opacity', 0.8);
@@ -1048,15 +937,7 @@ export default function TripMapbox({
       // Check if routes are still being created
       const isCreatingRoutes = routeCreationAbortRef.current !== null;
       
-      if (routesRef.current.length === 0) {
-        if (isCreatingRoutes) {
-          console.log('⏳ Routes are being created, waiting... (step:', highlightedStepIndex, ')');
-        } else {
-          console.warn('⚠️ No routes available. Routes count:', routesRef.current.length, 'Step:', highlightedStepIndex, 'Places count:', sortedPlacesData.length);
-        }
-      } else {
-        console.warn('⚠️ No active route found for step:', highlightedStepIndex, 'routes available:', routesRef.current.length, 'Available routes:', routesRef.current.map(r => `${r.startIndex}->${r.endIndex}`));
-      }
+      // Routes are being created or not available yet
       return;
     }
 
@@ -1415,40 +1296,6 @@ export default function TripMapbox({
         const currentPlace = sortedPlacesData[highlightedStepIndex];
         const nextPlace = sortedPlacesData[highlightedStepIndex + 1];
         
-        // Log current step information
-        if (currentPlace?.coordinates?.lat && currentPlace?.coordinates?.lng) {
-          console.log('📍 Current Step:', {
-            index: highlightedStepIndex,
-            name: currentPlace.name,
-            gps: {
-              lat: currentPlace.coordinates.lat,
-              lng: currentPlace.coordinates.lng
-            },
-            mode: currentPlace.modeOfTravel || 'walk'
-          });
-          
-          // Calculate distance to next step if it exists
-          if (nextPlace?.coordinates?.lat && nextPlace?.coordinates?.lng) {
-            const distance = calculateDistance(
-              currentPlace.coordinates.lat,
-              currentPlace.coordinates.lng,
-              nextPlace.coordinates.lat,
-              nextPlace.coordinates.lng
-            );
-            console.log('➡️ Next Step:', {
-              index: highlightedStepIndex + 1,
-              name: nextPlace.name,
-              gps: {
-                lat: nextPlace.coordinates.lat,
-                lng: nextPlace.coordinates.lng
-              },
-              distance: `${distance.toFixed(2)} km`,
-              mode: nextPlace.modeOfTravel || 'walk'
-            });
-          } else {
-            console.log('🏁 Last Step - No next step');
-          }
-        }
         
         // Cancel any pending animations before starting step transition
         if (map.isMoving()) {
@@ -1576,7 +1423,6 @@ export default function TripMapbox({
       // When completely on a step: zoom to 80% (zoom level 8) at current step location
       const currentPlace = sortedPlacesData[highlightedStepIndex];
       if (currentPlace?.coordinates?.lat && currentPlace?.coordinates?.lng) {
-        console.log('🗺️ Map: Zooming to step view (80%) at', currentPlace.name);
         map.easeTo({
           center: [currentPlace.coordinates.lng, currentPlace.coordinates.lat],
           zoom: 8, // 80% zoom
@@ -1593,7 +1439,6 @@ export default function TripMapbox({
       const nextPlace = sortedPlacesData[highlightedStepIndex + 1];
       
       if (currentPlace?.coordinates && nextPlace?.coordinates) {
-        console.log('🗺️ Map: Zooming to route view (100%) showing', currentPlace.name, 'to', nextPlace.name);
         
         // Calculate bounding box to fit both places
         const lngs = [currentPlace.coordinates.lng, nextPlace.coordinates.lng];

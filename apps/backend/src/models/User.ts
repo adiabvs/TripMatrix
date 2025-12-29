@@ -20,6 +20,11 @@ const UserSchema = new Schema<UserDocument>(
       unique: true,
       index: true,
     },
+    username: {
+      type: String,
+      sparse: true,
+      index: true,
+    },
     photoUrl: String,
     country: String, // ISO country code
     defaultCurrency: String, // ISO currency code

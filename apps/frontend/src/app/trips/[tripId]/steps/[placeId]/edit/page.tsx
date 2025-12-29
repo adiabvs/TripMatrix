@@ -140,6 +140,9 @@ export default function EditStepPage() {
   const [expenses, setExpenses] = useState<any[]>([]);
   const [userNamesMap, setUserNamesMap] = useState<Record<string, string>>({});
   
+  // Use the proper permissions hook to determine editor role (must be called before any early returns)
+  const { canEdit, isCreator, isParticipant } = useTripPermissions(trip, user);
+  
   // Map search state
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
@@ -511,11 +514,8 @@ export default function EditStepPage() {
     );
   }
 
-  // Use the proper permissions hook to determine editor role
-  const { canEdit, isCreator, isParticipant } = useTripPermissions(trip, user);
-  
   // User can view if trip is public OR user is creator/participant
-  const canView = trip.isPublic || isCreator || isParticipant;
+  const canView = trip ? (trip.isPublic || isCreator || isParticipant) : false;
   
   if (!canView) {
     return (

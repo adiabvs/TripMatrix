@@ -24,12 +24,13 @@ router.get('/search', async (req: OptionalAuthRequest, res) => {
       });
     }
 
-    // Search by email or name
+    // Search by email, name, or username
     const searchQuery = q.toLowerCase();
     const usersDocs = await UserModel.find({
       $or: [
         { email: { $regex: searchQuery, $options: 'i' } },
-        { name: { $regex: searchQuery, $options: 'i' } }
+        { name: { $regex: searchQuery, $options: 'i' } },
+        { username: { $regex: searchQuery, $options: 'i' } }
       ]
     }).limit(10);
 

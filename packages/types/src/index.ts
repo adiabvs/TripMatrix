@@ -3,6 +3,7 @@ export interface User {
   uid: string;
   name: string;
   email: string;
+  username?: string; // Optional username for search
   photoUrl?: string;
   country?: string; // ISO country code (e.g., 'US', 'IN', 'GB')
   defaultCurrency?: string; // ISO currency code (e.g., 'USD', 'INR', 'GBP')
@@ -20,6 +21,7 @@ export interface TripParticipant {
   guestName?: string; // If guest
   guestEmail?: string; // Optional email for guest
   isGuest: boolean;
+  status?: 'pending' | 'accepted'; // Status for invitations (only for non-guests)
 }
 
 export type PhotoSharingPrivacy = 'everyone' | 'members' | 'creator';
@@ -214,4 +216,19 @@ export interface DiaryPage {
     fromPlace?: string;
     toPlace?: string;
   };
+}
+
+// Notification Types
+export type NotificationType = 'trip_invitation' | 'trip_comment' | 'trip_like' | 'follow_request';
+
+export interface Notification {
+  notificationId: string;
+  userId: string; // User who receives the notification
+  type: NotificationType;
+  title: string;
+  message: string;
+  tripId?: string; // For trip-related notifications
+  fromUserId?: string; // User who triggered the notification
+  isRead: boolean;
+  createdAt: Date | string;
 }

@@ -233,9 +233,11 @@ export async function searchTrips(
   type?: 'user' | 'place' | 'trip' | 'all',
   limit: number = 20,
   lastTripId?: string,
-  token?: string | null
+  token?: string | null,
+  status?: 'upcoming' | 'in_progress' | 'completed'
 ): Promise<{
   trips: Trip[];
+  users: User[];
   hasMore: boolean;
   lastTripId: string | null;
 }> {
@@ -247,6 +249,9 @@ export async function searchTrips(
   url.searchParams.append('limit', limit.toString());
   if (lastTripId) {
     url.searchParams.append('lastTripId', lastTripId);
+  }
+  if (status) {
+    url.searchParams.append('status', status);
   }
   
   const headers: Record<string, string> = {
@@ -269,6 +274,7 @@ export async function searchTrips(
   
   const result: ApiResponse<{
     trips: Trip[];
+    users: User[];
     hasMore: boolean;
     lastTripId: string | null;
   }> = await response.json();
@@ -552,6 +558,66 @@ export async function getUser(userId: string, token: string | null): Promise<Use
     throw new Error(result.error || 'Failed to get user');
   }
   return result.data;
+}
+
+// Notification APIs
+export async function getNotifications(token: string | null): Promise<Notification[]> {
+  const response = await fetchWithAuth(`/api/notifications`, {}, token);
+  const result: ApiResponse<Notification[]> = await response.json();
+  if (!result.success || !result.data) {
+    throw new Error(result.error || 'Failed to get notifications');
+  }
+  return result.data;
+}
+
+export async function getUnreadNotificationCount(token: string | null): Promise<number> {
+  const response = await fetchWithAuth(`/api/notifications/unread/count`, {}, token);
+  const result: ApiResponse<{ count: number }> = await response.json();
+  if (!result.success || !result.data) {
+    throw new Error(result.error || 'Failed to get notification count');
+  }
+  return result.data.count;
+}
+
+export async function markNotificationAsRead(notificationId: string, token: string | null): Promise<void> {
+  const response = await fetchWithAuth(`/api/notifications/${notificationId}/read`, {
+    method: 'PATCH',
+  }, token);
+  const result: ApiResponse<void> = await response.json();
+  if (!result.success) {
+    throw new Error(result.error || 'Failed to mark notification as read');
+  }
+}
+
+export async function markAllNotificationsAsRead(token: string | null): Promise<void> {
+  const response = await fetchWithAuth(`/api/notifications/read-all`, {
+    method: 'PATCH',
+  }, token);
+  const result: ApiResponse<void> = await response.json();
+  if (!result.success) {
+    throw new Error(result.error || 'Failed to mark all notifications as read');
+  }
+}
+
+export async function acceptTripInvitation(notificationId: string, token: string | null): Promise<Trip> {
+  const response = await fetchWithAuth(`/api/notifications/${notificationId}/accept-invitation`, {
+    method: 'POST',
+  }, token);
+  const result: ApiResponse<{ trip: Trip }> = await response.json();
+  if (!result.success || !result.data) {
+    throw new Error(result.error || 'Failed to accept invitation');
+  }
+  return result.data.trip;
+}
+
+export async function rejectTripInvitation(notificationId: string, token: string | null): Promise<void> {
+  const response = await fetchWithAuth(`/api/notifications/${notificationId}/reject-invitation`, {
+    method: 'POST',
+  }, token);
+  const result: ApiResponse<void> = await response.json();
+  if (!result.success) {
+    throw new Error(result.error || 'Failed to reject invitation');
+  }
 }
 
 // Comment APIs

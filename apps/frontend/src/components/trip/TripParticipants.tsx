@@ -66,7 +66,7 @@ export default function TripParticipants({
         {/* Creator */}
         {creator && (
           <Link
-            href={`/trips?user=${creator.uid}`}
+            href={`/users/${creator.uid}`}
             className="flex items-center gap-2 hover:opacity-70"
           >
             {creator.photoUrl ? (
@@ -87,7 +87,7 @@ export default function TripParticipants({
         {uniqueParticipants.map((participant) => (
           <Link
             key={participant.uid}
-            href={`/trips?user=${participant.uid}`}
+            href={`/users/${participant.uid}`}
             className="flex items-center gap-2 hover:opacity-70"
           >
             {participant.photoUrl ? (

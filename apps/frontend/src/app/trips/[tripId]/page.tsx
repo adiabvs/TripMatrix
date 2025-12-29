@@ -110,7 +110,6 @@ export default function TripDetailPage() {
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible' && tripId && !loading) {
-        console.log('Page visible, reloading trip data...');
         loadTripData(token);
       }
     };
@@ -401,56 +400,8 @@ export default function TripDetailPage() {
                 const currentProgressDistance = totalDistanceToNext * normalizedProgress;
                 const remainingDistance = totalDistanceToNext - currentProgressDistance;
                 const progressPercentage = normalizedProgress * 100;
-                
-                console.log('📍 Steps Container - Current Step:', {
-                  stepIndex: mostVisibleIndex,
-                  stepName: currentPlace.name,
-                  gps: {
-                    latitude: currentPlace.coordinates.lat.toFixed(6),
-                    longitude: currentPlace.coordinates.lng.toFixed(6)
-                  },
-                  modeOfTravel: currentPlace.modeOfTravel || 'walk',
-                  scrollProgress: `${progressPercentage.toFixed(1)}%`
-                });
-                
-                console.log('➡️ Progress to Next Step:', {
-                  nextStepIndex: mostVisibleIndex + 1,
-                  nextStepName: nextPlace.name,
-                  nextStepGPS: {
-                    latitude: nextPlace.coordinates.lat.toFixed(6),
-                    longitude: nextPlace.coordinates.lng.toFixed(6)
-                  },
-                  totalDistance: `${totalDistanceToNext.toFixed(2)} km`,
-                  traveledDistance: `${currentProgressDistance.toFixed(2)} km`,
-                  remainingDistance: `${remainingDistance.toFixed(2)} km`,
-                  progressPercentage: `${progressPercentage.toFixed(1)}%`,
-                  modeOfTravel: nextPlace.modeOfTravel || 'walk'
-                });
-              } else {
-                // Last step - no next step
-                console.log('📍 Steps Container - Current Step:', {
-                  stepIndex: mostVisibleIndex,
-                  stepName: currentPlace.name,
-                  gps: {
-                    latitude: currentPlace.coordinates.lat.toFixed(6),
-                    longitude: currentPlace.coordinates.lng.toFixed(6)
-                  },
-                  modeOfTravel: currentPlace.modeOfTravel || 'walk',
-                  status: '🏁 Last Step - No next step'
-                });
               }
-            } else {
-              // Log even if coordinates are missing
-              console.log('📍 Steps Container - Current Step (No GPS):', {
-                stepIndex: mostVisibleIndex,
-                stepName: currentPlace.name || 'Unknown',
-                modeOfTravel: currentPlace.modeOfTravel || 'walk',
-                scrollProgress: `${(normalizedProgress * 100).toFixed(1)}%`,
-                warning: 'No GPS coordinates available'
-              });
             }
-          } else {
-            console.log('⚠️ Steps Container - No place found at index:', mostVisibleIndex, 'sortedPlaces.length:', sortedPlaces.length);
           }
           
           lastLogTime = now;

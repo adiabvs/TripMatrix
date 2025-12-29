@@ -15,6 +15,11 @@ const TripParticipantSchema = new Schema(
       type: Boolean,
       required: true,
     },
+    status: {
+      type: String,
+      enum: ['pending', 'accepted'],
+      default: 'accepted', // Default to accepted for backward compatibility
+    },
   },
   { _id: false }
 );
