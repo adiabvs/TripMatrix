@@ -486,15 +486,27 @@ router.get('/public/list/with-data', async (req: OptionalAuthRequest, res) => {
     // Get user's followed list if authenticated
     let followedUserIds: string[] = [];
     if (req.uid) {
-      const user = await UserModel.findOne({ uid: req.uid });
-      if (user) {
-        followedUserIds = user.follows || [];
+      try {
+        const user = await UserModel.findOne({ uid: req.uid });
+        if (user) {
+          followedUserIds = user.follows || [];
+        }
+      } catch (error) {
+        console.error('Error fetching user for followed list:', error);
+        // Continue without followed list
       }
     }
     
     // Get all public trips
     const tripsDocs = await TripModel.find({ isPublic: true }).sort({ createdAt: -1 });
-    let trips = tripsDocs.map(doc => doc.toJSON() as Trip);
+    let trips = tripsDocs.map((doc: any) => {
+      try {
+        return doc.toJSON() as Trip;
+      } catch (error) {
+        console.error('Error converting trip to JSON:', error);
+        return null;
+      }
+    }).filter((trip): trip is Trip => trip !== null);
 
     // Sort: followed users first, then by createdAt
     trips.sort((a, b) => {
@@ -525,18 +537,28 @@ router.get('/public/list/with-data', async (req: OptionalAuthRequest, res) => {
     const hasMore = totalAfterPagination > limitNum;
     trips = trips.slice(0, limitNum);
 
-    const tripIds = trips.map(t => t.tripId);
+    const tripIds = trips.map(t => t.tripId).filter(Boolean);
     
     // Batch fetch all places for all trips
     const placesPromises = tripIds.map(async (tripId) => {
-      const placesDocs = await TripPlaceModel.find({ tripId });
-      return placesDocs.map(doc => doc.toJSON());
+      try {
+        const placesDocs = await TripPlaceModel.find({ tripId: tripId.toString() });
+        return placesDocs.map(doc => doc.toJSON());
+      } catch (error) {
+        console.error(`Error fetching places for trip ${tripId}:`, error);
+        return [];
+      }
     });
 
     // Batch fetch all routes for all trips
     const routesPromises = tripIds.map(async (tripId) => {
-      const routesDocs = await TripRouteModel.find({ tripId });
-      return routesDocs.map(doc => doc.toJSON());
+      try {
+        const routesDocs = await TripRouteModel.find({ tripId: tripId.toString() });
+        return routesDocs.map(doc => doc.toJSON());
+      } catch (error) {
+        console.error(`Error fetching routes for trip ${tripId}:`, error);
+        return [];
+      }
     });
 
     // Fetch all in parallel
@@ -560,7 +582,7 @@ router.get('/public/list/with-data', async (req: OptionalAuthRequest, res) => {
     // Batch fetch creator info
     const creatorPromises = creatorIds.map(async (creatorId) => {
       try {
-        const creator = await UserModel.findOne({ uid: creatorId });
+        const creator = await UserModel.findOne({ uid: creatorId.toString() });
         if (creator) {
           return { uid: creatorId, user: creator.toJSON() };
         }
@@ -579,7 +601,7 @@ router.get('/public/list/with-data', async (req: OptionalAuthRequest, res) => {
     });
 
     // Calculate pagination info
-    const nextLastTripId = trips.length > 0 ? trips[trips.length - 1].tripId : null;
+    const nextLastTripId = hasMore && trips.length > 0 ? trips[trips.length - 1].tripId : null;
 
     // Build response with trips, places, routes, and creators
     res.json({
