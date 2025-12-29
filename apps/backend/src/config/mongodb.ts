@@ -43,7 +43,9 @@ export async function connectDB() {
     });
   } catch (error: any) {
     console.error('❌ MongoDB connection error:', error.message);
-    throw error; // Re-throw to prevent server from starting without DB
+    isConnected = false;
+    // Don't throw - allow server to start so we can debug CORS and other issues
+    // The route handlers will check connection status
   }
 }
 

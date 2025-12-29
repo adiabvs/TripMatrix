@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { connectDB } from './config/mongodb.js';
+import { connectDB, isMongoDBConnected } from './config/mongodb.js';
 import { initializeFirebase } from './config/firebase.js';
 import { initializeSupabase, isSupabaseInitialized } from './config/supabase.js';
 import { authenticateToken } from './middleware/auth.js';
@@ -256,10 +256,22 @@ app.get('/return-nav', async (req, res) => {
 });
 app.use('/api/canva', authenticateToken, canvaOAuthRoutes); // Other Canva API routes (authenticated)
 
-// Error handling
+// Error handling - must be after CORS middleware
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 app.use((err: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error('Error:', err);
+  
+  // Ensure CORS headers are set even on errors
+  const origin = req.headers.origin;
+  if (origin) {
+    // Check if origin should be allowed (same logic as CORS config)
+    if (origin.includes('.railway.app') || origin.includes('.up.railway.app') || 
+        origin === 'http://localhost:3000' || origin === 'http://localhost:3001' ||
+        origin === process.env.FRONTEND_URL) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+    }
+  }
   
   // Handle CORS errors
   if (err.message && err.message.includes('CORS')) {
@@ -283,16 +295,21 @@ async function startServer() {
     console.log('🔄 Connecting to MongoDB...');
     await connectDB();
     console.log('✅ MongoDB connection established');
-    
-    // Start the server
-    app.listen(PORT, () => {
-      console.log(`🚀 Backend server running on port ${PORT}`);
-    });
   } catch (error: any) {
-    console.error('❌ Failed to start server:', error.message);
+    console.error('❌ Failed to connect to MongoDB:', error.message);
+    console.error('   Server will start but database operations will fail');
     console.error('   Make sure MONGODB_URI is set correctly in your environment variables');
-    process.exit(1);
+    // Don't exit - allow server to start so we can see CORS errors and other issues
   }
+  
+  // Start the server regardless of MongoDB connection status
+  // This allows us to see CORS and other errors even if DB is down
+  app.listen(PORT, () => {
+    console.log(`🚀 Backend server running on port ${PORT}`);
+    if (!isMongoDBConnected()) {
+      console.warn('⚠️  WARNING: MongoDB is not connected. Database operations will fail.');
+    }
+  });
 }
 
 startServer();
