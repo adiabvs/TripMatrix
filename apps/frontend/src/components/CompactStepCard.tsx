@@ -6,10 +6,12 @@ import { toDate } from '@/lib/dateUtils';
 import type { TripPlace, TripExpense, User } from '@tripmatrix/types';
 import PhotoViewer from './PhotoViewer';
 import Link from 'next/link';
-import { MdDelete, MdLocationOn, MdStar, MdAttachMoney, MdFavorite, MdChatBubbleOutline, MdMoreVert, MdPerson } from 'react-icons/md';
-import { formatCurrency } from '@/lib/currencyUtils';
-import { likePlace, unlikePlace, getPlaceLikes, getPlaceComments } from '@/lib/api';
+import { MdDelete, MdLocationOn, MdStar, MdFavorite, MdChatBubbleOutline, MdMoreVert, MdPerson, MdSend } from 'react-icons/md';
+import { formatCurrency, getCurrencySymbol } from '@/lib/currencyUtils';
+import { likePlace, unlikePlace, getPlaceLikes, getPlaceComments, addPlaceComment, getUser } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import BottomModal from '@/components/ui/BottomModal';
+import type { PlaceComment } from '@tripmatrix/types';
 
 interface CompactStepCardProps {
   place: TripPlace;
@@ -39,6 +41,12 @@ export default function CompactStepCard({
   const [likes, setLikes] = useState<{ count: number; isLiked: boolean }>({ count: 0, isLiked: false });
   const [commentCount, setCommentCount] = useState(0);
   const [loadingLikes, setLoadingLikes] = useState(true);
+  const [showComments, setShowComments] = useState(false);
+  const [comments, setComments] = useState<PlaceComment[]>([]);
+  const [commentText, setCommentText] = useState('');
+  const [addingComment, setAddingComment] = useState(false);
+  const [loadingComments, setLoadingComments] = useState(false);
+  const [commentUserNamesMap, setCommentUserNamesMap] = useState<Record<string, string>>({});
   const [touchStart, setTouchStart] = useState(0);
   const [touchEnd, setTouchEnd] = useState(0);
   const visitedDate = toDate(place.visitedAt);
@@ -60,12 +68,12 @@ export default function CompactStepCard({
     const loadLikesAndComments = async () => {
       try {
         const token = user ? await getIdToken() : null;
-        const [likesData, comments] = await Promise.all([
+        const [likesData, commentsData] = await Promise.all([
           getPlaceLikes(place.placeId, token).catch(() => ({ likeCount: 0, isLiked: false })),
           getPlaceComments(place.placeId, token).catch(() => []),
         ]);
         setLikes({ count: likesData.likeCount, isLiked: likesData.isLiked });
-        setCommentCount(comments.length);
+        setCommentCount(commentsData.length);
       } catch (error) {
         console.error('Failed to load likes/comments:', error);
       } finally {
@@ -75,6 +83,75 @@ export default function CompactStepCard({
 
     loadLikesAndComments();
   }, [place.placeId, user, getIdToken]);
+
+  // Load comments when modal opens
+  useEffect(() => {
+    if (showComments) {
+      loadPlaceComments();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showComments]);
+
+  const loadPlaceComments = async () => {
+    try {
+      setLoadingComments(true);
+      const token = user ? await getIdToken() : null;
+      const commentsData = await getPlaceComments(place.placeId, token);
+      setComments(commentsData);
+
+      // Load user names for comment authors
+      const uniqueUserIds = [...new Set(commentsData.map((c: PlaceComment) => c.userId))];
+      const userNames: Record<string, string> = {};
+      for (const uid of uniqueUserIds) {
+        try {
+          const userData = await getUser(uid, token);
+          userNames[uid] = userData.name || 'Unknown User';
+        } catch (error) {
+          console.error(`Failed to fetch user ${uid}:`, error);
+          userNames[uid] = 'Unknown User';
+        }
+      }
+      setCommentUserNamesMap(userNames);
+    } catch (error) {
+      console.error('Failed to load comments:', error);
+    } finally {
+      setLoadingComments(false);
+    }
+  };
+
+  const handleCommentClick = () => {
+    const newShowComments = !showComments;
+    setShowComments(newShowComments);
+    if (newShowComments) {
+      loadPlaceComments();
+    }
+  };
+
+  const handleAddPlaceComment = async () => {
+    if (!commentText.trim() || !user) return;
+    
+    setAddingComment(true);
+    try {
+      const token = await getIdToken();
+      const newComment = await addPlaceComment(place.placeId, commentText.trim(), token);
+      setComments([newComment, ...comments]);
+      setCommentCount(prev => prev + 1);
+      setCommentText('');
+      
+      // Load user name for the new comment
+      if (user) {
+        setCommentUserNamesMap(prev => ({
+          ...prev,
+          [user.uid]: user.name,
+        }));
+      }
+    } catch (error: any) {
+      console.error('Failed to add comment:', error);
+      alert(`Failed to add comment: ${error.message || 'Unknown error'}`);
+    } finally {
+      setAddingComment(false);
+    }
+  };
 
   // Reset image index when place changes
   useEffect(() => {
@@ -286,25 +363,21 @@ export default function CompactStepCard({
             >
               <MdFavorite className={`w-6 h-6 ${likes.isLiked ? 'text-red-500 fill-red-500' : ''}`} />
             </button>
-            {isCreator ? (
-              <Link 
-                href={`/trips/${tripId}/steps/${place.placeId}/edit`} 
-                className="text-white hover:opacity-70 active:scale-95 transition-transform p-1 rounded-full flex items-center gap-1"
-              >
-                <MdChatBubbleOutline className="w-6 h-6" />
-              </Link>
-            ) : (
-              <button
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  handlePhotoClick(0);
-                }}
-                className="text-white hover:opacity-70 active:scale-95 transition-transform p-1 rounded-full flex items-center gap-1"
-              >
-                <MdChatBubbleOutline className="w-6 h-6" />
-              </button>
-            )}
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleCommentClick();
+              }}
+              className="text-white hover:opacity-70 active:scale-95 transition-transform p-1 rounded-full flex items-center gap-1 relative"
+            >
+              <MdChatBubbleOutline className={`w-6 h-6 ${showComments ? 'text-[#1976d2]' : ''}`} />
+              {commentCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-[#1976d2] text-white text-xs font-semibold rounded-full w-5 h-5 flex items-center justify-center">
+                  {commentCount > 99 ? '99+' : commentCount}
+                </span>
+              )}
+            </button>
           </div>
           {(likes.count > 0 || commentCount > 0) && (
             <div className="flex items-center gap-4 text-sm">
@@ -354,10 +427,9 @@ export default function CompactStepCard({
             )}
             {Object.keys(expensesByCurrency).length > 0 && (
               <div className="flex items-center gap-1 mt-2 text-gray-400 text-xs">
-                <MdAttachMoney className="w-4 h-4" />
                 <span>
                   {Object.entries(expensesByCurrency).map(([curr, total]) => 
-                    formatCurrency(total, curr, false)
+                    `${getCurrencySymbol(curr)}${total.toFixed(2)}`
                   ).join(', ')}
                 </span>
               </div>
@@ -394,6 +466,75 @@ export default function CompactStepCard({
           onClose={() => setViewingPhotos(false)}
         />
       )}
+
+      {/* Comments Modal */}
+      <BottomModal
+        isOpen={showComments}
+        onClose={() => setShowComments(false)}
+        title={`Comments (${commentCount})`}
+      >
+        <div className="bg-black px-4 py-4">
+          {/* Add Comment Form */}
+          {user && (
+            <div className="mb-4 bg-gray-900 rounded-lg p-3 border border-gray-800">
+              <textarea
+                value={commentText}
+                onChange={(e) => setCommentText(e.target.value)}
+                placeholder="Add a comment..."
+                className="w-full bg-gray-800 text-white rounded-lg p-2 text-sm resize-none mb-2 border border-gray-700 focus:outline-none focus:border-[#1976d2]"
+                rows={3}
+                disabled={addingComment}
+              />
+              <button
+                onClick={handleAddPlaceComment}
+                disabled={!commentText.trim() || addingComment}
+                className="w-full bg-[#1976d2] text-white py-2 px-4 rounded-lg text-sm font-medium disabled:opacity-50 hover:bg-[#1565c0] transition-colors flex items-center justify-center gap-2"
+              >
+                {addingComment ? (
+                  'Adding...'
+                ) : (
+                  <>
+                    <MdSend className="w-4 h-4" />
+                    <span>Add Comment</span>
+                  </>
+                )}
+              </button>
+            </div>
+          )}
+
+          {/* Comments List */}
+          {loadingComments ? (
+            <p className="text-sm text-gray-400 text-center py-4">Loading comments...</p>
+          ) : (
+            <div className="space-y-3">
+              {comments.length === 0 ? (
+                <p className="text-sm text-gray-400 text-center py-4">No comments yet</p>
+              ) : (
+                comments.map((comment) => (
+                  <div key={comment.commentId} className="bg-gray-900 rounded-lg p-3 border border-gray-800">
+                    <div className="flex items-start gap-2 mb-2">
+                      <div className="w-8 h-8 rounded-full bg-[#1976d2] flex items-center justify-center flex-shrink-0">
+                        <span className="text-xs text-white font-semibold">
+                          {commentUserNamesMap[comment.userId]?.charAt(0).toUpperCase() || 'U'}
+                        </span>
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-semibold text-white">
+                          {commentUserNamesMap[comment.userId] || 'Loading...'}
+                        </p>
+                        <p className="text-xs text-gray-400">
+                          {format(toDate(comment.createdAt), 'MMM dd, yyyy HH:mm')}
+                        </p>
+                      </div>
+                    </div>
+                    <p className="text-sm text-gray-200 ml-10">{comment.text}</p>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+      </BottomModal>
     </div>
   );
 }

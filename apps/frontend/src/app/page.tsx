@@ -7,7 +7,7 @@ import { getPublicTripsWithData, searchTrips, likeTrip, unlikeTrip, getTripLikes
 import type { Trip, User } from '@tripmatrix/types';
 import { format } from 'date-fns';
 import { toDate } from '@/lib/dateUtils';
-import { MdHome, MdPerson, MdAdd, MdSearch, MdFavorite, MdChatBubbleOutline, MdMoreVert, MdLocationOn, MdAttachMoney } from 'react-icons/md';
+import { MdHome, MdPerson, MdAdd, MdSearch, MdFavorite, MdChatBubbleOutline, MdMoreVert, MdLocationOn, MdMonetizationOn } from 'react-icons/md';
 import dynamic from 'next/dynamic';
 
 // Dynamically import UserMenu
@@ -388,7 +388,7 @@ export default function Home() {
                       )}
                       {trip.totalExpense && trip.totalExpense > 0 && (
                         <div className="flex items-center gap-1 mt-2 text-gray-400 text-xs">
-                          <MdAttachMoney className="w-4 h-4" />
+                          <MdMonetizationOn className="w-4 h-4" />
                           <span>{trip.totalExpense.toFixed(2)}</span>
                         </div>
                       )}

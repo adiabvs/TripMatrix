@@ -123,7 +123,25 @@ router.get('/trip/:tripId', async (req: OptionalAuthRequest, res) => {
     }
     
     const expensesDocs = await TripExpenseModel.find({ tripId }).sort({ createdAt: -1 });
-    const expenses = expensesDocs.map(doc => doc.toJSON() as TripExpense);
+    let expenses = expensesDocs.map(doc => doc.toJSON() as TripExpense);
+
+    // Filter expenses based on expenseVisibility setting
+    const expenseVisibility = tripData.expenseVisibility || 'members';
+    const isCreator = tripData.creatorId === req.uid;
+    const isParticipant = tripData.participants?.some((p: any) => p.uid === req.uid);
+    
+    if (expenseVisibility === 'creator') {
+      // Only creator can see expenses
+      if (!isCreator) {
+        expenses = [];
+      }
+    } else if (expenseVisibility === 'members') {
+      // Only members (creator + participants) can see expenses
+      if (!isCreator && !isParticipant) {
+        expenses = [];
+      }
+    }
+    // If expenseVisibility is 'everyone' or undefined, show all expenses (already loaded)
 
     res.json({ success: true, data: expenses });
   } catch (error: any) {

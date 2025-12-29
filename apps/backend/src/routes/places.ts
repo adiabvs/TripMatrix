@@ -194,7 +194,7 @@ router.get('/trip/:tripId', async (req: OptionalAuthRequest, res) => {
       }
     }
     
-    const placesDocs = await TripPlaceModel.find({ tripId }).sort({ visitedAt: -1 });
+    const placesDocs = await TripPlaceModel.find({ tripId }).sort({ visitedAt: 1 }); // Sort ascending by visitedAt
     const places = placesDocs.map(doc => doc.toJSON() as TripPlace);
 
     res.json({ success: true, data: places });

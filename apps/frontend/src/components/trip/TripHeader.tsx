@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { MdArrowBack, MdSettings } from 'react-icons/md';
+import { MdArrowBack, MdSettings, MdInfo } from 'react-icons/md';
 import UserMenu from '@/components/UserMenu';
 
 interface TripHeaderProps {
@@ -23,20 +23,29 @@ export default function TripHeader({ title, canEdit, tripId, backHref }: TripHea
 
   return (
     <header className="sticky top-0 z-50 bg-black border-b border-gray-800">
-      <div className="max-w-[600px] mx-auto px-4 py-3 flex items-center justify-between">
-        <button onClick={handleBack} className="text-white hover:opacity-70 active:scale-95 transition-all p-1 rounded-full">
+      <div className="max-w-[600px] mx-auto px-4 py-3 flex items-center justify-between gap-2">
+        <button onClick={handleBack} className="text-white hover:opacity-70 active:scale-95 transition-all p-1 rounded-full flex-shrink-0">
           <MdArrowBack className="w-6 h-6" />
         </button>
-        <h1 className="text-xl font-semibold text-white">{title}</h1>
-        <div className="flex items-center gap-2">
+        <h1 className="text-xl font-semibold text-white truncate flex-1 min-w-0 text-center px-2">{title}</h1>
+        <div className="flex items-center gap-2 flex-shrink-0">
           {canEdit && (
-            <Link
-              href={`/trips/${tripId}/settings`}
-              className="text-white hover:opacity-70 active:scale-95 transition-all p-1 rounded-full"
-              title="Trip Settings"
-            >
-              <MdSettings className="w-6 h-6" />
-            </Link>
+            <>
+              <Link
+                href={`/trips/${tripId}/info`}
+                className="text-white hover:opacity-70 active:scale-95 transition-all p-1 rounded-full"
+                title="Trip Info"
+              >
+                <MdInfo className="w-6 h-6" />
+              </Link>
+              <Link
+                href={`/trips/${tripId}/settings`}
+                className="text-white hover:opacity-70 active:scale-95 transition-all p-1 rounded-full"
+                title="Trip Settings"
+              >
+                <MdSettings className="w-6 h-6" />
+              </Link>
+            </>
           )}
           <UserMenu />
         </div>

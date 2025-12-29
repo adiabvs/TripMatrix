@@ -5,11 +5,10 @@ import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import dynamic from 'next/dynamic';
-import { updateTrip, deletePlace, deleteExpense, updatePlace } from '@/lib/api';
+import { updateTrip, deletePlace, deleteExpense, updatePlace, getTripCommentCount } from '@/lib/api';
 import type { TripExpense, ModeOfTravel } from '@tripmatrix/types';
-import { db } from '@/lib/firebase';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import type { TripPlace } from '@tripmatrix/types';
+import { MdStop } from 'react-icons/md';
 import { useTripData } from '@/hooks/useTripData';
 import { useTripPermissions } from '@/hooks/useTripPermissions';
 import TripHeader from '@/components/trip/TripHeader';
@@ -56,6 +55,7 @@ export default function TripDetailPage() {
   const [token, setToken] = useState<string | null>(null);
   const [visibleStepIndex, setVisibleStepIndex] = useState<number>(0);
   const [scrollProgress, setScrollProgress] = useState<number>(0);
+  const [commentCount, setCommentCount] = useState<number>(0);
   const stepsContainerRef = useRef<HTMLDivElement>(null);
   const stepCardRefs = useRef<(HTMLDivElement | null)[]>([]);
   const observerRef = useRef<IntersectionObserver | null>(null);
@@ -92,58 +92,19 @@ export default function TripDetailPage() {
     }
   }, [tripId, user, authLoading, getIdToken, loadTripData]);
 
-  // Subscribe to places updates
-  useEffect(() => {
-    if (!user || !tripId) return;
-
-    let unsubscribe: (() => void) | undefined;
-    try {
-      const placesQuery = query(
-        collection(db, 'tripPlaces'),
-        where('tripId', '==', tripId)
-      );
-      unsubscribe = onSnapshot(placesQuery, (snapshot) => {
-        const placesData = snapshot.docs.map((doc) => ({
-          placeId: doc.id,
-          ...doc.data(),
-        })) as TripPlace[];
-        setPlaces(placesData);
-      });
-    } catch (error) {
-      console.error('Failed to subscribe to places updates:', error);
-    }
-
-    return () => {
-      if (unsubscribe) unsubscribe();
-    };
-  }, [user, tripId]);
-
-  // Subscribe to expenses updates
+  // Refresh places and expenses periodically (MongoDB doesn't have real-time subscriptions)
   useEffect(() => {
     if (!tripId) return;
 
-    let unsubscribe: (() => void) | undefined;
-    try {
-      const expensesQuery = query(
-        collection(db, 'tripExpenses'),
-        where('tripId', '==', tripId)
-      );
-      unsubscribe = onSnapshot(expensesQuery, (snapshot) => {
-        const expensesData = snapshot.docs.map((doc) => ({
-          expenseId: doc.id,
-          ...doc.data(),
-        })) as TripExpense[];
-        console.log('Expenses updated:', expensesData.length, 'expenses');
-        setExpenses(expensesData);
-      });
-    } catch (error) {
-      console.error('Failed to subscribe to expenses updates:', error);
-    }
+    // Refresh data every 5 seconds when page is visible
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible' && !loading) {
+        loadTripData(token);
+      }
+    }, 5000);
 
-    return () => {
-      if (unsubscribe) unsubscribe();
-    };
-  }, [tripId]);
+    return () => clearInterval(interval);
+  }, [tripId, token, loading, loadTripData]);
 
   // Reload data when page becomes visible (user navigates back)
   useEffect(() => {
@@ -161,15 +122,16 @@ export default function TripDetailPage() {
   }, [tripId, token, loading, loadTripData]);
 
   const handleEndTrip = async () => {
-    if (!trip || !confirm('Are you sure you want to end this trip?')) return;
+    if (!trip || !confirm('Are you sure you want to end this trip? This will mark it as completed.')) return;
 
     try {
-      const token = await getIdToken();
-      await updateTrip(tripId, { status: 'completed' }, token);
-      await loadTripData();
-    } catch (error) {
+      const authToken = token || await getIdToken();
+      await updateTrip(tripId, { status: 'completed', endTime: new Date().toISOString() }, authToken);
+      await loadTripData(authToken);
+      alert('Trip ended successfully!');
+    } catch (error: any) {
       console.error('Failed to end trip:', error);
-      alert('Failed to end trip');
+      alert(`Failed to end trip: ${error.message || 'Unknown error'}`);
     }
   };
 
@@ -467,6 +429,17 @@ export default function TripDetailPage() {
           placesCount={places.length}
           canShare={canShare}
           className="mb-8"
+          onCommentClick={async () => {
+            // Refresh comment count when comments are toggled
+            try {
+              const token = user ? await getIdToken() : null;
+              const count = await getTripCommentCount(tripId, token);
+              setCommentCount(count || 0);
+            } catch (error) {
+              console.error('Failed to refresh comment count:', error);
+            }
+          }}
+          commentCount={commentCount}
         />
 
         <TripStepsList
@@ -480,6 +453,19 @@ export default function TripDetailPage() {
           isUpcoming={isUpcoming}
           trip={trip}
         />
+
+        {/* End Trip Button - Show at the end for in_progress trips if user can edit */}
+        {canEdit && trip.status === 'in_progress' && (
+          <div className="mt-8 mb-8">
+            <button
+              onClick={handleEndTrip}
+              className="w-full px-4 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold flex items-center justify-center gap-2 transition-colors active:scale-95 shadow-lg"
+            >
+              <MdStop className="w-5 h-5" />
+              <span>End Trip</span>
+            </button>
+          </div>
+        )}
       </main>
 
     </div>

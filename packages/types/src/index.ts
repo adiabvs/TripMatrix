@@ -75,6 +75,14 @@ export interface PlaceComment {
   createdAt: Date | string;
 }
 
+export interface TripComment {
+  commentId: string;
+  tripId: string;
+  userId: string; // User UID who made the comment
+  text: string;
+  createdAt: Date | string;
+}
+
 export interface TripPlace {
   placeId: string;
   tripId: string;

@@ -155,7 +155,7 @@ app.use('/api/ai', authenticateToken, aiRoutes);
 app.use('/api/expenses', optionalAuth, expenseRoutes);
 app.use('/api/routes', optionalAuth, routeRoutes);
 app.use('/api/places', optionalAuth, placeRoutes);
-app.use('/api/users', authenticateToken, userRoutes);
+app.use('/api/users', optionalAuth, userRoutes);
 app.use('/api/geocoding', geocodingRoutes); // Public endpoint for geocoding
 app.use('/api/upload', authenticateToken, uploadRoutes); // Image upload endpoint
 app.use('/api/diary', authenticateToken, diaryRoutes); // Travel diary routes

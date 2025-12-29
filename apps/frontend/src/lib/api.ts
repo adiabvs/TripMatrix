@@ -10,6 +10,7 @@ import type {
   User,
   TravelDiary,
   PlaceComment,
+  TripComment,
 } from '@tripmatrix/types';
 
 // Normalize API URL - remove port from HTTPS URLs (Railway uses default HTTPS port)
@@ -131,6 +132,22 @@ export async function addParticipants(
   const result: ApiResponse<{ participants: any[] }> = await response.json();
   if (!result.success || !result.data) {
     throw new Error(result.error || 'Failed to add participants');
+  }
+  return result.data;
+}
+
+export async function removeParticipants(
+  tripId: string,
+  participants: string[],
+  token: string | null
+): Promise<{ participants: any[] }> {
+  const response = await fetchWithAuth(`/api/trips/${tripId}/participants`, {
+    method: 'DELETE',
+    body: JSON.stringify({ participants }),
+  }, token);
+  const result: ApiResponse<{ participants: any[] }> = await response.json();
+  if (!result.success || !result.data) {
+    throw new Error(result.error || 'Failed to remove participants');
   }
   return result.data;
 }
@@ -557,6 +574,32 @@ export async function addPlaceComment(
 export async function getPlaceComments(placeId: string, token: string | null): Promise<PlaceComment[]> {
   const response = await fetchWithAuth(`/api/places/${placeId}/comments`, {}, token);
   const result: ApiResponse<PlaceComment[]> = await response.json();
+  if (!result.success || !result.data) {
+    throw new Error(result.error || 'Failed to get comments');
+  }
+  return result.data;
+}
+
+// Trip Comment APIs
+export async function addTripComment(
+  tripId: string,
+  text: string,
+  token: string | null
+): Promise<TripComment> {
+  const response = await fetchWithAuth(`/api/trips/${tripId}/comments`, {
+    method: 'POST',
+    body: JSON.stringify({ text }),
+  }, token);
+  const result: ApiResponse<TripComment> = await response.json();
+  if (!result.success || !result.data) {
+    throw new Error(result.error || 'Failed to add comment');
+  }
+  return result.data;
+}
+
+export async function getTripComments(tripId: string, token: string | null): Promise<TripComment[]> {
+  const response = await fetchWithAuth(`/api/trips/${tripId}/comments`, {}, token);
+  const result: ApiResponse<TripComment[]> = await response.json();
   if (!result.success || !result.data) {
     throw new Error(result.error || 'Failed to get comments');
   }

@@ -1,12 +1,13 @@
 import express from 'express';
 import { OptionalAuthRequest } from '../middleware/optionalAuth.js';
-import type { Trip, TripParticipant, TripPlace } from '@tripmatrix/types';
+import type { Trip, TripParticipant, TripPlace, TripComment } from '@tripmatrix/types';
 import { TripModel } from '../models/Trip.js';
 import { TripPlaceModel } from '../models/TripPlace.js';
 import { TripExpenseModel } from '../models/TripExpense.js';
 import { TripRouteModel } from '../models/TripRoute.js';
 import { TripLikeModel } from '../models/TripLike.js';
 import { PlaceCommentModel } from '../models/PlaceComment.js';
+import { TripCommentModel } from '../models/TripComment.js';
 import { UserModel } from '../models/User.js';
 import { isMongoDBConnected } from '../config/mongodb.js';
 import mongoose from 'mongoose';
@@ -258,6 +259,67 @@ router.post('/:tripId/participants', async (req: OptionalAuthRequest, res) => {
     res.json({
       success: true,
       data: { participants: mergedParticipants },
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+// Remove participants from trip
+router.delete('/:tripId/participants', async (req: OptionalAuthRequest, res) => {
+  try {
+    if (!req.uid) {
+      return res.status(401).json({
+        success: false,
+        error: 'Authentication required',
+      });
+    }
+    const { tripId } = req.params;
+    const { participants } = req.body; // Array of uids or guestNames to remove
+    const uid = req.uid;
+
+    const trip = await TripModel.findById(tripId);
+
+    if (!trip) {
+      return res.status(404).json({
+        success: false,
+        error: 'Trip not found',
+      });
+    }
+
+    const tripData = trip.toJSON() as Trip;
+    
+    // Check if user is creator or participant
+    if (tripData.creatorId !== uid && !tripData.participants.some((p) => p.uid === uid)) {
+      return res.status(403).json({
+        success: false,
+        error: 'Not authorized to remove participants',
+      });
+    }
+
+    // Don't allow removing the creator
+    const participantsToRemove = Array.isArray(participants) ? participants : [];
+    const filteredParticipants = tripData.participants.filter((p) => {
+      // Keep creator
+      if (p.uid === tripData.creatorId && !p.isGuest) {
+        return true;
+      }
+      // Remove if matches any in the removal list
+      return !participantsToRemove.some((removeId: string) => {
+        return (p.uid === removeId) || (p.guestName === removeId);
+      });
+    });
+
+    trip.participants = filteredParticipants;
+    trip.updatedAt = new Date();
+    await trip.save();
+
+    res.json({
+      success: true,
+      data: { participants: filteredParticipants },
     });
   } catch (error: any) {
     res.status(500).json({
@@ -949,6 +1011,121 @@ router.get('/:tripId/comments/count', async (req: OptionalAuthRequest, res) => {
     res.json({
       success: true,
       data: { commentCount: 0 },
+    });
+  }
+});
+
+// Add a comment to a trip
+router.post('/:tripId/comments', async (req: OptionalAuthRequest, res) => {
+  try {
+    const { tripId } = req.params;
+    const { text } = req.body;
+    
+    if (!req.uid) {
+      return res.status(401).json({
+        success: false,
+        error: 'Authentication required',
+      });
+    }
+    
+    const uid = req.uid;
+
+    if (!text || !text.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: 'Comment text is required',
+      });
+    }
+
+    // Verify trip exists
+    const trip = await TripModel.findById(tripId);
+    if (!trip) {
+      return res.status(404).json({
+        success: false,
+        error: 'Trip not found',
+      });
+    }
+
+    const tripData = trip.toJSON();
+    
+    // Allow comments if trip is public, or if user is creator/participant
+    if (!tripData.isPublic) {
+      if (tripData.creatorId !== uid && 
+          !tripData.participants?.some((p: any) => p.uid === uid)) {
+        return res.status(403).json({
+          success: false,
+          error: 'Not authorized to comment on this trip',
+        });
+      }
+    }
+
+    // Create comment
+    const commentDoc = new TripCommentModel({
+      tripId,
+      userId: uid,
+      text: text.trim(),
+      createdAt: new Date(),
+    });
+    const savedComment = await commentDoc.save();
+    const comment = savedComment.toJSON() as TripComment;
+
+    res.json({
+      success: true,
+      data: comment,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+// Get comments for a trip
+router.get('/:tripId/comments', async (req: OptionalAuthRequest, res) => {
+  try {
+    const { tripId } = req.params;
+
+    // Verify trip exists
+    const trip = await TripModel.findById(tripId);
+    if (!trip) {
+      return res.status(404).json({
+        success: false,
+        error: 'Trip not found',
+      });
+    }
+
+    const tripData = trip.toJSON();
+    
+    // Allow viewing comments if trip is public, or if user is authenticated and has access
+    if (!tripData.isPublic) {
+      if (!req.uid) {
+        return res.status(401).json({
+          success: false,
+          error: 'Authentication required',
+        });
+      }
+      if (tripData.creatorId !== req.uid && 
+          !tripData.participants?.some((p: any) => p.uid === req.uid)) {
+        return res.status(403).json({
+          success: false,
+          error: 'Not authorized to view comments',
+        });
+      }
+    }
+
+    // Get all comments for this trip
+    const commentsDocs = await TripCommentModel.find({ tripId }).sort({ createdAt: -1 });
+    const comments = commentsDocs.map(doc => doc.toJSON() as TripComment);
+
+    res.json({
+      success: true,
+      data: comments,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
     });
   }
 });

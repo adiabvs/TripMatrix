@@ -8,12 +8,13 @@ import dynamic from 'next/dynamic';
 import { getTrip, getTripPlaces, updatePlace, createExpense, uploadImage, getTripExpenses, deleteExpense, getPlaceComments, addPlaceComment } from '@/lib/api';
 import type { Trip, TripPlace, ModeOfTravel, TripParticipant, PlaceComment } from '@tripmatrix/types';
 import { toDate, formatDateTimeLocalForInput, parseDateTimeLocalToUTC } from '@/lib/dateUtils';
+import { getCurrencySymbol } from '@/lib/currencyUtils';
 import { format } from 'date-fns';
 import type L from 'leaflet';
 import ExpenseForm from '@/components/ExpenseForm';
 import { db } from '@/lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
-import { MdArrowBack, MdCameraAlt, MdAdd, MdRemove, MdSearch, MdRefresh, MdMyLocation, MdClose, MdComment } from 'react-icons/md';
+import { MdArrowBack, MdCameraAlt, MdAdd, MdRemove, MdSearch, MdRefresh, MdMyLocation, MdClose, MdComment, MdChatBubbleOutline, MdSend } from 'react-icons/md';
 
 // Dynamically import PlaceMapSelector with SSR disabled
 const PlaceMapSelector = dynamic(() => import('@/components/PlaceMapSelector'), {
@@ -86,8 +87,9 @@ function ExpenseList({
       {expenses.map((expense, index) => (
         <div key={expense.expenseId || index} className="bg-[#616161] rounded-lg p-3 flex justify-between items-center">
           <div className="flex-1">
-            <p className="text-[11px] font-semibold text-white">
-              {expense.currency || 'USD'} {expense.amount?.toFixed(2)}
+            <p className="text-[11px] font-semibold text-white flex items-center gap-1">
+              <span>{getCurrencySymbol(expense.currency || 'USD')}</span>
+              <span>{expense.amount?.toFixed(2)}</span>
             </p>
             <p className="text-[10px] text-[#bdbdbd]">
               Paid by: {namesMap[expense.paidBy] || 'Loading...'}
@@ -195,12 +197,11 @@ export default function EditStepPage() {
       const userNames: Record<string, string> = {};
       for (const uid of uniqueUserIds) {
         try {
-          const userDoc = await getDoc(doc(db, 'users', uid));
-          if (userDoc.exists()) {
-            userNames[uid] = userDoc.data().name || 'Unknown User';
-          }
+          const userData = await getUser(uid, token);
+          userNames[uid] = userData.name || 'Unknown User';
         } catch (error) {
           console.error(`Failed to fetch user ${uid}:`, error);
+          userNames[uid] = 'Unknown User';
         }
       }
       setCommentUserNamesMap(userNames);
@@ -863,62 +864,93 @@ export default function EditStepPage() {
             </div>
           )}
 
-          {/* Comments Section */}
+          {/* Comments Button */}
           <div className="mb-6">
-            <h3 className="text-[12px] font-semibold text-white mb-3 flex items-center gap-2">
-              <MdComment className="w-4 h-4" />
-              Comments
-            </h3>
-            
-            {/* Add Comment Form */}
+            <button
+              onClick={() => setShowComments(true)}
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-[#616161] rounded-lg hover:bg-[#757575] transition-colors"
+            >
+              <MdChatBubbleOutline className="w-5 h-5 text-white" />
+              <span className="text-sm text-white font-medium">
+                View Comments ({comments.length})
+              </span>
+            </button>
+          </div>
+
+          {/* Comments Modal */}
+          <BottomModal
+            isOpen={showComments}
+            onClose={() => setShowComments(false)}
+            title={`Comments (${comments.length})`}
+            maxHeight="90vh"
+          >
+            {/* Comments List */}
+            <div className="px-4 py-3">
+              {comments.length === 0 ? (
+                <p className="text-gray-400 text-sm text-center py-8">No comments yet</p>
+              ) : (
+                <div className="space-y-4 pb-4">
+                  {comments.map((comment) => (
+                    <div key={comment.commentId} className="flex items-start gap-3">
+                      <div className="w-10 h-10 rounded-full bg-[#1976d2] flex items-center justify-center flex-shrink-0">
+                        <span className="text-sm text-white font-semibold">
+                          {commentUserNamesMap[comment.userId]?.charAt(0).toUpperCase() || 'U'}
+                        </span>
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-baseline gap-2 mb-1">
+                          <span className="text-sm font-semibold text-white">
+                            {commentUserNamesMap[comment.userId] || 'Loading...'}
+                          </span>
+                          <span className="text-sm text-gray-200">{comment.text}</span>
+                        </div>
+                        <p className="text-xs text-gray-400">
+                          {format(toDate(comment.createdAt), 'MMM dd, yyyy')}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Comment Input at Bottom (Instagram style) */}
             {user && (
-              <div className="mb-4 bg-[#616161] rounded-lg p-3">
-                <textarea
+              <div className="sticky bottom-0 px-4 py-3 border-t border-gray-800 bg-black flex items-center gap-2">
+                <div className="w-10 h-10 rounded-full bg-[#1976d2] flex items-center justify-center flex-shrink-0">
+                  <span className="text-sm text-white font-semibold">
+                    {user.name?.charAt(0).toUpperCase() || 'U'}
+                  </span>
+                </div>
+                <input
+                  type="text"
                   value={commentText}
                   onChange={(e) => setCommentText(e.target.value)}
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey && commentText.trim()) {
+                      e.preventDefault();
+                      handleAddComment();
+                    }
+                  }}
                   placeholder="Add a comment..."
-                  className="w-full bg-[#757575] text-white rounded-lg p-2 text-[12px] resize-none mb-2"
-                  rows={3}
+                  className="flex-1 bg-gray-900 text-white text-sm placeholder-gray-500 focus:outline-none px-4 py-2 rounded-full border border-gray-700 focus:border-[#1976d2]"
                   disabled={addingComment}
                 />
                 <button
                   onClick={handleAddComment}
                   disabled={!commentText.trim() || addingComment}
-                  className="w-full bg-[#1976d2] text-white py-2 px-4 rounded-lg text-[12px] font-medium disabled:opacity-50 hover:bg-[#1565c0] transition-colors"
+                  className="text-[#1976d2] hover:text-[#1565c0] disabled:opacity-50 disabled:cursor-not-allowed transition-colors p-2"
+                  aria-label="Post comment"
                 >
-                  {addingComment ? 'Adding...' : 'Add Comment'}
+                  {addingComment ? (
+                    <span className="text-xs">Posting...</span>
+                  ) : (
+                    <MdSend className="w-6 h-6" />
+                  )}
                 </button>
               </div>
             )}
-
-            {/* Comments List */}
-            <div className="space-y-3">
-              {comments.length === 0 ? (
-                <p className="text-[12px] text-gray-400 text-center py-4">No comments yet</p>
-              ) : (
-                comments.map((comment) => (
-                  <div key={comment.commentId} className="bg-[#616161] rounded-lg p-3">
-                    <div className="flex items-start gap-2 mb-2">
-                      <div className="w-8 h-8 rounded-full bg-[#1976d2] flex items-center justify-center flex-shrink-0">
-                        <span className="text-[10px] text-white font-semibold">
-                          {commentUserNamesMap[comment.userId]?.charAt(0).toUpperCase() || 'U'}
-                        </span>
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-[11px] font-semibold text-white">
-                          {commentUserNamesMap[comment.userId] || 'Loading...'}
-                        </p>
-                        <p className="text-[10px] text-gray-400">
-                          {format(toDate(comment.createdAt), 'MMM dd, yyyy HH:mm')}
-                        </p>
-                      </div>
-                    </div>
-                    <p className="text-[12px] text-gray-200 ml-10">{comment.text}</p>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
+          </BottomModal>
 
           {/* Submit Button - Only show if can edit */}
           {canEdit && (
@@ -954,6 +986,81 @@ export default function EditStepPage() {
           )}
         </form>
       </div>
+
+      {/* Comments Modal */}
+      <BottomModal
+        isOpen={showComments}
+        onClose={() => setShowComments(false)}
+        title={`Comments (${comments.length})`}
+        maxHeight="90vh"
+      >
+        {/* Comments List */}
+        <div className="px-4 py-3">
+          {comments.length === 0 ? (
+            <p className="text-gray-400 text-sm text-center py-8">No comments yet</p>
+          ) : (
+            <div className="space-y-4 pb-4">
+              {comments.map((comment) => (
+                <div key={comment.commentId} className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-full bg-[#1976d2] flex items-center justify-center flex-shrink-0">
+                    <span className="text-sm text-white font-semibold">
+                      {commentUserNamesMap[comment.userId]?.charAt(0).toUpperCase() || 'U'}
+                    </span>
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-baseline gap-2 mb-1">
+                      <span className="text-sm font-semibold text-white">
+                        {commentUserNamesMap[comment.userId] || 'Loading...'}
+                      </span>
+                      <span className="text-sm text-gray-200">{comment.text}</span>
+                    </div>
+                    <p className="text-xs text-gray-400">
+                      {format(toDate(comment.createdAt), 'MMM dd, yyyy')}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Comment Input at Bottom (Instagram style) */}
+        {user && (
+          <div className="sticky bottom-0 px-4 py-3 border-t border-gray-800 bg-black flex items-center gap-2">
+            <div className="w-10 h-10 rounded-full bg-[#1976d2] flex items-center justify-center flex-shrink-0">
+              <span className="text-sm text-white font-semibold">
+                {user.name?.charAt(0).toUpperCase() || 'U'}
+              </span>
+            </div>
+            <input
+              type="text"
+              value={commentText}
+              onChange={(e) => setCommentText(e.target.value)}
+              onKeyPress={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey && commentText.trim()) {
+                  e.preventDefault();
+                  handleAddComment();
+                }
+              }}
+              placeholder="Add a comment..."
+              className="flex-1 bg-gray-900 text-white text-sm placeholder-gray-500 focus:outline-none px-4 py-2 rounded-full border border-gray-700 focus:border-[#1976d2]"
+              disabled={addingComment}
+            />
+            <button
+              onClick={handleAddComment}
+              disabled={!commentText.trim() || addingComment}
+              className="text-[#1976d2] hover:text-[#1565c0] disabled:opacity-50 disabled:cursor-not-allowed transition-colors p-2"
+              aria-label="Post comment"
+            >
+              {addingComment ? (
+                <span className="text-xs">Posting...</span>
+              ) : (
+                <MdSend className="w-6 h-6" />
+              )}
+            </button>
+          </div>
+        )}
+      </BottomModal>
     </div>
   );
 }

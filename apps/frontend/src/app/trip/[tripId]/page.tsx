@@ -4,8 +4,6 @@ import { useEffect, useState, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
-import { db } from '@/lib/firebase';
-import { collection, query, where, onSnapshot, doc, getDoc } from 'firebase/firestore';
 import type { Trip, TripRoute, TripPlace, TripExpense, User } from '@tripmatrix/types';
 import TripHeader from '@/components/trip/TripHeader';
 import TripInfoCard from '@/components/trip/TripInfoCard';
@@ -13,6 +11,7 @@ import TripStepsList from '@/components/trip/TripStepsList';
 import { useTripPermissions } from '@/hooks/useTripPermissions';
 import { useAuth } from '@/lib/auth';
 import { MdMap, MdLogin, MdHome } from 'react-icons/md';
+import { getTrip, getTripPlaces, getTripRoutes, getTripExpenses, getUser } from '@/lib/api';
 
 // Dynamically import TripMapbox with SSR disabled
 const TripMapbox = dynamic(() => import('@/components/TripMapbox'), {
@@ -47,79 +46,101 @@ export default function PublicTripViewPage() {
     }
   }, [tripId]);
 
+  // Refresh data periodically (MongoDB doesn't have real-time subscriptions)
+  useEffect(() => {
+    if (!tripId) return;
+
+    // Refresh data every 5 seconds when page is visible
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible' && !loading && trip) {
+        loadTripData();
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [tripId, loading, trip]);
+
   const loadTripData = async () => {
     try {
       // Get trip (public endpoint, no auth required)
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/trips/${tripId}`);
-      if (!response.ok) {
-        throw new Error('Trip not found');
-      }
-      const result = await response.json();
-      const tripData = result.data as Trip;
-
+      const tripData = await getTrip(tripId, null);
+      
       if (!tripData.isPublic) {
         throw new Error('This trip is private');
       }
 
       setTrip(tripData);
 
-      // Load creator info
-      const creatorDoc = await getDoc(doc(db, 'users', tripData.creatorId));
-      if (creatorDoc.exists()) {
-        setCreator(creatorDoc.data() as User);
+      // Load creator info (public endpoint)
+      try {
+        const creatorData = await getUser(tripData.creatorId, null);
+        setCreator(creatorData);
+      } catch (error) {
+        console.error('Failed to load creator:', error);
       }
 
-      // Load participants
+      // Load participants (public endpoint)
       if (tripData.participants && tripData.participants.length > 0) {
         const participantUids = tripData.participants
           .filter((p: any) => !p.isGuest && p.uid)
           .map((p: any) => p.uid);
         
         if (participantUids.length > 0) {
-          const participantDocs = await Promise.all(
-            participantUids.map((uid: string) => getDoc(doc(db, 'users', uid)))
-          );
-          const participantsData = participantDocs
-            .filter(doc => doc.exists())
-            .map(doc => doc.data() as User);
-          setParticipants(participantsData);
+          try {
+            const participantsData = await Promise.all(
+              participantUids.map(async (uid: string) => {
+                try {
+                  return await getUser(uid, null);
+                } catch {
+                  return null;
+                }
+              })
+            );
+            setParticipants(participantsData.filter((u): u is User => u !== null));
+          } catch (error) {
+            console.error('Failed to load participants:', error);
+          }
         }
       }
 
       // Load routes (public endpoint)
-      const routesResponse = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/routes/${tripId}`
-      );
-      if (routesResponse.ok) {
-        const routesResult = await routesResponse.json();
-        setRoutes(routesResult.data || []);
+      try {
+        const routesData = await getTripRoutes(tripId, null);
+        setRoutes(routesData);
+      } catch (error) {
+        console.error('Failed to load routes:', error);
       }
 
-      // Subscribe to places (public read)
-      const placesQuery = query(
-        collection(db, 'tripPlaces'),
-        where('tripId', '==', tripId)
-      );
-      const unsubscribePlaces = onSnapshot(placesQuery, (snapshot) => {
-        const placesData = snapshot.docs.map((doc) => ({
-          placeId: doc.id,
-          ...doc.data(),
-        })) as TripPlace[];
+      // Load places (public endpoint - works for public trips)
+      try {
+        const placesData = await getTripPlaces(tripId, null);
+        // Sort by visitedAt
+        placesData.sort((a, b) => new Date(a.visitedAt).getTime() - new Date(b.visitedAt).getTime());
         setPlaces(placesData);
-      });
+      } catch (error) {
+        console.error('Failed to load places:', error);
+      }
 
-      // Load expenses (public endpoint, but may be filtered)
-      const expensesResponse = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/expenses/trip/${tripId}`
-      );
-      if (expensesResponse.ok) {
-        const expensesResult = await expensesResponse.json();
-        setExpenses(expensesResult.data || []);
+      // Load expenses (public endpoint, filtered by expenseVisibility setting)
+      try {
+        const expensesData = await getTripExpenses(tripId, null);
+        // Filter expenses based on trip's expenseVisibility setting
+        let visibleExpenses = expensesData;
+        if (tripData.expenseVisibility === 'members') {
+          // For public view, don't show expenses if visibility is 'members'
+          visibleExpenses = [];
+        } else if (tripData.expenseVisibility === 'creator') {
+          // For public view, don't show expenses if visibility is 'creator'
+          visibleExpenses = [];
+        }
+        // If expenseVisibility is 'everyone' or undefined, show all expenses
+        setExpenses(visibleExpenses);
+      } catch (error) {
+        console.error('Failed to load expenses:', error);
       }
 
       setLoading(false);
-      return () => unsubscribePlaces();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to load trip data:', error);
       setLoading(false);
     }

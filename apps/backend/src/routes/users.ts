@@ -1,12 +1,20 @@
 import express from 'express';
 import { AuthenticatedRequest } from '../middleware/auth.js';
+import { OptionalAuthRequest } from '../middleware/optionalAuth.js';
 import { UserModel } from '../models/User.js';
 
 const router = express.Router();
 
 // Search users by email or name (for @username tagging)
-router.get('/search', async (req: AuthenticatedRequest, res) => {
+router.get('/search', async (req: OptionalAuthRequest, res) => {
   try {
+    if (!req.uid) {
+      return res.status(401).json({
+        success: false,
+        error: 'Authentication required',
+      });
+    }
+    
     const { q } = req.query;
     
     if (!q || typeof q !== 'string') {
@@ -37,9 +45,16 @@ router.get('/search', async (req: AuthenticatedRequest, res) => {
 });
 
 // Get current user profile
-router.get('/me', async (req: AuthenticatedRequest, res) => {
+router.get('/me', async (req: OptionalAuthRequest, res) => {
   try {
-    const uid = req.uid!;
+    if (!req.uid) {
+      return res.status(401).json({
+        success: false,
+        error: 'Authentication required',
+      });
+    }
+    
+    const uid = req.uid;
     const user = await UserModel.findOne({ uid });
 
     if (!user) {
@@ -73,10 +88,17 @@ router.get('/me', async (req: AuthenticatedRequest, res) => {
 });
 
 // Update user profile (country, currency, isProfilePublic, etc.)
-router.patch('/me', async (req: AuthenticatedRequest, res) => {
+router.patch('/me', async (req: OptionalAuthRequest, res) => {
   try {
+    if (!req.uid) {
+      return res.status(401).json({
+        success: false,
+        error: 'Authentication required',
+      });
+    }
+    
     const { country, defaultCurrency, isProfilePublic, name, email, photoUrl } = req.body;
-    const uid = req.uid!;
+    const uid = req.uid;
 
     let user = await UserModel.findOne({ uid });
 
@@ -127,9 +149,16 @@ router.patch('/me', async (req: AuthenticatedRequest, res) => {
 });
 
 // Follow a user
-router.post('/:userId/follow', async (req: AuthenticatedRequest, res) => {
+router.post('/:userId/follow', async (req: OptionalAuthRequest, res) => {
   try {
-    const currentUserId = req.uid!;
+    if (!req.uid) {
+      return res.status(401).json({
+        success: false,
+        error: 'Authentication required',
+      });
+    }
+    
+    const currentUserId = req.uid;
     const targetUserId = req.params.userId;
 
     if (currentUserId === targetUserId) {
@@ -174,9 +203,16 @@ router.post('/:userId/follow', async (req: AuthenticatedRequest, res) => {
 });
 
 // Unfollow a user
-router.post('/:userId/unfollow', async (req: AuthenticatedRequest, res) => {
+router.post('/:userId/unfollow', async (req: OptionalAuthRequest, res) => {
   try {
-    const currentUserId = req.uid!;
+    if (!req.uid) {
+      return res.status(401).json({
+        success: false,
+        error: 'Authentication required',
+      });
+    }
+    
+    const currentUserId = req.uid;
     const targetUserId = req.params.userId;
 
     const currentUser = await UserModel.findOne({ uid: currentUserId });
@@ -214,9 +250,16 @@ router.post('/:userId/unfollow', async (req: AuthenticatedRequest, res) => {
 });
 
 // Get users that current user follows
-router.get('/me/following', async (req: AuthenticatedRequest, res) => {
+router.get('/me/following', async (req: OptionalAuthRequest, res) => {
   try {
-    const currentUserId = req.uid!;
+    if (!req.uid) {
+      return res.status(401).json({
+        success: false,
+        error: 'Authentication required',
+      });
+    }
+    
+    const currentUserId = req.uid;
     const currentUser = await UserModel.findOne({ uid: currentUserId });
 
     if (!currentUser) {
@@ -253,7 +296,7 @@ router.get('/me/following', async (req: AuthenticatedRequest, res) => {
 });
 
 // Get user by ID (public profile)
-router.get('/:userId', async (req: AuthenticatedRequest, res) => {
+router.get('/:userId', async (req: OptionalAuthRequest, res) => {
   try {
     const targetUserId = req.params.userId;
     const currentUserId = req.uid; // May be null for unauthenticated requests
