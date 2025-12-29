@@ -4,12 +4,12 @@
 
 1. **Node.js** >= 18.0.0
 2. **pnpm** >= 8.0.0 (install with `npm install -g pnpm`)
-3. **Firebase Project** with:
-   - Authentication enabled (Google Sign-In)
-   - Firestore Database
-4. **Supabase Project** with:
+3. **MongoDB** - Local installation or MongoDB Atlas account
+4. **Firebase Project** with:
+   - Authentication enabled (Google Sign-In) - Only for authentication
+5. **Supabase Project** with:
    - Storage bucket named 'images' (for image uploads)
-5. **Google Cloud APIs**:
+6. **Google Cloud APIs**:
    - Gemini API (for AI rewriting)
 
 ## Step 1: Clone and Install
@@ -19,37 +19,54 @@
 pnpm install
 ```
 
-## Step 2: Firebase Setup
+## Step 2: MongoDB Setup
+
+### Option A: Local MongoDB
+1. Install MongoDB locally or use Docker
+2. Start MongoDB service
+3. Connection string: `mongodb://localhost:27017/tripmatrix`
+
+### Option B: MongoDB Atlas (Cloud)
+1. Create a free account at https://www.mongodb.com/cloud/atlas
+2. Create a new cluster
+3. Create a database user
+4. Get your connection string (format: `mongodb+srv://username:password@cluster.mongodb.net/tripmatrix?retryWrites=true&w=majority`)
+5. Add your IP address to the whitelist
+
+## Step 3: Firebase Setup (Authentication Only)
 
 1. Create a Firebase project at https://console.firebase.google.com
 2. Enable Authentication with Google Sign-In provider
-3. Create a Firestore database
-4. Enable Storage (optional)
-5. Get your Firebase config from Project Settings > General > Your apps
+3. Get your Firebase config from Project Settings > General > Your apps
+4. **Note**: We only use Firebase for authentication, not for database storage
 
-## Step 3: Backend Configuration
+## Step 4: Backend Configuration
 
-1. Create a service account:
-   - Go to Firebase Console > Project Settings > Service Accounts
-   - Click "Generate New Private Key"
-   - Save the JSON file
-
-2. Copy `apps/backend/.env.example` to `apps/backend/.env` and fill in:
+Copy `apps/backend/.env.example` to `apps/backend/.env` and fill in:
 
 ```env
 PORT=3001
+MONGODB_URI=mongodb://localhost:27017/tripmatrix
+# OR for MongoDB Atlas:
+# MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/tripmatrix?retryWrites=true&w=majority
+
+# Firebase Auth (for authentication only)
 FIREBASE_PROJECT_ID=your-project-id
 FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
 FIREBASE_CLIENT_EMAIL=firebase-adminsdk-xxxxx@your-project.iam.gserviceaccount.com
+
+# Supabase (for image storage)
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+
+# Google APIs
 GEMINI_API_KEY=your-gemini-api-key
 NODE_ENV=development
 ```
 
 **Note**: For `FIREBASE_PRIVATE_KEY`, copy the entire private key from the JSON file, including the `-----BEGIN PRIVATE KEY-----` and `-----END PRIVATE KEY-----` lines, and replace newlines with `\n`.
 
-## Step 4: Supabase Setup
+## Step 5: Supabase Setup
 
 1. Create a Supabase project at https://supabase.com
 2. Go to Storage in the Supabase dashboard
@@ -61,7 +78,7 @@ NODE_ENV=development
    - Project URL: Found in Settings > API
    - Service Role Key: Found in Settings > API (use the `service_role` key, not the `anon` key)
 
-## Step 5: Frontend Configuration
+## Step 6: Frontend Configuration
 
 1. Copy `apps/frontend/.env.example` to `apps/frontend/.env.local` and fill in:
 
@@ -75,12 +92,6 @@ NEXT_PUBLIC_FIREBASE_APP_ID=your-app-id
 NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=your-google-maps-api-key
 NEXT_PUBLIC_API_URL=http://localhost:3001
 ```
-
-## Step 6: Firestore Security Rules
-
-1. Go to Firebase Console > Firestore Database > Rules
-2. Copy the contents of `firestore.rules` and paste into the rules editor
-3. Publish the rules
 
 ## Step 7: Google APIs Setup
 
@@ -125,10 +136,17 @@ pnpm start
 
 ## Troubleshooting
 
+### MongoDB Connection Errors
+- Ensure MongoDB is running (local) or your IP is whitelisted (Atlas)
+- Verify `MONGODB_URI` is correct
+- Check MongoDB logs for connection issues
+- For Atlas: Ensure your connection string includes authentication credentials
+
 ### Firebase Admin SDK Errors
 - Ensure your service account JSON is correctly formatted
 - Check that `FIREBASE_PRIVATE_KEY` has `\n` for newlines
 - Verify `FIREBASE_PROJECT_ID` matches your Firebase project
+- **Note**: Firebase is only used for authentication, not database storage
 
 ### Supabase Storage Errors
 - Ensure the `images` bucket exists in Supabase

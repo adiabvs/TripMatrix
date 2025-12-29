@@ -6,9 +6,9 @@ A trip-logging and social travel tracking platform where users can create trips,
 
 - **Frontend**: Next.js 14 (TypeScript), React, TailwindCSS, Leaflet + OpenStreetMap
 - **Backend**: Express.js (deployable to Cloud Run)
-- **Database**: Firebase Firestore
+- **Database**: MongoDB (with Mongoose)
 - **Authentication**: Firebase Auth with Google Sign-In
-- **Storage**: Firebase Storage
+- **Storage**: Supabase Storage (for images)
 - **APIs**: Google Maps Places API, Gemini API
 
 ## Project Structure

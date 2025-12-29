@@ -21,7 +21,7 @@ const UserMenu = dynamic(() => import('@/components/UserMenu'), {
 });
 
 export default function Home() {
-  const { user, getIdToken } = useAuth();
+  const { user, getIdToken, loading: authLoading } = useAuth();
   const [trips, setTrips] = useState<Trip[]>([]);
   const [creators, setCreators] = useState<Record<string, User>>({});
   const [likes, setLikes] = useState<Record<string, { count: number; isLiked: boolean }>>({});
@@ -35,6 +35,7 @@ export default function Home() {
   const observerRef = useRef<IntersectionObserver | null>(null);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const menuRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const [mounted, setMounted] = useState(false);
 
   const loadTrips = useCallback(async (loadMore: boolean = false, currentLastTripId?: string | null) => {
     try {
@@ -104,7 +105,15 @@ export default function Home() {
     }
   }, [user, getIdToken, lastTripId]);
 
+  // Set mounted flag after hydration
   useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    // Only load trips after component is mounted and auth is ready
+    if (!mounted || authLoading) return;
+    
     // Reset state when user changes
     setTrips([]);
     setLastTripId(null);
@@ -124,7 +133,7 @@ export default function Home() {
       loadFollowing();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+  }, [user, mounted, authLoading]);
 
   // Intersection Observer for lazy loading
   const lastTripElementRef = useCallback((node: HTMLDivElement | null) => {
@@ -156,7 +165,8 @@ export default function Home() {
     };
   }, [menuOpen]);
 
-  if (loading) {
+  // Show loading state during initial mount or auth loading
+  if (!mounted || authLoading || loading) {
     return (
       <div className="h-screen flex items-center justify-center bg-black">
         <div className="text-white">Loading...</div>
@@ -231,8 +241,8 @@ export default function Home() {
                         >
                           {creator?.name || 'Unknown User'}
                         </Link>
-                        <p className="text-gray-400 text-xs">
-                          {format(toDate(trip.createdAt), 'MMM dd, yyyy')}
+                        <p className="text-gray-400 text-xs" suppressHydrationWarning>
+                          {mounted ? format(toDate(trip.createdAt), 'MMM dd, yyyy') : ''}
                         </p>
                       </div>
                     </div>

@@ -7,9 +7,17 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 dotenv.config({ path: join(__dirname, '../.env') });
 
-import { initializeFirebase, getFirestore } from '../src/config/firebase.js';
+import { connectDB } from '../src/config/mongodb.js';
+import { UserModel } from '../src/models/User.js';
+import { TripModel } from '../src/models/Trip.js';
+import { TripPlaceModel } from '../src/models/TripPlace.js';
+import { TripExpenseModel } from '../src/models/TripExpense.js';
+import { TripRouteModel } from '../src/models/TripRoute.js';
+import { TripLikeModel } from '../src/models/TripLike.js';
+import { PlaceLikeModel } from '../src/models/PlaceLike.js';
+import mongoose from 'mongoose';
+import { PlaceCommentModel } from '../src/models/PlaceComment.js';
 import type { Trip, TripPlace, TripExpense, TripRoute, User, ModeOfTravel, PlaceComment } from '@tripmatrix/types';
-import admin from 'firebase-admin';
 
 // Free high-quality travel images from Unsplash
 const DUMMY_IMAGES = {
@@ -24,11 +32,6 @@ const DUMMY_IMAGES = {
     'https://images.unsplash.com/photo-1501785888041-af3ef285b470?w=1200&h=800&fit=crop',
     'https://images.unsplash.com/photo-1501594907352-04cda38ebc29?w=1200&h=800&fit=crop',
     'https://images.unsplash.com/photo-1519904981063-b0cf448d479e?w=1200&h=800&fit=crop',
-    'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=1200&h=800&fit=crop',
-    'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=1200&h=800&fit=crop',
-    'https://images.unsplash.com/photo-1501594907352-04cda38ebc29?w=1200&h=800&fit=crop',
-    'https://images.unsplash.com/photo-1519904981063-b0cf448d479e?w=1200&h=800&fit=crop',
-    'https://images.unsplash.com/photo-1501785888041-af3ef285b470?w=1200&h=800&fit=crop',
   ],
   places: [
     'https://images.unsplash.com/photo-1512343879784-a960bf40e4f2?w=800&h=600&fit=crop',
@@ -37,16 +40,6 @@ const DUMMY_IMAGES = {
     'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800&h=600&fit=crop',
     'https://images.unsplash.com/photo-1512343879784-a960bf40e4f2?w=800&h=600&fit=crop',
     'https://images.unsplash.com/photo-1502602898657-3e91760cbb34?w=800&h=600&fit=crop',
-    'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800&h=600&fit=crop',
-    'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800&h=600&fit=crop',
-    'https://images.unsplash.com/photo-1512343879784-a960bf40e4f2?w=800&h=600&fit=crop',
-    'https://images.unsplash.com/photo-1502602898657-3e91760cbb34?w=800&h=600&fit=crop',
-    'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800&h=600&fit=crop',
-    'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800&h=600&fit=crop',
-    'https://images.unsplash.com/photo-1512343879784-a960bf40e4f2?w=800&h=600&fit=crop',
-    'https://images.unsplash.com/photo-1502602898657-3e91760cbb34?w=800&h=600&fit=crop',
-    'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800&h=600&fit=crop',
-    'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800&h=600&fit=crop',
   ],
 };
 
@@ -61,63 +54,24 @@ const COMMENT_TEXTS = [
   'Beautiful location with amazing vibes. Will come back!',
   'The culture here is fascinating. Learned so much!',
   'Absolutely loved this place! Worth every moment.',
-  'Incredible destination. The memories will last forever!',
-  'Perfect blend of nature and culture. Amazing!',
-  'The best part of my journey. Truly special!',
-  'Stunning location with so much to explore.',
-  'An experience I will never forget. Magical!',
 ];
 
 async function deleteAllData() {
-  const db = getFirestore();
   console.log('🗑️  Deleting all data...');
-
-  const collections = [
-    'users', 
-    'trips', 
-    'tripPlaces', 
-    'tripExpenses', 
-    'tripRoutes', 
-    'placeComments',
-    'tripLikes',
-    'placeLikes',
-  ];
   
-  for (const collectionName of collections) {
-    try {
-      const snapshot = await db.collection(collectionName).get();
-      const batchSize = 500; // Firestore batch limit
-      let totalDeleted = 0;
-      
-      const docs = snapshot.docs;
-      for (let i = 0; i < docs.length; i += batchSize) {
-        const batch = db.batch();
-        const batchDocs = docs.slice(i, i + batchSize);
-        
-        batchDocs.forEach((docSnapshot) => {
-          batch.delete(docSnapshot.ref);
-        });
-        
-        await batch.commit();
-        totalDeleted += batchDocs.length;
-        console.log(`   Deleted ${totalDeleted}/${docs.length} from ${collectionName}...`);
-      }
-      
-      if (totalDeleted > 0) {
-        console.log(`✅ Deleted ${totalDeleted} documents from ${collectionName}`);
-      } else {
-        console.log(`ℹ️  No documents found in ${collectionName}`);
-      }
-    } catch (error: any) {
-      console.error(`❌ Error deleting ${collectionName}:`, error.message);
-    }
-  }
+  await TripLikeModel.deleteMany({});
+  await PlaceLikeModel.deleteMany({});
+  await PlaceCommentModel.deleteMany({});
+  await TripRouteModel.deleteMany({});
+  await TripExpenseModel.deleteMany({});
+  await TripPlaceModel.deleteMany({});
+  await TripModel.deleteMany({});
+  await UserModel.deleteMany({});
   
   console.log('✅ All data deleted!\n');
 }
 
 async function createDummyUsers() {
-  const db = getFirestore();
   console.log('👥 Creating 100 dummy users...');
 
   const firstNames = [
@@ -136,10 +90,6 @@ async function createDummyUsers() {
     'Johnson', 'Chen', 'Brown', 'Davis', 'Wilson', 'Martinez', 'Anderson', 'Taylor', 'Thomas', 'Jackson',
     'White', 'Harris', 'Martin', 'Thompson', 'Garcia', 'Rodriguez', 'Lewis', 'Walker', 'Hall', 'Allen',
     'Young', 'King', 'Wright', 'Lopez', 'Hill', 'Scott', 'Green', 'Adams', 'Baker', 'Nelson',
-    'Carter', 'Mitchell', 'Perez', 'Roberts', 'Turner', 'Phillips', 'Campbell', 'Parker', 'Evans', 'Edwards',
-    'Collins', 'Stewart', 'Sanchez', 'Morris', 'Rogers', 'Reed', 'Cook', 'Morgan', 'Bell', 'Murphy',
-    'Bailey', 'Rivera', 'Cooper', 'Richardson', 'Cox', 'Howard', 'Ward', 'Torres', 'Peterson', 'Gray',
-    'Ramirez', 'James', 'Watson', 'Brooks', 'Kelly', 'Sanders', 'Price', 'Bennett', 'Wood', 'Barnes',
   ];
 
   const countries = ['US', 'CA', 'GB', 'AU', 'FR', 'DE', 'IT', 'ES', 'JP', 'KR', 'SG', 'IN', 'BR', 'MX', 'AR', 'CL', 'NZ', 'NL', 'BE', 'CH'];
@@ -155,13 +105,14 @@ async function createDummyUsers() {
     'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&h=200&fit=crop',
   ];
 
-  const users: User[] = [];
+  const users: any[] = [];
   const numUsers = 100;
 
   for (let i = 0; i < numUsers; i++) {
     const firstName = firstNames[i % firstNames.length];
     const lastName = lastNames[Math.floor(i / firstNames.length) % lastNames.length];
     const name = `${firstName} ${lastName}`;
+    const uid = `user${i + 1}`;
     
     // Create following relationships - each user follows 5-15 random users
     const follows: string[] = [];
@@ -177,7 +128,8 @@ async function createDummyUsers() {
     }
 
     users.push({
-      uid: `user${i + 1}`,
+      _id: uid,
+      uid,
       name,
       email: `${firstName.toLowerCase()}.${lastName.toLowerCase()}${i}@example.com`,
       photoUrl: photoUrls[i % photoUrls.length],
@@ -185,20 +137,15 @@ async function createDummyUsers() {
       defaultCurrency: currencies[i % currencies.length],
       isProfilePublic: true,
       follows,
-      createdAt: admin.firestore.Timestamp.now(),
+      createdAt: new Date(),
     });
   }
 
-  // Write in batches
-  const batchSize = 500;
+  // Insert users in batches
+  const batchSize = 100;
   for (let i = 0; i < users.length; i += batchSize) {
-    const batch = db.batch();
     const batchUsers = users.slice(i, i + batchSize);
-    batchUsers.forEach((user) => {
-      const userRef = db.collection('users').doc(user.uid);
-      batch.set(userRef, user);
-    });
-    await batch.commit();
+    await UserModel.insertMany(batchUsers);
     console.log(`   Created ${Math.min(i + batchSize, users.length)}/${users.length} users...`);
   }
 
@@ -206,7 +153,7 @@ async function createDummyUsers() {
   return users;
 }
 
-// Generate trip templates for 250+ trips
+// Generate trip templates for 500 trips
 function generateTripTemplates(): Array<{
   title: string;
   description: string;
@@ -299,7 +246,7 @@ function generateTripTemplates(): Array<{
     expenses: Array<{ description: string; amount: number; currency: string }>;
   }> = [];
 
-  const numTrips = 250;
+  const numTrips = 500;
   for (let i = 0; i < numTrips; i++) {
     const numPlaces = Math.floor(Math.random() * 4) + 3; // 3-6 places
     const selectedCities = [];
@@ -354,17 +301,16 @@ function generateTripTemplates(): Array<{
   return templates;
 }
 
-async function createDummyTrips(users: User[], templates: Array<{
+async function createDummyTrips(users: any[], templates: Array<{
   title: string;
   description: string;
   places: Array<{ name: string; lat: number; lng: number; country: string; comment: string; rating: number }>;
   modes: ModeOfTravel[];
   expenses: Array<{ description: string; amount: number; currency: string }>;
 }>) {
-  const db = getFirestore();
-  console.log('✈️  Creating 250+ dummy trips...');
+  console.log('✈️  Creating 500 dummy trips...');
 
-  const trips: Trip[] = [];
+  const trips: any[] = [];
   const now = new Date();
   
   templates.forEach((tripData, index) => {
@@ -403,66 +349,56 @@ async function createDummyTrips(users: User[], templates: Array<{
     }
     
     const tripData_obj: any = {
-      tripId: `trip-${index + 1}`,
       creatorId: users[creatorIndex].uid,
       title: tripData.title,
       description: tripData.description,
       participants,
       isPublic: true, // ALL trips are public
       status,
-      startTime: admin.firestore.Timestamp.fromDate(startDate),
+      startTime: startDate,
       coverImage: DUMMY_IMAGES.covers[index % DUMMY_IMAGES.covers.length],
       totalExpense: tripData.expenses.reduce((sum, e) => sum + e.amount, 0),
       totalDistance: tripData.places.length * (500 + Math.random() * 1000), // Varied distance
       defaultPhotoSharing: 'everyone',
       expenseVisibility: 'everyone',
-      createdAt: admin.firestore.Timestamp.fromDate(startDate),
-      updatedAt: admin.firestore.Timestamp.now(),
+      createdAt: startDate,
+      updatedAt: new Date(),
     };
     
     // Only add endTime if trip is completed
     if (status === 'completed') {
-      tripData_obj.endTime = admin.firestore.Timestamp.fromDate(endDate);
+      tripData_obj.endTime = endDate;
     }
     
-    const trip: Trip = tripData_obj;
-    trips.push(trip);
+    trips.push(tripData_obj);
   });
 
-  // Write in batches (Firestore batch limit is 500)
-  const batchSize = 500;
+  // Insert in batches
+  const batchSize = 100;
+  const savedTrips: any[] = [];
   for (let i = 0; i < trips.length; i += batchSize) {
-    const batch = db.batch();
     const batchTrips = trips.slice(i, i + batchSize);
-    batchTrips.forEach((trip) => {
-      const tripRef = db.collection('trips').doc(trip.tripId);
-      batch.set(tripRef, trip);
-    });
-    await batch.commit();
+    const inserted = await TripModel.insertMany(batchTrips);
+    savedTrips.push(...inserted);
     console.log(`   Created ${Math.min(i + batchSize, trips.length)}/${trips.length} trips...`);
   }
 
-  console.log(`✅ Created ${trips.length} trips\n`);
-  return trips;
+  console.log(`✅ Created ${savedTrips.length} trips\n`);
+  return savedTrips;
 }
 
-async function createDummyPlaces(trips: Trip[], templates: Array<{
+async function createDummyPlaces(trips: any[], templates: Array<{
   places: Array<{ name: string; lat: number; lng: number; country: string; comment: string; rating: number }>;
   modes: ModeOfTravel[];
 }>) {
-  const db = getFirestore();
   console.log('📍 Creating dummy places...');
 
-  const places: TripPlace[] = [];
+  const places: any[] = [];
   let placeIndex = 0;
 
   trips.forEach((trip, tripIndex) => {
     const tripTemplate = templates[tripIndex];
-    const startDate = trip.startTime instanceof admin.firestore.Timestamp 
-      ? trip.startTime.toDate() 
-      : trip.startTime instanceof Date
-      ? trip.startTime
-      : new Date(trip.startTime);
+    const startDate = trip.startTime instanceof Date ? trip.startTime : new Date(trip.startTime);
     
     tripTemplate.places.forEach((placeData, index) => {
       const visitedAt = new Date(startDate);
@@ -479,21 +415,20 @@ async function createDummyPlaces(trips: Trip[], templates: Array<{
       }
       
       const placeData_obj: any = {
-        placeId: `place-${placeIndex + 1}`,
-        tripId: trip.tripId,
+        tripId: trip._id,
         name: placeData.name,
         coordinates: {
           lat: placeData.lat,
           lng: placeData.lng,
         },
-        visitedAt: admin.firestore.Timestamp.fromDate(visitedAt),
+        visitedAt: visitedAt,
         comment: placeData.comment,
         rewrittenComment: placeData.comment,
         rating: placeData.rating,
         imageMetadata,
         modeOfTravel: index === 0 ? 'flight' : tripTemplate.modes[index] || 'car',
         country: placeData.country,
-        createdAt: admin.firestore.Timestamp.fromDate(visitedAt),
+        createdAt: visitedAt,
       };
       
       // Only add distanceFromPrevious and timeFromPrevious if not the first place
@@ -502,36 +437,31 @@ async function createDummyPlaces(trips: Trip[], templates: Array<{
         placeData_obj.timeFromPrevious = 3600 + Math.random() * 10800; // 1-4 hours
       }
       
-      const place: TripPlace = placeData_obj;
-      places.push(place);
+      places.push(placeData_obj);
       placeIndex++;
     });
   });
 
-  // Write in batches
-  const batchSize = 500;
+  // Insert in batches
+  const batchSize = 100;
+  const savedPlaces: any[] = [];
   for (let i = 0; i < places.length; i += batchSize) {
-    const batch = db.batch();
     const batchPlaces = places.slice(i, i + batchSize);
-    batchPlaces.forEach((place) => {
-      const placeRef = db.collection('tripPlaces').doc(place.placeId);
-      batch.set(placeRef, place);
-    });
-    await batch.commit();
+    const inserted = await TripPlaceModel.insertMany(batchPlaces);
+    savedPlaces.push(...inserted);
     console.log(`   Created ${Math.min(i + batchSize, places.length)}/${places.length} places...`);
   }
 
-  console.log(`✅ Created ${places.length} places\n`);
-  return places;
+  console.log(`✅ Created ${savedPlaces.length} places\n`);
+  return savedPlaces;
 }
 
-async function createDummyExpenses(trips: Trip[], users: User[], templates: Array<{
+async function createDummyExpenses(trips: any[], users: any[], templates: Array<{
   expenses: Array<{ description: string; amount: number; currency: string }>;
 }>) {
-  const db = getFirestore();
   console.log('💰 Creating dummy expenses...');
 
-  const expenses: TripExpense[] = [];
+  const expenses: any[] = [];
   let expenseIndex = 0;
   let placeIndex = 0;
 
@@ -541,29 +471,33 @@ async function createDummyExpenses(trips: Trip[], users: User[], templates: Arra
     tripTemplate.expenses.forEach((expenseData, index) => {
       const paidByIndex = Math.floor(Math.random() * trip.participants.length);
       const paidByUid = trip.participants[paidByIndex]?.uid || users[0].uid;
-      const splitBetween = trip.participants.map(p => p.uid || p.guestName || '').filter(Boolean);
+      const splitBetween = trip.participants.map((p: any) => p.uid || p.guestName || '').filter(Boolean);
       const shareAmount = expenseData.amount / splitBetween.length;
       
-      const calculatedShares: Record<string, number> = {};
-      splitBetween.forEach(uid => {
-        calculatedShares[uid] = shareAmount;
+      const calculatedShares = new Map<string, number>();
+      splitBetween.forEach((uid: string) => {
+        calculatedShares.set(uid, shareAmount);
       });
 
-      // Link expense to a place in the trip
-      const placeId = `place-${placeIndex + 1 + index}`;
+      // Link expense to a place in the trip (optional)
+      const placeId = placeIndex + index < placeIndex + tripTemplate.places.length 
+        ? new mongoose.Types.ObjectId() // Place ID will be set later
+        : undefined;
 
-      const expense: TripExpense = {
-        expenseId: `expense-${expenseIndex + 1}`,
-        tripId: trip.tripId,
+      const expense: any = {
+        tripId: trip._id,
         amount: expenseData.amount,
         currency: expenseData.currency,
         paidBy: paidByUid,
         splitBetween: splitBetween,
         calculatedShares: calculatedShares,
         description: expenseData.description,
-        placeId: placeId,
-        createdAt: admin.firestore.Timestamp.now(),
+        createdAt: new Date(),
       };
+      
+      if (placeId) {
+        expense.placeId = placeId;
+      }
       
       expenses.push(expense);
       expenseIndex++;
@@ -572,16 +506,11 @@ async function createDummyExpenses(trips: Trip[], users: User[], templates: Arra
     placeIndex += tripTemplate.places.length;
   });
 
-  // Write in batches
-  const batchSize = 500;
+  // Insert in batches
+  const batchSize = 100;
   for (let i = 0; i < expenses.length; i += batchSize) {
-    const batch = db.batch();
     const batchExpenses = expenses.slice(i, i + batchSize);
-    batchExpenses.forEach((expense) => {
-      const expenseRef = db.collection('tripExpenses').doc(expense.expenseId);
-      batch.set(expenseRef, expense);
-    });
-    await batch.commit();
+    await TripExpenseModel.insertMany(batchExpenses);
     console.log(`   Created ${Math.min(i + batchSize, expenses.length)}/${expenses.length} expenses...`);
   }
 
@@ -589,15 +518,32 @@ async function createDummyExpenses(trips: Trip[], users: User[], templates: Arra
   return expenses;
 }
 
-async function createDummyRoutes(trips: Trip[], places: TripPlace[]) {
-  const db = getFirestore();
+async function createDummyRoutes(trips: any[], places: any[]) {
   console.log('🛣️  Creating dummy routes...');
 
-  const routes: TripRoute[] = [];
+  const routes: any[] = [];
   let routeIndex = 0;
 
+  // Group places by trip
+  const placesByTrip: Record<string, any[]> = {};
+  places.forEach((place: any) => {
+    const tripId = place.tripId?.toString() || place.tripId;
+    if (!placesByTrip[tripId]) {
+      placesByTrip[tripId] = [];
+    }
+    placesByTrip[tripId].push(place);
+  });
+
   trips.forEach((trip) => {
-    const tripPlaces = places.filter(p => p.tripId === trip.tripId);
+    const tripId = trip._id.toString();
+    const tripPlaces = placesByTrip[tripId] || [];
+    
+    // Sort places by visitedAt
+    tripPlaces.sort((a, b) => {
+      const aTime = new Date(a.visitedAt).getTime();
+      const bTime = new Date(b.visitedAt).getTime();
+      return aTime - bTime;
+    });
     
     // Create routes between consecutive places
     for (let i = 0; i < tripPlaces.length - 1; i++) {
@@ -610,61 +556,50 @@ async function createDummyRoutes(trips: Trip[], places: TripPlace[]) {
         {
           lat: fromPlace.coordinates.lat,
           lng: fromPlace.coordinates.lng,
-          timestamp: fromPlace.visitedAt instanceof admin.firestore.Timestamp 
-            ? fromPlace.visitedAt 
-            : fromPlace.visitedAt instanceof Date
-            ? admin.firestore.Timestamp.fromDate(fromPlace.visitedAt)
-            : admin.firestore.Timestamp.fromDate(new Date(fromPlace.visitedAt)),
+          timestamp: new Date(fromPlace.visitedAt),
           modeOfTravel: mode,
         },
         {
           lat: toPlace.coordinates.lat,
           lng: toPlace.coordinates.lng,
-          timestamp: toPlace.visitedAt instanceof admin.firestore.Timestamp 
-            ? toPlace.visitedAt 
-            : toPlace.visitedAt instanceof Date
-            ? admin.firestore.Timestamp.fromDate(toPlace.visitedAt)
-            : admin.firestore.Timestamp.fromDate(new Date(toPlace.visitedAt)),
+          timestamp: new Date(toPlace.visitedAt),
           modeOfTravel: mode,
         },
       ];
 
-      const route: TripRoute = {
-        routeId: `route-${routeIndex + 1}`,
-        tripId: trip.tripId,
+      routes.push({
+        tripId: trip._id,
         points: routePoints,
         modeOfTravel: mode,
-        createdAt: admin.firestore.Timestamp.now(),
-        updatedAt: admin.firestore.Timestamp.now(),
-      };
-      
-      routes.push(route);
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
       routeIndex++;
     }
   });
 
-  const batch = db.batch();
-  routes.forEach((route) => {
-    const routeRef = db.collection('tripRoutes').doc(route.routeId);
-    batch.set(routeRef, route);
-  });
+  // Insert in batches
+  const batchSize = 100;
+  for (let i = 0; i < routes.length; i += batchSize) {
+    const batchRoutes = routes.slice(i, i + batchSize);
+    await TripRouteModel.insertMany(batchRoutes);
+    console.log(`   Created ${Math.min(i + batchSize, routes.length)}/${routes.length} routes...`);
+  }
 
-  await batch.commit();
   console.log(`✅ Created ${routes.length} routes\n`);
   return routes;
 }
 
-async function createDummyLikesAndComments(trips: Trip[], places: TripPlace[], users: User[]) {
-  const db = getFirestore();
+async function createDummyLikesAndComments(trips: any[], places: any[], users: any[]) {
   console.log('❤️  Creating dummy likes and comments...');
 
-  let tripLikeIndex = 0;
-  let placeLikeIndex = 0;
-  let commentIndex = 0;
+  let tripLikeCount = 0;
+  let placeLikeCount = 0;
+  let commentCount = 0;
   const batchSize = 500;
 
   // Collect all trip likes first
-  const tripLikes: Array<{ tripId: string; userId: string; createdAt: admin.firestore.Timestamp }> = [];
+  const tripLikes: any[] = [];
   for (const trip of trips) {
     const numLikes = Math.floor(Math.random() * 46) + 5; // 5-50 likes
     const likedBy = new Set<string>();
@@ -677,36 +612,35 @@ async function createDummyLikesAndComments(trips: Trip[], places: TripPlace[], u
       if (userId !== trip.creatorId && !likedBy.has(userId)) {
         likedBy.add(userId);
         tripLikes.push({
-          tripId: trip.tripId,
+          tripId: trip._id,
           userId,
-          createdAt: admin.firestore.Timestamp.now(),
+          createdAt: new Date(),
         });
       }
     }
   }
 
-  // Write trip likes in batches
+  // Insert trip likes in batches
   for (let i = 0; i < tripLikes.length; i += batchSize) {
-    const batch = db.batch();
     const batchLikes = tripLikes.slice(i, i + batchSize);
-    batchLikes.forEach((like) => {
-      const likeRef = db.collection('tripLikes').doc();
-      batch.set(likeRef, like);
-    });
-    await batch.commit();
-    tripLikeIndex += batchLikes.length;
-    console.log(`   Created ${tripLikeIndex}/${tripLikes.length} trip likes...`);
+    await TripLikeModel.insertMany(batchLikes);
+    tripLikeCount += batchLikes.length;
+    console.log(`   Created ${tripLikeCount}/${tripLikes.length} trip likes...`);
   }
 
   // Collect all place likes first
-  const placeLikes: Array<{ placeId: string; userId: string; createdAt: admin.firestore.Timestamp }> = [];
+  const placeLikes: any[] = [];
+  // Group places by trip to find creators
+  const tripCreators: Record<string, string> = {};
+  trips.forEach((trip: any) => {
+    tripCreators[trip._id.toString()] = trip.creatorId;
+  });
+
   for (const place of places) {
     const numLikes = Math.floor(Math.random() * 19) + 2; // 2-20 likes
     const likedBy = new Set<string>();
-    
-    // Get trip to find creator
-    const trip = trips.find(t => t.tripId === place.tripId);
-    const creatorId = trip?.creatorId || '';
+    const tripId = place.tripId?.toString() || place.tripId;
+    const creatorId = tripCreators[tripId] || '';
     
     while (likedBy.size < numLikes && likedBy.size < users.length) {
       const userIndex = Math.floor(Math.random() * users.length);
@@ -716,29 +650,31 @@ async function createDummyLikesAndComments(trips: Trip[], places: TripPlace[], u
       if (userId !== creatorId && !likedBy.has(userId)) {
         likedBy.add(userId);
         placeLikes.push({
-          placeId: place.placeId,
+          placeId: place._id.toString(),
           userId,
-          createdAt: admin.firestore.Timestamp.now(),
+          createdAt: new Date(),
         });
       }
     }
   }
 
-  // Write place likes in batches
+  // Insert place likes in batches
   for (let i = 0; i < placeLikes.length; i += batchSize) {
-    const batch = db.batch();
     const batchLikes = placeLikes.slice(i, i + batchSize);
-    batchLikes.forEach((like) => {
-      const likeRef = db.collection('placeLikes').doc();
-      batch.set(likeRef, like);
-    });
-    await batch.commit();
-    placeLikeIndex += batchLikes.length;
-    console.log(`   Created ${placeLikeIndex}/${placeLikes.length} place likes...`);
+    try {
+      await PlaceLikeModel.insertMany(batchLikes, { ordered: false }); // Continue on duplicate key errors
+    } catch (error: any) {
+      // Ignore duplicate key errors
+      if (error.code !== 11000) {
+        console.error('Error inserting place likes:', error);
+      }
+    }
+    placeLikeCount += batchLikes.length;
+    console.log(`   Created ${placeLikeCount}/${placeLikes.length} place likes...`);
   }
 
   // Collect all comments first
-  const comments: PlaceComment[] = [];
+  const comments: any[] = [];
   for (const place of places) {
     const numComments = Math.floor(Math.random() * 10) + 1; // 1-10 comments
     const commentedBy = new Set<string>();
@@ -750,38 +686,32 @@ async function createDummyLikesAndComments(trips: Trip[], places: TripPlace[], u
       if (!commentedBy.has(userId)) {
         commentedBy.add(userId);
         comments.push({
-          commentId: `comment-${commentIndex + 1}`,
-          placeId: place.placeId,
+          placeId: place._id.toString(),
           userId,
           text: COMMENT_TEXTS[Math.floor(Math.random() * COMMENT_TEXTS.length)],
           createdAt: new Date(),
         });
-        commentIndex++;
+        commentCount++;
       }
     }
   }
 
-  // Write comments in batches
+  // Insert comments in batches
   for (let i = 0; i < comments.length; i += batchSize) {
-    const batch = db.batch();
     const batchComments = comments.slice(i, i + batchSize);
-    batchComments.forEach((comment) => {
-      const commentRef = db.collection('placeComments').doc(comment.commentId);
-      batch.set(commentRef, comment);
-    });
-    await batch.commit();
+    await PlaceCommentModel.insertMany(batchComments);
     console.log(`   Created ${Math.min(i + batchSize, comments.length)}/${comments.length} comments...`);
   }
 
-  console.log(`✅ Created ${tripLikeIndex} trip likes, ${placeLikeIndex} place likes, and ${comments.length} comments\n`);
+  console.log(`✅ Created ${tripLikeCount} trip likes, ${placeLikeCount} place likes, and ${comments.length} comments\n`);
 }
 
 async function main() {
   try {
     console.log('🚀 Starting comprehensive dummy data seeding...\n');
     
-    // Initialize Firebase Admin
-    initializeFirebase();
+    // Connect to MongoDB
+    await connectDB();
     
     // Delete all data
     await deleteAllData();
@@ -811,6 +741,7 @@ async function main() {
     console.log(`   - Likes and comments on trips and places`);
     console.log('\n🎉 All dummy data has been created successfully!');
     
+    await mongoose.connection.close();
     process.exit(0);
   } catch (error: any) {
     console.error('❌ Error seeding data:', error);

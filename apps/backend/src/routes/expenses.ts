@@ -1,14 +1,12 @@
 import express from 'express';
-import { getFirestore } from '../config/firebase.js';
 import { OptionalAuthRequest } from '../middleware/optionalAuth.js';
 import { calculateExpenseShares } from '@tripmatrix/utils';
-import type { TripExpense } from '@tripmatrix/types';
+import type { TripExpense, TripPlace } from '@tripmatrix/types';
+import { TripModel } from '../models/Trip.js';
+import { TripExpenseModel } from '../models/TripExpense.js';
+import { TripPlaceModel } from '../models/TripPlace.js';
 
 const router = express.Router();
-
-function getDb() {
-  return getFirestore();
-}
 
 // Create expense
 router.post('/', async (req: OptionalAuthRequest, res) => {
@@ -27,16 +25,15 @@ router.post('/', async (req: OptionalAuthRequest, res) => {
     const expenseCurrency = currency || 'USD';
 
     // Verify trip exists and user has access
-    const db = getDb();
-    const tripDoc = await db.collection('trips').doc(tripId).get();
-    if (!tripDoc.exists) {
+    const trip = await TripModel.findById(tripId);
+    if (!trip) {
       return res.status(404).json({
         success: false,
         error: 'Trip not found',
       });
     }
 
-    const trip = tripDoc.data()!;
+    const tripData = trip.toJSON();
     
     // Check authorization - allow creator or participants to add expenses
     if (!uid) {
@@ -46,8 +43,8 @@ router.post('/', async (req: OptionalAuthRequest, res) => {
       });
     }
     
-    const isCreator = trip.creatorId === uid;
-    const isParticipant = trip.participants?.some((p: any) => p.uid === uid);
+    const isCreator = tripData.creatorId === uid;
+    const isParticipant = tripData.participants?.some((p: any) => p.uid === uid);
     
     if (!isCreator && !isParticipant) {
       return res.status(403).json({
@@ -70,19 +67,16 @@ router.post('/', async (req: OptionalAuthRequest, res) => {
       createdAt: new Date(),
     };
 
-    const expenseRef = await db.collection('tripExpenses').add(expenseData);
+    const expenseDoc = new TripExpenseModel(expenseData);
+    const savedExpense = await expenseDoc.save();
     
     // Update trip total expense
-    const currentTotal = trip.totalExpense || 0;
-    await db.collection('trips').doc(tripId).update({
-      totalExpense: currentTotal + Number(amount),
-      updatedAt: new Date(),
-    });
+    const currentTotal = tripData.totalExpense || 0;
+    trip.totalExpense = currentTotal + Number(amount);
+    trip.updatedAt = new Date();
+    await trip.save();
 
-    const expense: TripExpense = {
-      expenseId: expenseRef.id,
-      ...expenseData,
-    };
+    const expense: TripExpense = savedExpense.toJSON() as TripExpense;
 
     res.json({
       success: true,
@@ -102,26 +96,25 @@ router.get('/trip/:tripId', async (req: OptionalAuthRequest, res) => {
     const { tripId } = req.params;
     
     // Check if trip is public
-    const db = getDb();
-    const tripDoc = await db.collection('trips').doc(tripId).get();
-    if (!tripDoc.exists) {
+    const trip = await TripModel.findById(tripId);
+    if (!trip) {
       return res.status(404).json({
         success: false,
         error: 'Trip not found',
       });
     }
 
-    const trip = tripDoc.data()!;
+    const tripData = trip.toJSON();
     // Allow access if trip is public or user is authenticated participant
-    if (!trip.isPublic) {
+    if (!tripData.isPublic) {
       if (!req.uid) {
         return res.status(401).json({
           success: false,
           error: 'Authentication required',
         });
       }
-      if (trip.creatorId !== req.uid && 
-          !trip.participants?.some((p: any) => p.uid === req.uid)) {
+      if (tripData.creatorId !== req.uid && 
+          !tripData.participants?.some((p: any) => p.uid === req.uid)) {
         return res.status(403).json({
           success: false,
           error: 'Not authorized',
@@ -129,21 +122,8 @@ router.get('/trip/:tripId', async (req: OptionalAuthRequest, res) => {
       }
     }
     
-    const snapshot = await db.collection('tripExpenses')
-      .where('tripId', '==', tripId)
-      .get();
-
-    const expenses = snapshot.docs.map((doc) => ({
-      expenseId: doc.id,
-      ...doc.data(),
-    })) as TripExpense[];
-
-    // Sort by createdAt in memory (avoids needing composite index)
-    expenses.sort((a, b) => {
-      const aTime = new Date(a.createdAt).getTime();
-      const bTime = new Date(b.createdAt).getTime();
-      return bTime - aTime; // Descending order
-    });
+    const expensesDocs = await TripExpenseModel.find({ tripId }).sort({ createdAt: -1 });
+    const expenses = expensesDocs.map(doc => doc.toJSON() as TripExpense);
 
     res.json({ success: true, data: expenses });
   } catch (error: any) {
@@ -168,30 +148,28 @@ router.patch('/:expenseId', async (req: OptionalAuthRequest, res) => {
       });
     }
 
-    const db = getDb();
-    const expenseDoc = await db.collection('tripExpenses').doc(expenseId).get();
-    
-    if (!expenseDoc.exists) {
+    const expense = await TripExpenseModel.findById(expenseId);
+    if (!expense) {
       return res.status(404).json({
         success: false,
         error: 'Expense not found',
       });
     }
 
-    const expense = expenseDoc.data() as TripExpense;
+    const expenseData = expense.toJSON() as TripExpense;
     
     // Verify trip exists and user has access
-    const tripDoc = await db.collection('trips').doc(expense.tripId).get();
-    if (!tripDoc.exists) {
+    const trip = await TripModel.findById(expenseData.tripId);
+    if (!trip) {
       return res.status(404).json({
         success: false,
         error: 'Trip not found',
       });
     }
 
-    const trip = tripDoc.data()!;
-    const isCreator = trip.creatorId === uid;
-    const isParticipant = trip.participants?.some((p: any) => p.uid === uid);
+    const tripData = trip.toJSON();
+    const isCreator = tripData.creatorId === uid;
+    const isParticipant = tripData.participants?.some((p: any) => p.uid === uid);
     
     if (!isCreator && !isParticipant) {
       return res.status(403).json({
@@ -200,47 +178,42 @@ router.patch('/:expenseId', async (req: OptionalAuthRequest, res) => {
       });
     }
 
-    const updateData: any = { updatedAt: new Date() };
+    const oldAmount = expenseData.amount;
     
     if (amount !== undefined) {
-      updateData.amount = Number(amount);
+      expense.amount = Number(amount);
       // Recalculate shares if amount or splitBetween changed
-      const newSplitBetween = splitBetween || expense.splitBetween;
-      updateData.calculatedShares = calculateExpenseShares(Number(amount), newSplitBetween);
+      const newSplitBetween = splitBetween || expenseData.splitBetween;
+      const shares = calculateExpenseShares(Number(amount), newSplitBetween);
+      expense.calculatedShares = new Map(Object.entries(shares));
     }
     
-    if (currency !== undefined) updateData.currency = currency;
-    if (paidBy !== undefined) updateData.paidBy = paidBy;
+    if (currency !== undefined) expense.currency = currency;
+    if (paidBy !== undefined) expense.paidBy = paidBy;
     if (splitBetween !== undefined) {
-      updateData.splitBetween = splitBetween;
+      expense.splitBetween = splitBetween;
       // Recalculate shares if splitBetween changed
-      const newAmount = amount !== undefined ? Number(amount) : expense.amount;
-      updateData.calculatedShares = calculateExpenseShares(newAmount, splitBetween);
+      const newAmount = amount !== undefined ? Number(amount) : expenseData.amount;
+      const shares = calculateExpenseShares(newAmount, splitBetween);
+      expense.calculatedShares = new Map(Object.entries(shares));
     }
-    if (description !== undefined) updateData.description = description;
+    if (description !== undefined) expense.description = description;
 
-    await db.collection('tripExpenses').doc(expenseId).update(updateData);
+    const updatedExpense = await expense.save();
 
     // Update trip total expense if amount changed
     if (amount !== undefined) {
-      const oldAmount = expense.amount;
       const newAmount = Number(amount);
       const difference = newAmount - oldAmount;
-      const currentTotal = trip.totalExpense || 0;
-      await db.collection('trips').doc(expense.tripId).update({
-        totalExpense: currentTotal + difference,
-        updatedAt: new Date(),
-      });
+      const currentTotal = tripData.totalExpense || 0;
+      trip.totalExpense = currentTotal + difference;
+      trip.updatedAt = new Date();
+      await trip.save();
     }
-
-    const updatedExpense: TripExpense = {
-      ...expense,
-      ...updateData,
-    };
 
     res.json({
       success: true,
-      data: updatedExpense,
+      data: updatedExpense.toJSON() as TripExpense,
     });
   } catch (error: any) {
     res.status(500).json({
@@ -263,30 +236,28 @@ router.delete('/:expenseId', async (req: OptionalAuthRequest, res) => {
       });
     }
 
-    const db = getDb();
-    const expenseDoc = await db.collection('tripExpenses').doc(expenseId).get();
-    
-    if (!expenseDoc.exists) {
+    const expense = await TripExpenseModel.findById(expenseId);
+    if (!expense) {
       return res.status(404).json({
         success: false,
         error: 'Expense not found',
       });
     }
 
-    const expense = expenseDoc.data() as TripExpense;
+    const expenseData = expense.toJSON() as TripExpense;
     
     // Verify trip exists and user has access
-    const tripDoc = await db.collection('trips').doc(expense.tripId).get();
-    if (!tripDoc.exists) {
+    const trip = await TripModel.findById(expenseData.tripId);
+    if (!trip) {
       return res.status(404).json({
         success: false,
         error: 'Trip not found',
       });
     }
 
-    const trip = tripDoc.data()!;
-    const isCreator = trip.creatorId === uid;
-    const isParticipant = trip.participants?.some((p: any) => p.uid === uid);
+    const tripData = trip.toJSON();
+    const isCreator = tripData.creatorId === uid;
+    const isParticipant = tripData.participants?.some((p: any) => p.uid === uid);
     
     if (!isCreator && !isParticipant) {
       return res.status(403).json({
@@ -296,14 +267,13 @@ router.delete('/:expenseId', async (req: OptionalAuthRequest, res) => {
     }
 
     // Delete expense
-    await db.collection('tripExpenses').doc(expenseId).delete();
+    await TripExpenseModel.findByIdAndDelete(expenseId);
 
     // Update trip total expense
-    const currentTotal = trip.totalExpense || 0;
-    await db.collection('trips').doc(expense.tripId).update({
-      totalExpense: Math.max(0, currentTotal - expense.amount),
-      updatedAt: new Date(),
-    });
+    const currentTotal = tripData.totalExpense || 0;
+    trip.totalExpense = Math.max(0, currentTotal - expenseData.amount);
+    trip.updatedAt = new Date();
+    await trip.save();
 
     res.json({
       success: true,
@@ -323,25 +293,18 @@ router.get('/trip/:tripId/summary', async (req: OptionalAuthRequest, res) => {
     const { tripId } = req.params;
     
     // Get expenses
-    const db = getDb();
-    const expensesSnapshot = await db.collection('tripExpenses')
-      .where('tripId', '==', tripId)
-      .get();
-
-    const expenses = expensesSnapshot.docs.map((doc) => ({
-      expenseId: doc.id,
-      ...doc.data(),
-    })) as TripExpense[];
+    const expensesDocs = await TripExpenseModel.find({ tripId });
+    const expenses = expensesDocs.map(doc => doc.toJSON() as TripExpense);
 
     // Get places for expense per place calculation
-    const placesSnapshot = await db.collection('tripPlaces')
-      .where('tripId', '==', tripId)
-      .get();
-
-    const places = placesSnapshot.docs.map((doc) => ({
-      placeId: doc.id,
-      name: doc.data().name,
-    }));
+    const placesDocs = await TripPlaceModel.find({ tripId });
+    const places = placesDocs.map((doc) => {
+      const placeData = doc.toJSON() as TripPlace;
+      return {
+        placeId: placeData.placeId,
+        name: placeData.name,
+      };
+    });
 
     // Calculate summary
     const utils = await import('@tripmatrix/utils');

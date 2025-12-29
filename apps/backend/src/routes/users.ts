@@ -1,12 +1,8 @@
 import express from 'express';
-import { getFirestore } from '../config/firebase.js';
 import { AuthenticatedRequest } from '../middleware/auth.js';
+import { UserModel } from '../models/User.js';
 
 const router = express.Router();
-
-function getDb() {
-  return getFirestore();
-}
 
 // Search users by email or name (for @username tagging)
 router.get('/search', async (req: AuthenticatedRequest, res) => {
@@ -20,21 +16,54 @@ router.get('/search', async (req: AuthenticatedRequest, res) => {
       });
     }
 
-    // Search by email (exact match or contains)
-    const emailQuery = q.toLowerCase();
-    const db = getDb();
-    const snapshot = await db.collection('users')
-      .where('email', '>=', emailQuery)
-      .where('email', '<=', emailQuery + '\uf8ff')
-      .limit(10)
-      .get();
+    // Search by email or name
+    const searchQuery = q.toLowerCase();
+    const usersDocs = await UserModel.find({
+      $or: [
+        { email: { $regex: searchQuery, $options: 'i' } },
+        { name: { $regex: searchQuery, $options: 'i' } }
+      ]
+    }).limit(10);
 
-    const users = snapshot.docs.map((doc) => ({
-      uid: doc.id,
-      ...doc.data(),
-    }));
+    const users = usersDocs.map(doc => doc.toJSON());
 
     res.json({ success: true, data: users });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+// Get current user profile
+router.get('/me', async (req: AuthenticatedRequest, res) => {
+  try {
+    const uid = req.uid!;
+    const user = await UserModel.findOne({ uid });
+
+    if (!user) {
+      // User doesn't exist yet, return basic info from Firebase token
+      return res.json({
+        success: true,
+        data: {
+          uid,
+          email: req.user?.email || '',
+          name: '',
+          photoUrl: '',
+          country: '',
+          defaultCurrency: '',
+          isProfilePublic: false,
+          follows: [],
+          createdAt: new Date(),
+        },
+      });
+    }
+
+    res.json({
+      success: true,
+      data: user.toJSON(),
+    });
   } catch (error: any) {
     res.status(500).json({
       success: false,
@@ -46,35 +75,44 @@ router.get('/search', async (req: AuthenticatedRequest, res) => {
 // Update user profile (country, currency, isProfilePublic, etc.)
 router.patch('/me', async (req: AuthenticatedRequest, res) => {
   try {
-    const { country, defaultCurrency, isProfilePublic } = req.body;
+    const { country, defaultCurrency, isProfilePublic, name, email, photoUrl } = req.body;
     const uid = req.uid!;
-    const db = getDb();
 
-    const userRef = db.collection('users').doc(uid);
-    const userDoc = await userRef.get();
+    let user = await UserModel.findOne({ uid });
 
-    if (!userDoc.exists) {
-      return res.status(404).json({
-        success: false,
-        error: 'User not found',
+    // Create user if doesn't exist
+    if (!user) {
+      user = new UserModel({
+        _id: uid,
+        uid,
+        name: name || req.user?.email?.split('@')[0] || 'User',
+        email: email || req.user?.email || '',
+        photoUrl: photoUrl || '',
+        country: country || '',
+        defaultCurrency: defaultCurrency || '',
+        isProfilePublic: isProfilePublic || false,
+        follows: [],
+        createdAt: new Date(),
       });
+    } else {
+      // Update existing user
+      if (name !== undefined) user.name = name;
+      if (email !== undefined) user.email = email;
+      if (photoUrl !== undefined) user.photoUrl = photoUrl;
     }
 
-    const updates: any = {};
     if (country !== undefined) {
-      updates.country = country;
+      user.country = country;
     }
     if (defaultCurrency !== undefined) {
-      updates.defaultCurrency = defaultCurrency;
+      user.defaultCurrency = defaultCurrency;
     }
     if (isProfilePublic !== undefined) {
-      updates.isProfilePublic = isProfilePublic;
+      user.isProfilePublic = isProfilePublic;
     }
 
-    await userRef.update(updates);
-
-    const updatedDoc = await userRef.get();
-    const updatedUser = { uid: updatedDoc.id, ...updatedDoc.data() };
+    await user.save();
+    const updatedUser = user.toJSON();
 
     res.json({
       success: true,
@@ -101,19 +139,16 @@ router.post('/:userId/follow', async (req: AuthenticatedRequest, res) => {
       });
     }
 
-    const db = getDb();
-    const currentUserRef = db.collection('users').doc(currentUserId);
-    const currentUserDoc = await currentUserRef.get();
+    const currentUser = await UserModel.findOne({ uid: currentUserId });
 
-    if (!currentUserDoc.exists) {
+    if (!currentUser) {
       return res.status(404).json({
         success: false,
         error: 'User not found',
       });
     }
 
-    const currentUserData = currentUserDoc.data();
-    const follows = currentUserData?.follows || [];
+    const follows = currentUser.follows || [];
 
     if (follows.includes(targetUserId)) {
       return res.status(400).json({
@@ -123,9 +158,8 @@ router.post('/:userId/follow', async (req: AuthenticatedRequest, res) => {
     }
 
     // Add targetUserId to follows array
-    await currentUserRef.update({
-      follows: [...follows, targetUserId],
-    });
+    currentUser.follows = [...follows, targetUserId];
+    await currentUser.save();
 
     res.json({
       success: true,
@@ -145,19 +179,16 @@ router.post('/:userId/unfollow', async (req: AuthenticatedRequest, res) => {
     const currentUserId = req.uid!;
     const targetUserId = req.params.userId;
 
-    const db = getDb();
-    const currentUserRef = db.collection('users').doc(currentUserId);
-    const currentUserDoc = await currentUserRef.get();
+    const currentUser = await UserModel.findOne({ uid: currentUserId });
 
-    if (!currentUserDoc.exists) {
+    if (!currentUser) {
       return res.status(404).json({
         success: false,
         error: 'User not found',
       });
     }
 
-    const currentUserData = currentUserDoc.data();
-    const follows = currentUserData?.follows || [];
+    const follows = currentUser.follows || [];
 
     if (!follows.includes(targetUserId)) {
       return res.status(400).json({
@@ -167,9 +198,8 @@ router.post('/:userId/unfollow', async (req: AuthenticatedRequest, res) => {
     }
 
     // Remove targetUserId from follows array
-    await currentUserRef.update({
-      follows: follows.filter((uid: string) => uid !== targetUserId),
-    });
+    currentUser.follows = follows.filter((uid: string) => uid !== targetUserId);
+    await currentUser.save();
 
     res.json({
       success: true,
@@ -187,17 +217,17 @@ router.post('/:userId/unfollow', async (req: AuthenticatedRequest, res) => {
 router.get('/me/following', async (req: AuthenticatedRequest, res) => {
   try {
     const currentUserId = req.uid!;
-    const db = getDb();
-    const currentUserDoc = await db.collection('users').doc(currentUserId).get();
+    const currentUser = await UserModel.findOne({ uid: currentUserId });
 
-    if (!currentUserDoc.exists) {
-      return res.status(404).json({
-        success: false,
-        error: 'User not found',
+    if (!currentUser) {
+      // User doesn't exist yet, return empty array (user will be created on first profile update)
+      return res.json({
+        success: true,
+        data: [],
       });
     }
 
-    const follows = currentUserDoc.data()?.follows || [];
+    const follows = currentUser.follows || [];
 
     if (follows.length === 0) {
       return res.json({
@@ -207,17 +237,8 @@ router.get('/me/following', async (req: AuthenticatedRequest, res) => {
     }
 
     // Fetch all followed users
-    const followedUsersPromises = follows.map((uid: string) =>
-      db.collection('users').doc(uid).get()
-    );
-    const followedUsersDocs = await Promise.all(followedUsersPromises);
-
-    const followedUsers = followedUsersDocs
-      .filter((doc) => doc.exists)
-      .map((doc) => ({
-        uid: doc.id,
-        ...doc.data(),
-      }));
+    const followedUsersDocs = await UserModel.find({ uid: { $in: follows } });
+    const followedUsers = followedUsersDocs.map(doc => doc.toJSON());
 
     res.json({
       success: true,
@@ -236,27 +257,26 @@ router.get('/:userId', async (req: AuthenticatedRequest, res) => {
   try {
     const targetUserId = req.params.userId;
     const currentUserId = req.uid; // May be null for unauthenticated requests
-    const db = getDb();
 
-    const targetUserDoc = await db.collection('users').doc(targetUserId).get();
+    const targetUser = await UserModel.findOne({ uid: targetUserId });
 
-    if (!targetUserDoc.exists) {
+    if (!targetUser) {
       return res.status(404).json({
         success: false,
         error: 'User not found',
       });
     }
 
-    const targetUserData = targetUserDoc.data();
-    const isProfilePublic = targetUserData?.isProfilePublic || false;
+    const targetUserData = targetUser.toJSON();
+    const isProfilePublic = targetUserData.isProfilePublic || false;
 
     // If profile is not public, check if current user is following or is the user themselves
     if (!isProfilePublic) {
       if (!currentUserId || (currentUserId !== targetUserId)) {
         // Check if current user follows this user
         if (currentUserId) {
-          const currentUserDoc = await db.collection('users').doc(currentUserId).get();
-          const follows = currentUserDoc.data()?.follows || [];
+          const currentUser = await UserModel.findOne({ uid: currentUserId });
+          const follows = currentUser?.follows || [];
           if (!follows.includes(targetUserId)) {
             return res.status(403).json({
               success: false,
@@ -274,10 +294,7 @@ router.get('/:userId', async (req: AuthenticatedRequest, res) => {
 
     res.json({
       success: true,
-      data: {
-        uid: targetUserDoc.id,
-        ...targetUserData,
-      },
+      data: targetUserData,
     });
   } catch (error: any) {
     res.status(500).json({

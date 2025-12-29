@@ -20,13 +20,17 @@ export async function optionalAuth(
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.split('Bearer ')[1];
       const auth = getAuth();
-      const decodedToken = await auth.verifyIdToken(token);
       
-      req.uid = decodedToken.uid;
-      req.user = {
-        uid: decodedToken.uid,
-        email: decodedToken.email,
-      };
+      try {
+        const decodedToken = await auth.verifyIdToken(token);
+        req.uid = decodedToken.uid;
+        req.user = {
+          uid: decodedToken.uid,
+          email: decodedToken.email,
+        };
+      } catch (error) {
+        // Token is invalid, but continue without auth (for public routes)
+      }
     }
     
     next();

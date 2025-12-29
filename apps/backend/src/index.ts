@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import { connectDB } from './config/mongodb.js';
 import { initializeFirebase } from './config/firebase.js';
 import { initializeSupabase, isSupabaseInitialized } from './config/supabase.js';
 import { authenticateToken } from './middleware/auth.js';
@@ -21,10 +22,13 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Initialize Firebase Admin
+// Initialize MongoDB
+connectDB().catch(console.error);
+
+// Initialize Firebase Admin (for authentication)
 initializeFirebase();
 
-// Initialize Supabase
+// Initialize Supabase (for storage only)
 initializeSupabase();
 
 // Ensure images bucket exists (async, don't block server start)
@@ -99,16 +103,10 @@ app.get('/health', (req, res) => {
 app.get('/api/trips/public/list', async (req, res) => {
   try {
     const { limit, search } = req.query;
-    const { getFirestore } = await import('./config/firebase.js');
-    const db = getFirestore();
-    const snapshot = await db.collection('trips')
-      .where('isPublic', '==', true)
-      .get();
-
-    let trips = snapshot.docs.map((doc) => ({
-      tripId: doc.id,
-      ...doc.data(),
-    }));
+    const { TripModel } = await import('./models/Trip.js');
+    
+    const tripsDocs = await TripModel.find({ isPublic: true }).sort({ createdAt: -1 });
+    let trips = tripsDocs.map((doc: any) => doc.toJSON());
 
     // Filter by search query if provided
     if (search && typeof search === 'string') {

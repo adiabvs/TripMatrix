@@ -26,6 +26,8 @@ export async function authenticateToken(
 
     const token = authHeader.split('Bearer ')[1];
     const auth = getAuth();
+    
+    // Verify the JWT token with Firebase Admin
     const decodedToken = await auth.verifyIdToken(token);
     
     req.uid = decodedToken.uid;
