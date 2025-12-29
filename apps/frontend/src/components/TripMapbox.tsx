@@ -777,7 +777,7 @@ export default function TripMapbox({
       labelEl.style.pointerEvents = 'none';
       labelEl.style.boxShadow = '0 2px 6px rgba(0,0,0,0.4)';
       labelEl.style.border = isHighlighted ? '2px solid #ffc107' : '1px solid rgba(255,255,255,0.3)';
-      labelEl.style.zIndex = '10001';
+      labelEl.style.zIndex = '50'; // Lower than modal (z-[100]) so labels don't appear above comments
       labelEl.style.fontFamily = 'system-ui, -apple-system, sans-serif';
       labelEl.style.letterSpacing = '0.2px';
 
@@ -958,7 +958,7 @@ export default function TripMapbox({
         startEl.style.backgroundColor = '#22c55e';
         startEl.style.border = '3px solid white';
         startEl.style.boxShadow = '0 2px 6px rgba(0,0,0,0.5)';
-        startEl.style.zIndex = '9999';
+        startEl.style.zIndex = '50'; // Lower than modal (z-[100]) so markers don't appear above comments
         startEl.style.pointerEvents = 'none';
 
         routeStartMarkerRef.current = new maplibregl.Marker({
@@ -984,7 +984,7 @@ export default function TripMapbox({
         endEl.style.backgroundColor = '#ef4444';
         endEl.style.border = '3px solid white';
         endEl.style.boxShadow = '0 2px 6px rgba(0,0,0,0.5)';
-        endEl.style.zIndex = '9999';
+        endEl.style.zIndex = '50'; // Lower than modal (z-[100]) so markers don't appear above comments
         endEl.style.pointerEvents = 'none';
 
         routeEndMarkerRef.current = new maplibregl.Marker({
@@ -1055,7 +1055,7 @@ export default function TripMapbox({
       const vehicleEl = document.createElement('div');
       vehicleEl.className = 'vehicle-marker';
       vehicleEl.style.fontSize = '32px'; // Increased from 20px to 32px for better visibility
-      vehicleEl.style.zIndex = '10000';
+      vehicleEl.style.zIndex = '50'; // Lower than modal (z-[100]) so vehicle doesn't appear above comments
       vehicleEl.style.pointerEvents = 'none';
       vehicleEl.style.filter = 'drop-shadow(0 2px 4px rgba(0,0,0,0.5))';
       vehicleEl.innerHTML = getVehicleIcon(mode);
