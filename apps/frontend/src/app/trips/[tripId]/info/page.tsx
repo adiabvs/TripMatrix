@@ -91,7 +91,7 @@ export default function TripInfoPage() {
           .map((p) => p.uid) || [];
         
         await Promise.all(
-          participantUids.map(async (uid) => {
+          participantUids.filter((uid): uid is string => !!uid).map(async (uid) => {
             try {
               const user = await getUser(uid, authToken);
               namesMap[uid] = user.name;
