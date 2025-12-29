@@ -4,7 +4,7 @@ import { useAuth } from '@/lib/auth';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { getTrip, updateTrip, addParticipants, removeParticipants, getExpenseSummary, getUser, getTripPlaces } from '@/lib/api';
+import { getTrip, updateTrip, addParticipants, removeParticipants, getExpenseSummary, getUser, getTripPlaces, getTripExpenses } from '@/lib/api';
 import type { Trip, TripParticipant, TripStatus, ExpenseSummary } from '@tripmatrix/types';
 import { MdArrowBack, MdPersonAdd, MdPersonRemove, MdSave, MdMonetizationOn, MdStraighten, MdLocationOn } from 'react-icons/md';
 import ParticipantSelector from '@/components/ParticipantSelector';
