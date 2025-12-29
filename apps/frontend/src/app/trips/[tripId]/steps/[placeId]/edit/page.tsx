@@ -15,6 +15,7 @@ import ExpenseForm from '@/components/ExpenseForm';
 import { db } from '@/lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import { MdArrowBack, MdCameraAlt, MdAdd, MdRemove, MdSearch, MdRefresh, MdMyLocation, MdClose, MdComment, MdChatBubbleOutline, MdSend } from 'react-icons/md';
+import BottomModal from '@/components/ui/BottomModal';
 
 // Dynamically import PlaceMapSelector with SSR disabled
 const PlaceMapSelector = dynamic(() => import('@/components/PlaceMapSelector'), {
