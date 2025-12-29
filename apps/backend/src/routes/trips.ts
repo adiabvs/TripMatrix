@@ -91,6 +91,175 @@ router.post('/', async (req: OptionalAuthRequest, res) => {
   }
 });
 
+// Search trips by user, place, or keyword - MUST be before /:tripId route
+router.get('/search', async (req: OptionalAuthRequest, res) => {
+  try {
+    const { q, type, limit = '20', lastTripId } = req.query;
+    
+    if (!q || typeof q !== 'string') {
+      return res.status(400).json({
+        success: false,
+        error: 'Query parameter "q" is required',
+      });
+    }
+
+    const searchType = type || 'all'; // 'user', 'place', 'trip', 'all'
+    const searchLower = q.toLowerCase();
+    let trips: Trip[] = [];
+    let users: any[] = [];
+
+    if (searchType === 'user' || searchType === 'all') {
+      // Escape special regex characters for safe searching
+      const escapedQuery = searchLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      
+      // Search by user name, email, or username (case-insensitive contains)
+      const usersDocs = await UserModel.find({
+        $or: [
+          { name: { $regex: escapedQuery, $options: 'i' } },
+          { email: { $regex: escapedQuery, $options: 'i' } },
+          { username: { $regex: escapedQuery, $options: 'i' } }
+        ]
+      }).limit(10);
+      
+      users = usersDocs.map(doc => doc.toJSON());
+      
+      const userIds = users.map(user => user.uid || user._id?.toString());
+      
+      if (userIds.length > 0) {
+        // Get trips by these users
+        const tripQuery: any = {
+          creatorId: { $in: userIds },
+          isPublic: true
+        };
+        
+        const tripsDocs = await TripModel.find(tripQuery);
+        const userTrips = tripsDocs.map(doc => doc.toJSON() as Trip);
+        trips.push(...userTrips);
+      }
+    }
+
+    if (searchType === 'trip' || searchType === 'all') {
+      // Escape special regex characters for safe searching
+      const escapedQuery = searchLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      
+      // Search by trip title/description (case-insensitive contains)
+      const tripQuery: any = {
+        isPublic: true,
+        $or: [
+          { title: { $regex: escapedQuery, $options: 'i' } },
+          { description: { $regex: escapedQuery, $options: 'i' } }
+        ]
+      };
+      
+      const tripsDocs = await TripModel.find(tripQuery);
+      const matchingTrips = tripsDocs.map(doc => doc.toJSON() as Trip);
+      trips.push(...matchingTrips);
+      
+      // Also search by participants (members in trip)
+      // First find users matching the search query
+      const matchingUsers = await UserModel.find({
+        $or: [
+          { name: { $regex: escapedQuery, $options: 'i' } },
+          { email: { $regex: escapedQuery, $options: 'i' } },
+          { username: { $regex: escapedQuery, $options: 'i' } }
+        ]
+      });
+      
+      const matchingUserIds = matchingUsers.map(u => u.uid || u._id?.toString()).filter(Boolean);
+      
+      if (matchingUserIds.length > 0) {
+        // Find trips where these users are participants
+        const participantTripsDocs = await TripModel.find({
+          isPublic: true,
+          'participants.uid': { $in: matchingUserIds }
+        });
+        
+        const participantTrips = participantTripsDocs.map(doc => doc.toJSON() as Trip);
+        trips.push(...participantTrips);
+      }
+    }
+
+    if (searchType === 'place' || searchType === 'all') {
+      // Escape special regex characters for safe searching
+      const escapedQuery = searchLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      
+      // Search by place name (case-insensitive contains)
+      const placesDocs = await TripPlaceModel.find({
+        name: { $regex: escapedQuery, $options: 'i' }
+      }).limit(50);
+      
+      const tripIds = [...new Set(placesDocs.map(doc => doc.tripId).filter(Boolean))];
+      
+      if (tripIds.length > 0) {
+        // Convert string tripIds to ObjectIds for querying
+        const objectIds = tripIds
+          .map(id => {
+            try {
+              return mongoose.Types.ObjectId.isValid(id) ? new mongoose.Types.ObjectId(id) : null;
+            } catch {
+              return null;
+            }
+          })
+          .filter((id): id is mongoose.Types.ObjectId => id !== null);
+        
+        if (objectIds.length > 0) {
+          const tripQuery: any = {
+            _id: { $in: objectIds },
+            isPublic: true
+          };
+          
+          const tripsDocs = await TripModel.find(tripQuery);
+          const placeTrips = tripsDocs.map(doc => doc.toJSON() as Trip);
+          trips.push(...placeTrips);
+        }
+      }
+    }
+
+    // Remove duplicates
+    const uniqueTrips = Array.from(
+      new Map(trips.map(trip => [trip.tripId, trip])).values()
+    );
+
+    // Sort by createdAt
+    uniqueTrips.sort((a, b) => {
+      const aTime = new Date(a.createdAt).getTime();
+      const bTime = new Date(b.createdAt).getTime();
+      return bTime - aTime;
+    });
+
+    // Apply pagination
+    let paginatedTrips = uniqueTrips;
+    if (lastTripId && typeof lastTripId === 'string') {
+      const lastIndex = paginatedTrips.findIndex(t => t.tripId === lastTripId);
+      if (lastIndex >= 0) {
+        paginatedTrips = paginatedTrips.slice(lastIndex + 1);
+      }
+    }
+
+    const limitNum = parseInt(limit as string, 10) || 20;
+    const hasMore = paginatedTrips.length > limitNum;
+    const finalTrips = hasMore ? paginatedTrips.slice(0, limitNum) : paginatedTrips;
+
+    res.json({
+      success: true,
+      data: {
+        trips: finalTrips,
+        users,
+        hasMore,
+        lastTripId: hasMore && finalTrips.length > 0
+          ? finalTrips[finalTrips.length - 1].tripId 
+          : null
+      }
+    });
+  } catch (error: any) {
+    console.error('Search error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to search trips',
+    });
+  }
+});
+
 // Get trip by ID (public access for public trips)
 router.get('/:tripId', async (req: OptionalAuthRequest, res) => {
   try {
@@ -737,159 +906,6 @@ router.get('/public/list/with-data', async (req: OptionalAuthRequest, res) => {
     res.status(500).json({
       success: false,
       error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message,
-    });
-  }
-});
-
-// Search trips by user, place, or keyword
-router.get('/search', async (req: OptionalAuthRequest, res) => {
-  try {
-    const { q, type, limit = '20', lastTripId } = req.query;
-    
-    if (!q || typeof q !== 'string') {
-      return res.status(400).json({
-        success: false,
-        error: 'Query parameter "q" is required',
-      });
-    }
-
-    const searchType = type || 'all'; // 'user', 'place', 'trip', 'all'
-    const searchLower = q.toLowerCase();
-    let trips: Trip[] = [];
-    let users: any[] = [];
-
-    if (searchType === 'user' || searchType === 'all') {
-      // Search by user name, email, or username
-      const usersDocs = await UserModel.find({
-        $or: [
-          { name: { $regex: searchLower, $options: 'i' } },
-          { email: { $regex: searchLower, $options: 'i' } },
-          { username: { $regex: searchLower, $options: 'i' } }
-        ]
-      }).limit(10);
-      
-      users = usersDocs.map(doc => doc.toJSON());
-      
-      const userIds = users.map(user => user.uid || user._id?.toString());
-      
-      if (userIds.length > 0) {
-        // Get trips by these users
-        const tripQuery: any = {
-          creatorId: { $in: userIds },
-          isPublic: true
-        };
-        
-        const tripsDocs = await TripModel.find(tripQuery);
-        const userTrips = tripsDocs.map(doc => doc.toJSON() as Trip);
-        trips.push(...userTrips);
-      }
-    }
-
-    if (searchType === 'trip' || searchType === 'all') {
-      // Escape special regex characters for safe searching
-      const escapedQuery = searchLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      
-      // Search by trip title/description (case-insensitive contains)
-      const tripQuery: any = {
-        isPublic: true,
-        $or: [
-          { title: { $regex: escapedQuery, $options: 'i' } },
-          { description: { $regex: escapedQuery, $options: 'i' } }
-        ]
-      };
-      
-      const tripsDocs = await TripModel.find(tripQuery);
-      const matchingTrips = tripsDocs.map(doc => doc.toJSON() as Trip);
-      trips.push(...matchingTrips);
-      
-      // Also search by participants (members in trip)
-      // First find users matching the search query
-      const matchingUsers = await UserModel.find({
-        $or: [
-          { name: { $regex: escapedQuery, $options: 'i' } },
-          { email: { $regex: escapedQuery, $options: 'i' } },
-          { username: { $regex: escapedQuery, $options: 'i' } }
-        ]
-      });
-      
-      const matchingUserIds = matchingUsers.map(u => u.uid || u._id?.toString()).filter(Boolean);
-      
-      if (matchingUserIds.length > 0) {
-        // Find trips where these users are participants
-        const participantTripsDocs = await TripModel.find({
-          isPublic: true,
-          'participants.uid': { $in: matchingUserIds }
-        });
-        
-        const participantTrips = participantTripsDocs.map(doc => doc.toJSON() as Trip);
-        trips.push(...participantTrips);
-      }
-    }
-
-    if (searchType === 'place' || searchType === 'all') {
-      // Escape special regex characters for safe searching
-      const escapedQuery = searchLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      
-      // Search by place name (case-insensitive contains)
-      const placesDocs = await TripPlaceModel.find({
-        name: { $regex: escapedQuery, $options: 'i' }
-      }).limit(50);
-      
-      const tripIds = [...new Set(placesDocs.map(doc => doc.tripId))];
-      
-      if (tripIds.length > 0) {
-        const tripQuery: any = {
-          _id: { $in: tripIds },
-          isPublic: true
-        };
-        
-        const tripsDocs = await TripModel.find(tripQuery);
-        const placeTrips = tripsDocs.map(doc => doc.toJSON() as Trip);
-        trips.push(...placeTrips);
-      }
-    }
-
-    // Remove duplicates
-    const uniqueTrips = Array.from(
-      new Map(trips.map(trip => [trip.tripId, trip])).values()
-    );
-
-    // Sort by createdAt
-    uniqueTrips.sort((a, b) => {
-      const aTime = new Date(a.createdAt).getTime();
-      const bTime = new Date(b.createdAt).getTime();
-      return bTime - aTime;
-    });
-
-    // Apply pagination
-    let paginatedTrips = uniqueTrips;
-    if (lastTripId && typeof lastTripId === 'string') {
-      const lastIndex = paginatedTrips.findIndex(t => t.tripId === lastTripId);
-      if (lastIndex >= 0) {
-        paginatedTrips = paginatedTrips.slice(lastIndex + 1);
-      }
-    }
-    paginatedTrips = paginatedTrips.slice(0, Number(limit));
-
-    const hasMore = paginatedTrips.length === Number(limit) && 
-                    uniqueTrips.length > paginatedTrips.length;
-    const newLastTripId = paginatedTrips.length > 0 
-      ? paginatedTrips[paginatedTrips.length - 1].tripId 
-      : null;
-
-    res.json({
-      success: true,
-      data: {
-        trips: paginatedTrips,
-        users: users.slice(0, 10), // Return up to 10 matching users
-        hasMore,
-        lastTripId: newLastTripId,
-      },
-    });
-  } catch (error: any) {
-    res.status(500).json({
-      success: false,
-      error: error.message,
     });
   }
 });
