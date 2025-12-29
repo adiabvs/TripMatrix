@@ -258,13 +258,23 @@ router.post('/:tripId/participants', async (req: OptionalAuthRequest, res) => {
       if (newP.uid && !existingUids.has(newP.uid)) {
         mergedParticipants.push(newP);
         existingUids.add(newP.uid);
-        // Track new user participants for notifications
+        // Track new user participants for notifications (ALWAYS create notification regardless of profile privacy)
         if (newP.uid !== tripData.creatorId) {
           newUserParticipants.push(newP.uid);
         }
       } else if (newP.guestName && !existingGuests.has(newP.guestName)) {
         mergedParticipants.push(newP);
         existingGuests.add(newP.guestName);
+      } else if (newP.uid && existingUids.has(newP.uid)) {
+        // If participant already exists but status is not set, update it to pending if needed
+        const existingIndex = mergedParticipants.findIndex(p => p.uid === newP.uid);
+        if (existingIndex >= 0 && !mergedParticipants[existingIndex].status && newP.uid !== tripData.creatorId) {
+          mergedParticipants[existingIndex].status = 'pending';
+          // Also create notification if not already sent
+          if (!newUserParticipants.includes(newP.uid)) {
+            newUserParticipants.push(newP.uid);
+          }
+        }
       }
     });
 

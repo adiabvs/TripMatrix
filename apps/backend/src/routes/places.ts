@@ -60,7 +60,7 @@ router.post('/', async (req: OptionalAuthRequest, res) => {
 
     const tripData = trip.toJSON();
     
-    // Check authorization - allow creator or participants to add places
+    // Check authorization - allow creator or accepted participants to add places
     if (!uid) {
       return res.status(401).json({
         success: false,
@@ -69,12 +69,18 @@ router.post('/', async (req: OptionalAuthRequest, res) => {
     }
     
     const isCreator = tripData.creatorId === uid;
-    const isParticipant = tripData.participants?.some((p: any) => p.uid === uid);
+    // Check if user is an accepted participant (status is 'accepted' or undefined for backward compatibility)
+    // Pending participants cannot add places until they accept the invitation
+    const isParticipant = tripData.participants?.some((p: any) => 
+      p.uid === uid && 
+      !p.isGuest && 
+      (p.status === 'accepted' || p.status === undefined)
+    );
     
     if (!isCreator && !isParticipant) {
       return res.status(403).json({
         success: false,
-        error: 'Not authorized to add places. Only the creator or participants can add places.',
+        error: 'Not authorized to add places. Only the creator or accepted participants can add places.',
       });
     }
 
@@ -186,7 +192,11 @@ router.get('/trip/:tripId', async (req: OptionalAuthRequest, res) => {
         });
       }
       if (tripData.creatorId !== req.uid && 
-          !tripData.participants?.some((p: any) => p.uid === req.uid)) {
+          !tripData.participants?.some((p: any) => 
+            p.uid === req.uid && 
+            !p.isGuest && 
+            (p.status === 'accepted' || p.status === undefined)
+          )) {
         return res.status(403).json({
           success: false,
           error: 'Not authorized',
@@ -239,9 +249,13 @@ router.delete('/:placeId', authenticateToken, async (req: AuthenticatedRequest, 
     }
 
     const tripData = trip.toJSON();
-    // Check if user is creator or participant
+    // Check if user is creator or accepted participant
     if (tripData.creatorId !== uid && 
-        !tripData.participants?.some((p: any) => p.uid === uid)) {
+        !tripData.participants?.some((p: any) => 
+          p.uid === uid && 
+          !p.isGuest && 
+          (p.status === 'accepted' || p.status === undefined)
+        )) {
       return res.status(403).json({
         success: false,
         error: 'Not authorized to delete this place',
@@ -351,9 +365,13 @@ router.patch('/:placeId', authenticateToken, async (req: AuthenticatedRequest, r
     }
 
     const tripData = trip.toJSON();
-    // Check if user is creator or participant
+    // Check if user is creator or accepted participant
     if (tripData.creatorId !== uid && 
-        !tripData.participants?.some((p: any) => p.uid === uid)) {
+        !tripData.participants?.some((p: any) => 
+          p.uid === uid && 
+          !p.isGuest && 
+          (p.status === 'accepted' || p.status === undefined)
+        )) {
       return res.status(403).json({
         success: false,
         error: 'Not authorized to update this place',
@@ -426,7 +444,11 @@ router.post('/:placeId/comments', authenticateToken, async (req: AuthenticatedRe
     // Allow comments if trip is public, or if user is creator/participant
     if (!tripData.isPublic) {
       if (tripData.creatorId !== uid && 
-          !tripData.participants?.some((p: any) => p.uid === uid)) {
+          !tripData.participants?.some((p: any) => 
+            p.uid === uid && 
+            !p.isGuest && 
+            (p.status === 'accepted' || p.status === undefined)
+          )) {
         return res.status(403).json({
           success: false,
           error: 'Not authorized to comment on this place',
@@ -491,7 +513,11 @@ router.get('/:placeId/comments', async (req: OptionalAuthRequest, res) => {
         });
       }
       if (tripData.creatorId !== req.uid && 
-          !tripData.participants?.some((p: any) => p.uid === req.uid)) {
+          !tripData.participants?.some((p: any) => 
+            p.uid === req.uid && 
+            !p.isGuest && 
+            (p.status === 'accepted' || p.status === undefined)
+          )) {
         return res.status(403).json({
           success: false,
           error: 'Not authorized to view comments',
@@ -551,7 +577,11 @@ router.post('/:placeId/like', async (req: OptionalAuthRequest, res) => {
     // Allow likes if trip is public, or if user is creator/participant
     if (!tripData.isPublic) {
       if (tripData.creatorId !== uid && 
-          !tripData.participants?.some((p: any) => p.uid === uid)) {
+          !tripData.participants?.some((p: any) => 
+            p.uid === uid && 
+            !p.isGuest && 
+            (p.status === 'accepted' || p.status === undefined)
+          )) {
         return res.status(403).json({
           success: false,
           error: 'Not authorized to like this place',

@@ -164,8 +164,10 @@ export default function ParticipantSelector({
                   </div>
                 )}
                 <div>
-                  <p className="font-medium text-gray-900">{user.name}</p>
-                  <p className="text-xs text-gray-500">{user.email}</p>
+                  <p className="font-medium text-gray-900">{user.name || 'User'}</p>
+                  {user.username && (
+                    <p className="text-xs text-gray-500">@{user.username}</p>
+                  )}
                 </div>
               </button>
             ))}
@@ -261,8 +263,13 @@ export default function ParticipantSelector({
                             ? `User ${participant.uid.substring(0, 8)}...`
                             : 'Unknown User')}
                   </p>
-                  {!participant.isGuest && participant.uid && userMap[participant.uid] && (
-                    <p className="text-xs text-gray-500">{userMap[participant.uid].email}</p>
+                  {!participant.isGuest && participant.uid && userMap[participant.uid] && userMap[participant.uid].username && (
+                    <p className="text-xs text-gray-500">@{userMap[participant.uid].username}</p>
+                  )}
+                  {participant.status === 'pending' && (
+                    <span className="inline-block mt-1 px-2 py-0.5 bg-yellow-100 text-yellow-800 text-xs font-medium rounded">
+                      Pending
+                    </span>
                   )}
                   {participant.isGuest && participant.guestEmail && (
                     <p className="text-xs text-gray-500">{participant.guestEmail}</p>

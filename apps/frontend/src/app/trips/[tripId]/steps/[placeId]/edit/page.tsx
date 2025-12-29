@@ -63,7 +63,7 @@ function ExpenseList({
               const userDoc = await getDoc(doc(db, 'users', paidByLabel.uid));
               if (userDoc.exists()) {
                 const userData = userDoc.data();
-                const userName = userData.name || userData.email?.split('@')[0] || 'User';
+                const userName = userData.name || 'User';
                 newMap[expense.paidBy] = userName;
                 setUserNamesMap(prev => ({ ...prev, [paidByLabel.uid!]: userName }));
               } else {

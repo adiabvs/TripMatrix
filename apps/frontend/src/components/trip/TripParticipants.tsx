@@ -23,16 +23,22 @@ export default function TripParticipants({
 }: TripParticipantsProps) {
   const guestParticipants = trip.participants?.filter((p: TripParticipant) => p.isGuest) || [];
   
+  // Get participant status from trip data
+  const getParticipantStatus = (uid: string): 'pending' | 'accepted' | undefined => {
+    const participant = trip.participants?.find((p: TripParticipant) => p.uid === uid && !p.isGuest);
+    return participant?.status;
+  };
+  
   // Remove duplicates - create a Set of unique participant UIDs
   const uniqueParticipantUids = new Set<string>();
   const uniqueParticipants: User[] = [];
   
-  // Add creator if exists
+  // Add creator if exists (creator is always accepted)
   if (creator) {
     uniqueParticipantUids.add(creator.uid);
   }
   
-  // Add other participants (excluding creator)
+  // Add other participants (excluding creator) - include both accepted and pending
   participants.forEach((participant) => {
     if (!uniqueParticipantUids.has(participant.uid)) {
       uniqueParticipantUids.add(participant.uid);
@@ -40,7 +46,13 @@ export default function TripParticipants({
     }
   });
   
-  const totalCount = (creator ? 1 : 0) + uniqueParticipants.length + guestParticipants.length;
+  // Count accepted participants only (for display count)
+  const acceptedParticipants = uniqueParticipants.filter(p => {
+    const status = getParticipantStatus(p.uid);
+    return status === 'accepted' || status === undefined; // undefined means accepted (backward compatibility)
+  });
+  
+  const totalCount = (creator ? 1 : 0) + acceptedParticipants.length + guestParticipants.length;
 
   if (totalCount === 0) {
     return null;
@@ -84,26 +96,37 @@ export default function TripParticipants({
           </Link>
         )}
         {/* Other Participants (excluding creator) */}
-        {uniqueParticipants.map((participant) => (
-          <Link
-            key={participant.uid}
-            href={`/users/${participant.uid}`}
-            className="flex items-center gap-2 hover:opacity-70"
-          >
-            {participant.photoUrl ? (
-              <img
-                src={participant.photoUrl}
-                alt={participant.name}
-                className="w-10 h-10 rounded-full object-cover border-2 border-gray-700"
-              />
-            ) : (
-              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center border-2 border-gray-700">
-                <MdPerson className="w-6 h-6 text-white" />
-              </div>
-            )}
-            <span className="text-white text-sm font-medium">{participant.name}</span>
-          </Link>
-        ))}
+        {uniqueParticipants.map((participant) => {
+          const status = getParticipantStatus(participant.uid);
+          const isPending = status === 'pending';
+          
+          return (
+            <div key={participant.uid} className="flex items-center gap-2">
+              <Link
+                href={`/users/${participant.uid}`}
+                className="flex items-center gap-2 hover:opacity-70"
+              >
+                {participant.photoUrl ? (
+                  <img
+                    src={participant.photoUrl}
+                    alt={participant.name || 'User'}
+                    className="w-10 h-10 rounded-full object-cover border-2 border-gray-700"
+                  />
+                ) : (
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center border-2 border-gray-700">
+                    <MdPerson className="w-6 h-6 text-white" />
+                  </div>
+                )}
+                <span className="text-white text-sm font-medium">{participant.name || 'User'}</span>
+              </Link>
+              {isPending && (
+                <span className="px-2 py-0.5 bg-yellow-500 text-yellow-900 text-xs font-medium rounded">
+                  Pending
+                </span>
+              )}
+            </div>
+          );
+        })}
         {/* Guest Participants */}
         {guestParticipants.map((guest, idx) => (
           <div key={`guest-${idx}`} className="flex items-center gap-2">

@@ -279,8 +279,8 @@ export default function ExplorePage() {
                       )}
                       <div className="flex-1">
                         <p className="text-white font-semibold">{user.name || 'User'}</p>
-                        {user.email && (
-                          <p className="text-gray-400 text-sm">{user.email}</p>
+                        {user.username && (
+                          <p className="text-gray-400 text-sm">@{user.username}</p>
                         )}
                       </div>
                       <div className="text-gray-400">

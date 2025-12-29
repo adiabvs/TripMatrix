@@ -88,7 +88,7 @@ export function useTripData(tripId: string): UseTripDataReturn {
         console.error('Failed to load creator:', error);
       }
 
-      // Load participants info
+      // Load participants info (include both accepted and pending)
       if (tripData.participants && tripData.participants.length > 0) {
         try {
           const participantUsers = await Promise.all(
@@ -102,6 +102,7 @@ export function useTripData(tripId: string): UseTripDataReturn {
                 }
               })
           );
+          // Include all participants (accepted and pending) - filtering by status happens in display component
           setParticipants(participantUsers.filter((u): u is User => u !== null));
         } catch (error) {
           console.error('Failed to load participants:', error);

@@ -88,12 +88,39 @@ export default function UserMenu() {
           minWidth: 'auto',
         }}
       >
-        <Avatar
-          src={user.photoUrl || undefined}
-          sx={{ width: 24, height: 24 }}
-        >
-          {!user.photoUrl && user.name.charAt(0).toUpperCase()}
-        </Avatar>
+        {unreadCount > 0 ? (
+          <Badge
+            badgeContent={unreadCount > 9 ? '9+' : unreadCount}
+            color="error"
+            overlap="circular"
+            anchorOrigin={{
+              vertical: 'bottom',
+              horizontal: 'right',
+            }}
+            sx={{
+              '& .MuiBadge-badge': {
+                fontSize: '0.65rem',
+                minWidth: '18px',
+                height: '18px',
+                padding: '0 4px',
+              },
+            }}
+          >
+            <Avatar
+              src={user.photoUrl || undefined}
+              sx={{ width: 24, height: 24 }}
+            >
+              {!user.photoUrl && user.name.charAt(0).toUpperCase()}
+            </Avatar>
+          </Badge>
+        ) : (
+          <Avatar
+            src={user.photoUrl || undefined}
+            sx={{ width: 24, height: 24 }}
+          >
+            {!user.photoUrl && user.name.charAt(0).toUpperCase()}
+          </Avatar>
+        )}
       </IconButton>
       <Menu
         anchorEl={anchorEl}

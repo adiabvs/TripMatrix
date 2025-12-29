@@ -94,9 +94,10 @@ export default function TripInfoPage() {
           participantUids.filter((uid): uid is string => !!uid).map(async (uid) => {
             try {
               const user = await getUser(uid, authToken);
-              namesMap[uid] = user.name;
+              namesMap[uid] = user.name || 'User';
             } catch (error) {
               console.error(`Failed to load user ${uid}:`, error);
+              namesMap[uid] = 'User';
             }
           })
         );
