@@ -61,23 +61,29 @@ const corsOptions = {
     
     // Check if origin is allowed
     if (allowedOrigins.includes(origin)) {
-      console.log('Origin allowed:', origin);
+      console.log('Origin allowed (in list):', origin);
       callback(null, true);
-    } else {
-      // In production on Railway, be more permissive (Railway may modify headers)
-      // Allow any Railway subdomain
-      if (origin.includes('.railway.app') || origin.includes('.up.railway.app')) {
-        console.log('Railway origin detected, allowing:', origin);
-        callback(null, true);
-      } else if (process.env.NODE_ENV !== 'production') {
-        // In development, allow all origins for easier testing
-        console.log('Development mode, allowing origin:', origin);
-        callback(null, true);
-      } else {
-        console.log('Origin not allowed:', origin);
-        callback(new Error(`Not allowed by CORS: ${origin}`));
-      }
+      return;
     }
+    
+    // In production on Railway, be more permissive (Railway may modify headers)
+    // Allow any Railway subdomain
+    if (origin.includes('.railway.app') || origin.includes('.up.railway.app')) {
+      console.log('Railway origin detected, allowing:', origin);
+      callback(null, true);
+      return;
+    }
+    
+    // In development, allow all origins for easier testing
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('Development mode, allowing origin:', origin);
+      callback(null, true);
+      return;
+    }
+    
+    // Default: reject
+    console.log('Origin not allowed:', origin);
+    callback(new Error(`Not allowed by CORS: ${origin}`));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -254,6 +260,16 @@ app.use('/api/canva', authenticateToken, canvaOAuthRoutes); // Other Canva API r
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 app.use((err: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error('Error:', err);
+  
+  // Handle CORS errors
+  if (err.message && err.message.includes('CORS')) {
+    console.error('CORS error:', err.message);
+    return res.status(403).json({
+      success: false,
+      error: 'CORS policy violation',
+    });
+  }
+  
   res.status(500).json({
     success: false,
     error: process.env.NODE_ENV === 'production' ? 'Internal server error' : err.message,
