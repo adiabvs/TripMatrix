@@ -548,6 +548,24 @@ export async function getFollowing(token: string | null): Promise<User[]> {
   return result.data;
 }
 
+export async function getFollowingForUser(userId: string, token: string | null): Promise<User[]> {
+  const response = await fetchWithAuth(`/api/users/${userId}/following`, {}, token);
+  const result: ApiResponse<User[]> = await response.json();
+  if (!result.success || !result.data) {
+    throw new Error(result.error || 'Failed to get following list');
+  }
+  return result.data;
+}
+
+export async function getFollowersForUser(userId: string, token: string | null): Promise<User[]> {
+  const response = await fetchWithAuth(`/api/users/${userId}/followers`, {}, token);
+  const result: ApiResponse<User[]> = await response.json();
+  if (!result.success || !result.data) {
+    throw new Error(result.error || 'Failed to get followers list');
+  }
+  return result.data;
+}
+
 export async function getUser(userId: string, token: string | null): Promise<User> {
   const response = await fetchWithAuth(`/api/users/${userId}`, {}, token);
   const result: ApiResponse<User> = await response.json();

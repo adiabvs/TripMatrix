@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { toDate } from '@/lib/dateUtils';
-import { getUser, getUserTrips, getFollowing, followUser, unfollowUser, likeTrip, unlikeTrip, getTripLikes, getTripCommentCount } from '@/lib/api';
+import { getUser, getUserTrips, getFollowing, followUser, unfollowUser, likeTrip, unlikeTrip, getTripLikes, getTripCommentCount, getFollowingForUser, getFollowersForUser } from '@/lib/api';
 import type { Trip, User } from '@tripmatrix/types';
 import { MdHome, MdArrowBack, MdPerson, MdFavorite, MdChatBubbleOutline, MdPublic, MdLock, MdLocationOn, MdMonetizationOn } from 'react-icons/md';
 
@@ -65,10 +65,36 @@ export default function UserProfilePage() {
         setTrips(publicTrips);
       }
       
-      // Load following count
-      if (canViewAllTrips) {
-        const followingList = await getFollowing(token);
-        setFollowingCount(followingList.length);
+      // Load following and followers counts (only if can view)
+      const canViewFollowersFollowing = isOwnProfile || isProfilePublic || isFollowing;
+      setCanViewFollowersFollowing(canViewFollowersFollowing);
+      
+      if (canViewFollowersFollowing) {
+        try {
+          const followingList = await getFollowingForUser(userId, token);
+          setFollowingCount(followingList.length);
+        } catch (error: any) {
+          // If error is about private profile, that's expected
+          if (error.message?.includes('private') || error.message?.includes('Cannot view')) {
+            setCanViewFollowersFollowing(false);
+          } else {
+            console.error('Failed to load following count:', error);
+          }
+        }
+        
+        try {
+          const followersList = await getFollowersForUser(userId, token);
+          setFollowersCount(followersList.length);
+        } catch (error: any) {
+          // If error is about private profile, that's expected
+          if (error.message?.includes('private') || error.message?.includes('Cannot view')) {
+            setCanViewFollowersFollowing(false);
+          } else {
+            console.error('Failed to load followers count:', error);
+          }
+        }
+      } else {
+        setCanViewFollowersFollowing(false);
       }
       
       // Load likes and comment counts
@@ -191,8 +217,15 @@ export default function UserProfilePage() {
               <h2 className="text-xl font-semibold text-white mb-1">{profileUser.name || 'User'}</h2>
               <div className="flex items-center gap-4 text-sm text-gray-400 mb-3">
                 <span>{trips.length} {trips.length === 1 ? 'trip' : 'trips'}</span>
-                {canViewAllTrips && (
-                  <span>{followingCount} {followingCount === 1 ? 'following' : 'followings'}</span>
+                {canViewFollowersFollowing && (
+                  <>
+                    <Link href={`/users/${userId}/followers`} className="hover:opacity-70 transition-opacity">
+                      <span>{followersCount} {followersCount === 1 ? 'follower' : 'followers'}</span>
+                    </Link>
+                    <Link href={`/users/${userId}/following`} className="hover:opacity-70 transition-opacity">
+                      <span>{followingCount} {followingCount === 1 ? 'following' : 'followings'}</span>
+                    </Link>
+                  </>
                 )}
               </div>
               {!isOwnProfile && currentUser && (

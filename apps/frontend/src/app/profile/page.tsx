@@ -6,9 +6,9 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { toDate } from '@/lib/dateUtils';
-import { getUserTrips, updateUser, getFollowing, unfollowUser, likeTrip, unlikeTrip, getTripLikes, getTripCommentCount } from '@/lib/api';
+import { getUserTrips, updateUser, getFollowing, unfollowUser, likeTrip, unlikeTrip, getTripLikes, getTripCommentCount, getUnreadNotificationCount, getFollowersForUser } from '@/lib/api';
 import type { Trip, User } from '@tripmatrix/types';
-import { MdHome, MdArrowBack, MdLogout, MdPerson, MdMap, MdCheckCircle, MdTrendingUp, MdPublic, MdLock, MdClose, MdFavorite, MdChatBubbleOutline, MdMoreVert, MdLocationOn, MdMonetizationOn, MdSearch, MdAdd, MdSettings } from 'react-icons/md';
+import { MdHome, MdArrowBack, MdLogout, MdPerson, MdMap, MdCheckCircle, MdTrendingUp, MdPublic, MdLock, MdClose, MdFavorite, MdChatBubbleOutline, MdMoreVert, MdLocationOn, MdMonetizationOn, MdSearch, MdAdd, MdSettings, MdNotifications } from 'react-icons/md';
 
 export default function ProfilePage() {
   const { user, firebaseUser, loading: authLoading, signOut, getIdToken } = useAuth();
@@ -21,6 +21,7 @@ export default function ProfilePage() {
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
   const [isProfilePublic, setIsProfilePublic] = useState(user?.isProfilePublic || false);
   const [saving, setSaving] = useState(false);
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -33,9 +34,26 @@ export default function ProfilePage() {
       loadUserTrips();
       loadFollowing();
       loadFollowers();
+      loadNotificationCount();
       setIsProfilePublic(user.isProfilePublic || false);
+      
+      // Refresh notification count every 30 seconds
+      const interval = setInterval(loadNotificationCount, 30000);
+      return () => clearInterval(interval);
     }
   }, [user, firebaseUser]);
+
+  const loadNotificationCount = async () => {
+    try {
+      const token = await getIdToken();
+      if (token) {
+        const count = await getUnreadNotificationCount(token);
+        setUnreadNotificationCount(count);
+      }
+    } catch (error) {
+      console.error('Failed to load notification count:', error);
+    }
+  };
 
   const loadUserTrips = async () => {
     try {
@@ -141,13 +159,19 @@ export default function ProfilePage() {
 
   const loadFollowers = async () => {
     try {
-      // TODO: Implement followers endpoint in backend
-      // For now, we'll calculate from user data if available
-      // This would require querying all users which is inefficient
-      // A proper solution would need a backend endpoint
-      setFollowers([]);
+      if (!firebaseUser) {
+        setFollowers([]);
+        return;
+      }
+      
+      const token = await getIdToken();
+      if (token && user) {
+        const followersList = await getFollowersForUser(user.uid, token);
+        setFollowers(followersList);
+      }
     } catch (error) {
       console.error('Failed to load followers:', error);
+      setFollowers([]);
     }
   };
 
@@ -221,12 +245,24 @@ export default function ProfilePage() {
             <MdArrowBack className="w-6 h-6" />
           </Link>
           <h1 className="text-xl font-semibold text-white">{user.name}</h1>
-          <Link 
-            href="/profile/settings" 
-            className="text-white hover:bg-gray-900 active:bg-gray-800 rounded-lg p-1.5 transition-all duration-200 active:scale-95 focus:outline-none focus:ring-2 focus:ring-gray-600 focus:ring-offset-2 focus:ring-offset-black"
-          >
-            <MdSettings className="w-6 h-6" />
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link 
+              href="/notifications" 
+              className="text-white hover:bg-gray-900 active:bg-gray-800 rounded-lg p-1.5 transition-all duration-200 active:scale-95 focus:outline-none focus:ring-2 focus:ring-gray-600 focus:ring-offset-2 focus:ring-offset-black relative"
+            >
+              <MdNotifications className="w-6 h-6" />
+              {unreadNotificationCount > 0 && (
+                <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
+              )}
+            </Link>
+            <button
+              onClick={handleSignOut}
+              className="text-white hover:bg-gray-900 active:bg-gray-800 rounded-lg p-1.5 transition-all duration-200 active:scale-95 focus:outline-none focus:ring-2 focus:ring-gray-600 focus:ring-offset-2 focus:ring-offset-black"
+              title="Sign Out"
+            >
+              <MdLogout className="w-6 h-6" />
+            </button>
+          </div>
         </div>
       </header>
 
@@ -254,14 +290,14 @@ export default function ProfilePage() {
                   <div className="text-lg font-semibold text-white">{trips.length}</div>
                   <div className="text-xs text-gray-400">trips</div>
                 </div>
-                <div className="text-center">
+                <Link href="/profile/followers" className="text-center hover:opacity-70 transition-opacity">
                   <div className="text-lg font-semibold text-white">{followers.length}</div>
                   <div className="text-xs text-gray-400">followers</div>
-                </div>
-                <div className="text-center">
+                </Link>
+                <Link href="/profile/following" className="text-center hover:opacity-70 transition-opacity">
                   <div className="text-lg font-semibold text-white">{following.length}</div>
                   <div className="text-xs text-gray-400">following</div>
-                </div>
+                </Link>
               </div>
               <h2 className="text-sm font-semibold text-white mb-1">{user.name}</h2>
               <p className="text-xs text-gray-400">{user.email}</p>
@@ -341,16 +377,26 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {/* Following List */}
+        {/* Following List Preview */}
         <div className="mb-6 bg-black border border-gray-800 rounded-lg p-4">
-          <h2 className="text-sm font-semibold text-white mb-3">Following</h2>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold text-white">Following</h2>
+            {following.length > 0 && (
+              <Link 
+                href="/profile/following"
+                className="text-xs text-blue-500 hover:text-blue-400"
+              >
+                View all
+              </Link>
+            )}
+          </div>
           {following.length === 0 ? (
             <div className="bg-black border border-gray-800 rounded-lg p-4">
               <p className="text-sm text-gray-400 text-center">You&apos;re not following anyone yet</p>
             </div>
           ) : (
             <div className="space-y-2">
-              {following.map((followedUser) => (
+              {following.slice(0, 3).map((followedUser) => (
                 <div
                   key={followedUser.uid}
                   className="bg-black border border-gray-800 rounded-lg p-3 flex items-center justify-between"

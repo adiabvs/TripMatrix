@@ -331,7 +331,153 @@ router.get('/me/following', async (req: OptionalAuthRequest, res) => {
   }
 });
 
+// Get followers of a user (users that follow the specified user)
+router.get('/:userId/followers', async (req: OptionalAuthRequest, res) => {
+  try {
+    const targetUserId = req.params.userId;
+    const currentUserId = req.uid; // May be null for unauthenticated requests
+
+    // Check if target user exists
+    const targetUser = await UserModel.findOne({ uid: targetUserId });
+    if (!targetUser) {
+      return res.status(404).json({
+        success: false,
+        error: 'User not found',
+      });
+    }
+
+    const targetUserData = targetUser.toJSON();
+    const isProfilePublic = targetUserData.isProfilePublic || false;
+    const isOwnProfile = currentUserId === targetUserId;
+
+    // If profile is private and not own profile, check access
+    if (!isProfilePublic && !isOwnProfile) {
+      if (!currentUserId) {
+        return res.status(403).json({
+          success: false,
+          error: 'Profile is private',
+        });
+      }
+
+      const currentUser = await UserModel.findOne({ uid: currentUserId });
+      const follows = currentUser?.follows || [];
+      
+      // Check if current user follows this user
+      if (!follows.includes(targetUserId)) {
+        // Check if they're in a trip together
+        const { TripModel } = await import('../models/Trip.js');
+        const sharedTrip = await TripModel.findOne({
+          $or: [
+            { creatorId: currentUserId, 'participants.uid': targetUserId },
+            { creatorId: targetUserId, 'participants.uid': currentUserId }
+          ]
+        });
+        
+        if (!sharedTrip) {
+          return res.status(403).json({
+            success: false,
+            error: 'Cannot view followers of private profile',
+          });
+        }
+      }
+    }
+
+    // Find all users that follow the target user
+    const followersDocs = await UserModel.find({ 
+      follows: { $in: [targetUserId] }
+    });
+    const followers = followersDocs.map(doc => doc.toJSON());
+
+    res.json({
+      success: true,
+      data: followers,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+// Get users that a specific user follows
+router.get('/:userId/following', async (req: OptionalAuthRequest, res) => {
+  try {
+    const targetUserId = req.params.userId;
+    const currentUserId = req.uid; // May be null for unauthenticated requests
+
+    // Check if target user exists
+    const targetUser = await UserModel.findOne({ uid: targetUserId });
+    if (!targetUser) {
+      return res.status(404).json({
+        success: false,
+        error: 'User not found',
+      });
+    }
+
+    const targetUserData = targetUser.toJSON();
+    const isProfilePublic = targetUserData.isProfilePublic || false;
+    const isOwnProfile = currentUserId === targetUserId;
+
+    // If profile is private and not own profile, check access
+    if (!isProfilePublic && !isOwnProfile) {
+      if (!currentUserId) {
+        return res.status(403).json({
+          success: false,
+          error: 'Profile is private',
+        });
+      }
+
+      const currentUser = await UserModel.findOne({ uid: currentUserId });
+      const follows = currentUser?.follows || [];
+      
+      // Check if current user follows this user
+      if (!follows.includes(targetUserId)) {
+        // Check if they're in a trip together
+        const { TripModel } = await import('../models/Trip.js');
+        const sharedTrip = await TripModel.findOne({
+          $or: [
+            { creatorId: currentUserId, 'participants.uid': targetUserId },
+            { creatorId: targetUserId, 'participants.uid': currentUserId }
+          ]
+        });
+        
+        if (!sharedTrip) {
+          return res.status(403).json({
+            success: false,
+            error: 'Cannot view following list of private profile',
+          });
+        }
+      }
+    }
+
+    const follows = targetUser.follows || [];
+
+    if (follows.length === 0) {
+      return res.json({
+        success: true,
+        data: [],
+      });
+    }
+
+    // Fetch all followed users
+    const followedUsersDocs = await UserModel.find({ uid: { $in: follows } });
+    const followedUsers = followedUsersDocs.map(doc => doc.toJSON());
+
+    res.json({
+      success: true,
+      data: followedUsers,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
 // Get user by ID (public profile)
+// Note: Private profiles can still be viewed, but followers/following lists are hidden
 router.get('/:userId', async (req: OptionalAuthRequest, res) => {
   try {
     const targetUserId = req.params.userId;
@@ -348,41 +494,40 @@ router.get('/:userId', async (req: OptionalAuthRequest, res) => {
 
     const targetUserData = targetUser.toJSON();
     const isProfilePublic = targetUserData.isProfilePublic || false;
+    const isOwnProfile = currentUserId === targetUserId;
 
-    // If profile is not public, check if current user is following, is the user themselves, or is in a trip together
-    if (!isProfilePublic) {
-      if (!currentUserId || (currentUserId !== targetUserId)) {
-        let hasAccess = false;
+    // For private profiles, we still return the profile data but without follows array
+    // The frontend will handle hiding followers/following lists
+    // Only hide the follows array if profile is private and user doesn't have access
+    if (!isProfilePublic && !isOwnProfile) {
+      let hasAccess = false;
+      
+      if (currentUserId) {
+        const currentUser = await UserModel.findOne({ uid: currentUserId });
+        const follows = currentUser?.follows || [];
         
-        if (currentUserId) {
-          const currentUser = await UserModel.findOne({ uid: currentUserId });
-          const follows = currentUser?.follows || [];
+        // Check if current user follows this user
+        if (follows.includes(targetUserId)) {
+          hasAccess = true;
+        } else {
+          // Check if they're in a trip together (either as creator/participant)
+          const { TripModel } = await import('../models/Trip.js');
+          const sharedTrip = await TripModel.findOne({
+            $or: [
+              { creatorId: currentUserId, 'participants.uid': targetUserId },
+              { creatorId: targetUserId, 'participants.uid': currentUserId }
+            ]
+          });
           
-          // Check if current user follows this user
-          if (follows.includes(targetUserId)) {
+          if (sharedTrip) {
             hasAccess = true;
-          } else {
-            // Check if they're in a trip together (either as creator/participant)
-            const { TripModel } = await import('../models/Trip.js');
-            const sharedTrip = await TripModel.findOne({
-              $or: [
-                { creatorId: currentUserId, 'participants.uid': targetUserId },
-                { creatorId: targetUserId, 'participants.uid': currentUserId }
-              ]
-            });
-            
-            if (sharedTrip) {
-              hasAccess = true;
-            }
           }
         }
-        
-        if (!hasAccess) {
-          return res.status(403).json({
-            success: false,
-            error: 'Profile is private',
-          });
-        }
+      }
+      
+      // If no access, remove follows array from response (but still return profile)
+      if (!hasAccess) {
+        delete targetUserData.follows;
       }
     }
 
