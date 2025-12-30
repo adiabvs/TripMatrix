@@ -51,12 +51,33 @@ router.post('/', async (req: OptionalAuthRequest, res) => {
       tripParticipants.unshift({ uid, isGuest: false });
     }
 
+    // Process participants to ensure proper format and status
+    const processedParticipants: TripParticipant[] = tripParticipants.map((p: any) => {
+      if (typeof p === 'string') {
+        // Check if it's a uid (starts with alphanumeric, no spaces)
+        if (/^[a-zA-Z0-9]+$/.test(p)) {
+          // For non-creator users, set status to pending
+          return { uid: p, isGuest: false, status: p === uid ? 'accepted' : 'pending' };
+        } else {
+          return { guestName: p, isGuest: true };
+        }
+      }
+      // If already a participant object, ensure status is set
+      if (p.uid && p.uid !== uid && !p.status) {
+        return { ...p, status: 'pending' };
+      }
+      if (p.uid === uid) {
+        return { ...p, status: 'accepted' };
+      }
+      return p;
+    });
+
     // Build trip data, excluding undefined values
     const tripData: any = {
       creatorId: uid,
       title,
       description: description || '',
-      participants: tripParticipants,
+      participants: processedParticipants,
       isPublic: isPublic || false,
       status: initialStatus,
       startTime: new Date(startTime),
@@ -78,6 +99,60 @@ router.post('/', async (req: OptionalAuthRequest, res) => {
     const savedTrip = await tripDoc.save();
     
     const trip: Trip = savedTrip.toJSON() as Trip;
+
+    // Get creator info for notification
+    const creator = await UserModel.findOne({ uid });
+    const creatorName = creator?.name || 'Someone';
+
+    // Create notifications for participants (excluding creator)
+    const participantsToNotify = processedParticipants
+      .filter((p) => p.uid && p.uid !== uid && !p.isGuest)
+      .map((p) => p.uid!);
+
+    if (participantsToNotify.length > 0) {
+      console.log(`Creating notifications for ${participantsToNotify.length} users during trip creation:`, participantsToNotify);
+      const notificationPromises = participantsToNotify.map(async (userId) => {
+        try {
+          // Validate userId is a string and not empty
+          if (!userId || typeof userId !== 'string') {
+            console.error(`Invalid userId for notification: ${userId}`);
+            return;
+          }
+
+          // Check if there's already an unread notification for this trip invitation to avoid duplicates
+          const existingUnreadNotification = await NotificationModel.findOne({
+            userId: userId.trim(),
+            tripId: trip.tripId,
+            type: 'trip_invitation',
+            isRead: false,
+          });
+
+          // Only create notification if there's no existing unread one
+          if (!existingUnreadNotification) {
+            const notification = new NotificationModel({
+              userId: userId.trim(),
+              type: 'trip_invitation',
+              title: 'Trip Invitation',
+              message: `${creatorName} invited you to join "${title}"`,
+              tripId: trip.tripId,
+              fromUserId: uid,
+              isRead: false,
+            });
+            const savedNotification = await notification.save();
+            console.log(`✅ Notification created for user ${userId} for trip ${trip.tripId}`, savedNotification.toJSON());
+          } else {
+            console.log(`⏭️  Skipping notification for user ${userId} - unread notification already exists for trip ${trip.tripId}`);
+          }
+        } catch (error: any) {
+          // Log error but don't fail the entire request
+          console.error(`❌ Failed to create notification for user ${userId} for trip ${trip.tripId}:`, error.message || error);
+        }
+      });
+      await Promise.all(notificationPromises);
+      console.log(`Completed notification creation for new trip ${trip.tripId}`);
+    } else {
+      console.log(`No notifications to create for new trip ${trip.tripId}`);
+    }
 
     res.json({
       success: true,
@@ -428,8 +503,10 @@ router.post('/:tripId/participants', async (req: OptionalAuthRequest, res) => {
         mergedParticipants.push(newP);
         existingUids.add(newP.uid);
         // Track new user participants for notifications (ALWAYS create notification regardless of profile privacy)
-        if (newP.uid !== tripData.creatorId) {
+        // Only add if not the creator
+        if (newP.uid && newP.uid !== tripData.creatorId) {
           newUserParticipants.push(newP.uid);
+          console.log(`Added ${newP.uid} to notification list (new participant)`);
         }
       } else if (newP.guestName && !existingGuests.has(newP.guestName)) {
         mergedParticipants.push(newP);
@@ -437,51 +514,71 @@ router.post('/:tripId/participants', async (req: OptionalAuthRequest, res) => {
       } else if (newP.uid && existingUids.has(newP.uid)) {
         // If participant already exists, update status to pending if needed
         const existingIndex = mergedParticipants.findIndex(p => p.uid === newP.uid);
-        if (existingIndex >= 0 && newP.uid !== tripData.creatorId) {
+        if (existingIndex >= 0 && newP.uid && newP.uid !== tripData.creatorId) {
           // Update status to pending if not already accepted
           if (mergedParticipants[existingIndex].status !== 'accepted') {
             mergedParticipants[existingIndex].status = 'pending';
             // Create notification if not already sent (check if notification exists)
             if (!newUserParticipants.includes(newP.uid)) {
               newUserParticipants.push(newP.uid);
+              console.log(`Added ${newP.uid} to notification list (existing participant, status updated)`);
             }
           }
         }
       }
     });
+    
+    console.log(`Total users to notify: ${newUserParticipants.length}`, newUserParticipants);
 
     trip.participants = mergedParticipants;
     trip.updatedAt = new Date();
     await trip.save();
 
     // Create notifications for new user participants
-    // Check for existing unread notifications to avoid duplicates
+    // Always create notifications for new invitations (even if user was previously invited)
     if (newUserParticipants.length > 0) {
+      console.log(`Creating notifications for ${newUserParticipants.length} users:`, newUserParticipants);
       const notificationPromises = newUserParticipants.map(async (userId) => {
-        // Check if there's already an unread notification for this trip invitation
-        const existingNotification = await NotificationModel.findOne({
-          userId,
-          tripId: tripId,
-          type: 'trip_invitation',
-          isRead: false,
-        });
-        
-        // Only create notification if one doesn't already exist
-        if (!existingNotification) {
-          const notification = new NotificationModel({
-            userId,
-            type: 'trip_invitation',
-            title: 'Trip Invitation',
-            message: `${creatorName} invited you to join "${tripData.title}"`,
+        try {
+          // Validate userId is a string and not empty
+          if (!userId || typeof userId !== 'string') {
+            console.error(`Invalid userId for notification: ${userId}`);
+            return;
+          }
+          
+          // Check if there's already an unread notification for this trip invitation to avoid duplicates
+          const existingUnreadNotification = await NotificationModel.findOne({
+            userId: userId.trim(),
             tripId: tripId,
-            fromUserId: uid,
+            type: 'trip_invitation',
             isRead: false,
           });
-          return notification.save();
+          
+          // Only create notification if there's no existing unread one
+          if (!existingUnreadNotification) {
+            const notification = new NotificationModel({
+              userId: userId.trim(),
+              type: 'trip_invitation',
+              title: 'Trip Invitation',
+              message: `${creatorName} invited you to join "${tripData.title}"`,
+              tripId: tripId,
+              fromUserId: uid,
+              isRead: false,
+            });
+            const savedNotification = await notification.save();
+            console.log(`✅ Notification created for user ${userId} for trip ${tripId}`, savedNotification.toJSON());
+          } else {
+            console.log(`⏭️  Skipping notification for user ${userId} - unread notification already exists for trip ${tripId}`);
+          }
+        } catch (error: any) {
+          // Log error but don't fail the entire request
+          console.error(`❌ Failed to create notification for user ${userId} for trip ${tripId}:`, error.message || error);
         }
-        return null;
       });
       await Promise.all(notificationPromises);
+      console.log(`Completed notification creation for trip ${tripId}`);
+    } else {
+      console.log(`No notifications to create for trip ${tripId}`);
     }
 
     res.json({

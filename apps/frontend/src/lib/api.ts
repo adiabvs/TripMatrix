@@ -504,8 +504,17 @@ export async function searchUsers(query: string, token: string | null): Promise<
   return result.data;
 }
 
+export async function getCurrentUser(token: string | null): Promise<User> {
+  const response = await fetchWithAuth('/api/users/me', {}, token);
+  const result: ApiResponse<User> = await response.json();
+  if (!result.success || !result.data) {
+    throw new Error(result.error || 'Failed to get current user');
+  }
+  return result.data;
+}
+
 export async function updateUser(
-  updates: { country?: string; defaultCurrency?: string; isProfilePublic?: boolean },
+  updates: { country?: string; defaultCurrency?: string; isProfilePublic?: boolean; name?: string; email?: string; photoUrl?: string },
   token: string | null
 ): Promise<User> {
   const response = await fetchWithAuth('/api/users/me', {

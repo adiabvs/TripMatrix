@@ -9,10 +9,8 @@ import {
   onAuthStateChanged,
 } from 'firebase/auth';
 import { auth } from './firebase';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { db } from './firebase';
 import type { User as UserType } from '@tripmatrix/types';
-import { updateUser } from './api';
+import { updateUser, getCurrentUser } from './api';
 import { getCurrencyFromCountry } from './currencyUtils';
 import dynamic from 'next/dynamic';
 
@@ -45,21 +43,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     // Only run on client side and when auth is initialized
-    if (typeof window === 'undefined' || !auth || !db) {
+    if (typeof window === 'undefined' || !auth) {
       setLoading(false);
       return;
     }
 
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       try {
-        setFirebaseUser(user);
-        if (user) {
-          // Fetch or create user document
-          const userDocRef = doc(db, 'users', user.uid);
-          const userDoc = await getDoc(userDocRef);
-          
-          if (userDoc.exists()) {
-            const userData = userDoc.data() as UserType;
+        setFirebaseUser(firebaseUser);
+        if (firebaseUser) {
+          // Fetch user from MongoDB via API (not Firestore)
+          try {
+            const token = await firebaseUser.getIdToken();
+            const userData = await getCurrentUser(token);
             setUser(userData);
             // Check if country is missing - show country selector only if not already shown
             if (!userData.country && !countrySelectorShown) {
@@ -69,31 +65,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               // If country exists, reset the flag
               setCountrySelectorShown(false);
             }
-          } else {
-            // Create new user document (country will be set by CountrySelectorModal)
+          } catch (apiError: any) {
+            console.error('Error fetching user from API:', apiError);
+            // User doesn't exist in MongoDB yet, will be created on first profile update
+            // Don't show country selector yet - wait for user to be created in MongoDB first
             const newUser: UserType = {
-              uid: user.uid,
-              name: user.displayName || '',
-              email: user.email || '',
-              photoUrl: user.photoURL || '',
+              uid: firebaseUser.uid,
+              name: firebaseUser.displayName || '',
+              email: firebaseUser.email || '',
+              photoUrl: firebaseUser.photoURL || '',
+              country: '',
+              defaultCurrency: '',
+              isProfilePublic: false,
+              follows: [],
               createdAt: new Date(),
             };
-            await setDoc(userDocRef, newUser);
             setUser(newUser);
-            // Show country selector for new users only if not already shown
-            if (!countrySelectorShown) {
+            // Only show country selector if user doesn't exist in MongoDB (404 or similar)
+            if ((apiError.message?.includes('not found') || apiError.message?.includes('404')) && !countrySelectorShown) {
               setShowCountrySelector(true);
               setCountrySelectorShown(true);
             }
           }
         } else {
           setUser(null);
+          setCountrySelectorShown(false);
         }
       } catch (error) {
         console.error('Error in auth state change:', error);
         // Don't clear user on error - only clear if Firebase explicitly signs out
         // This prevents accidental logouts due to network errors
-        if (!user) {
+        if (!firebaseUser) {
           setUser(null);
         }
       } finally {
