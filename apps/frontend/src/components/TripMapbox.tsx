@@ -1465,11 +1465,19 @@ export default function TripMapbox({
             transform: translateZ(0) !important;
             -webkit-transform: translateZ(0) !important;
             isolation: isolate !important;
+            pointer-events: auto !important;
           }
+        }
+        /* Ensure map container has lower z-index than modals */
+        [data-map-container] {
+          z-index: 1 !important;
+          position: relative !important;
+          isolation: isolate !important;
         }
       `}</style>
       <div
         ref={mapContainerRef}
+        data-map-container
         style={{
           width: '100%',
           height,
