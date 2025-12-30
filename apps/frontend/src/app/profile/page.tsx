@@ -252,7 +252,9 @@ export default function ProfilePage() {
             >
               <MdNotifications className="w-6 h-6" />
               {unreadNotificationCount > 0 && (
-                <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
+                <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1.5 bg-red-500 text-white text-xs font-semibold rounded-full flex items-center justify-center">
+                  {unreadNotificationCount > 9 ? '9+' : unreadNotificationCount}
+                </span>
               )}
             </Link>
             <button

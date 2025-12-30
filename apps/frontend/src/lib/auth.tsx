@@ -41,6 +41,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<UserType | null>(null);
   const [loading, setLoading] = useState(true);
   const [showCountrySelector, setShowCountrySelector] = useState(false);
+  const [countrySelectorShown, setCountrySelectorShown] = useState(false);
 
   useEffect(() => {
     // Only run on client side and when auth is initialized
@@ -60,9 +61,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (userDoc.exists()) {
             const userData = userDoc.data() as UserType;
             setUser(userData);
-            // Check if country is missing - show country selector
-            if (!userData.country) {
+            // Check if country is missing - show country selector only if not already shown
+            if (!userData.country && !countrySelectorShown) {
               setShowCountrySelector(true);
+              setCountrySelectorShown(true);
+            } else if (userData.country) {
+              // If country exists, reset the flag
+              setCountrySelectorShown(false);
             }
           } else {
             // Create new user document (country will be set by CountrySelectorModal)
@@ -75,8 +80,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             };
             await setDoc(userDocRef, newUser);
             setUser(newUser);
-            // Show country selector for new users
-            setShowCountrySelector(true);
+            // Show country selector for new users only if not already shown
+            if (!countrySelectorShown) {
+              setShowCountrySelector(true);
+              setCountrySelectorShown(true);
+            }
           }
         } else {
           setUser(null);
@@ -154,6 +162,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       );
       setUser(updatedUser);
       setShowCountrySelector(false);
+      setCountrySelectorShown(false);
     } catch (error) {
       console.error('Failed to update user country:', error);
       alert('Failed to save country. Please try again.');

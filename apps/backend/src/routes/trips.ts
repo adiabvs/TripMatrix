@@ -435,13 +435,16 @@ router.post('/:tripId/participants', async (req: OptionalAuthRequest, res) => {
         mergedParticipants.push(newP);
         existingGuests.add(newP.guestName);
       } else if (newP.uid && existingUids.has(newP.uid)) {
-        // If participant already exists but status is not set, update it to pending if needed
+        // If participant already exists, update status to pending if needed
         const existingIndex = mergedParticipants.findIndex(p => p.uid === newP.uid);
-        if (existingIndex >= 0 && !mergedParticipants[existingIndex].status && newP.uid !== tripData.creatorId) {
-          mergedParticipants[existingIndex].status = 'pending';
-          // Also create notification if not already sent
-          if (!newUserParticipants.includes(newP.uid)) {
-            newUserParticipants.push(newP.uid);
+        if (existingIndex >= 0 && newP.uid !== tripData.creatorId) {
+          // Update status to pending if not already accepted
+          if (mergedParticipants[existingIndex].status !== 'accepted') {
+            mergedParticipants[existingIndex].status = 'pending';
+            // Create notification if not already sent (check if notification exists)
+            if (!newUserParticipants.includes(newP.uid)) {
+              newUserParticipants.push(newP.uid);
+            }
           }
         }
       }
@@ -452,18 +455,31 @@ router.post('/:tripId/participants', async (req: OptionalAuthRequest, res) => {
     await trip.save();
 
     // Create notifications for new user participants
+    // Check for existing unread notifications to avoid duplicates
     if (newUserParticipants.length > 0) {
       const notificationPromises = newUserParticipants.map(async (userId) => {
-        const notification = new NotificationModel({
+        // Check if there's already an unread notification for this trip invitation
+        const existingNotification = await NotificationModel.findOne({
           userId,
-          type: 'trip_invitation',
-          title: 'Trip Invitation',
-          message: `${creatorName} invited you to join "${tripData.title}"`,
           tripId: tripId,
-          fromUserId: uid,
+          type: 'trip_invitation',
           isRead: false,
         });
-        return notification.save();
+        
+        // Only create notification if one doesn't already exist
+        if (!existingNotification) {
+          const notification = new NotificationModel({
+            userId,
+            type: 'trip_invitation',
+            title: 'Trip Invitation',
+            message: `${creatorName} invited you to join "${tripData.title}"`,
+            tripId: tripId,
+            fromUserId: uid,
+            isRead: false,
+          });
+          return notification.save();
+        }
+        return null;
       });
       await Promise.all(notificationPromises);
     }
