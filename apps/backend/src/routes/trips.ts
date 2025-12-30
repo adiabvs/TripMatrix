@@ -805,13 +805,17 @@ router.delete('/:tripId', async (req: OptionalAuthRequest, res) => {
       }
     }
 
-    // Delete all related data
-    await Promise.all([
+    // Delete all related data including notifications
+    const deleteResults = await Promise.all([
       TripPlaceModel.deleteMany({ tripId }),
       TripExpenseModel.deleteMany({ tripId }),
       TripRouteModel.deleteMany({ tripId }),
       TripLikeModel.deleteMany({ tripId }),
+      NotificationModel.deleteMany({ tripId }), // Delete all notifications for this trip (read and unread)
     ]);
+
+    const notificationDeleteResult = deleteResults[4];
+    console.log(`Deleted ${notificationDeleteResult.deletedCount} notifications for trip ${tripId}`);
 
     // Delete trip
     await TripModel.findByIdAndDelete(tripId);
