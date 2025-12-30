@@ -377,60 +377,6 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {/* Following List Preview */}
-        <div className="mb-6 bg-black border border-gray-800 rounded-lg p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold text-white">Following</h2>
-            {following.length > 0 && (
-              <Link 
-                href="/profile/following"
-                className="text-xs text-blue-500 hover:text-blue-400"
-              >
-                View all
-              </Link>
-            )}
-          </div>
-          {following.length === 0 ? (
-            <div className="bg-black border border-gray-800 rounded-lg p-4">
-              <p className="text-sm text-gray-400 text-center">You&apos;re not following anyone yet</p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {following.slice(0, 3).map((followedUser) => (
-                <div
-                  key={followedUser.uid}
-                  className="bg-black border border-gray-800 rounded-lg p-3 flex items-center justify-between"
-                >
-                  <div className="flex items-center gap-3">
-                    {followedUser.photoUrl ? (
-                      <img
-                        src={followedUser.photoUrl}
-                        alt={followedUser.name}
-                        className="w-10 h-10 rounded-full object-cover"
-                      />
-                    ) : (
-                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center">
-                        <MdPerson className="text-xl text-white" />
-                      </div>
-                    )}
-                    <div>
-                      <p className="text-sm font-semibold text-white">{followedUser.name}</p>
-                      <p className="text-xs text-gray-400">{followedUser.email}</p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => handleUnfollow(followedUser.uid)}
-                    className="p-2 hover:bg-gray-900 active:bg-gray-800 rounded-lg transition-all duration-200 active:scale-95 focus:outline-none focus:ring-2 focus:ring-gray-600 focus:ring-offset-2 focus:ring-offset-black"
-                    title="Unfollow"
-                  >
-                    <MdClose className="w-4 h-4 text-gray-400 hover:text-white transition-colors" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
         {/* My Trips */}
         <div>
           <h2 className="text-lg font-semibold text-white mb-4">My Trips</h2>

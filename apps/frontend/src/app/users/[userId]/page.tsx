@@ -24,6 +24,8 @@ export default function UserProfilePage() {
   const [likes, setLikes] = useState<Record<string, { count: number; isLiked: boolean }>>({});
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
   const [followingCount, setFollowingCount] = useState(0);
+  const [followersCount, setFollowersCount] = useState(0);
+  const [canViewFollowersFollowing, setCanViewFollowersFollowing] = useState(false);
 
   useEffect(() => {
     if (userId) {
@@ -66,6 +68,7 @@ export default function UserProfilePage() {
       }
       
       // Load following and followers counts (only if can view)
+      const isOwnProfile = currentUser?.uid === userId;
       const canViewFollowersFollowing = isOwnProfile || isProfilePublic || isFollowing;
       setCanViewFollowersFollowing(canViewFollowersFollowing);
       
