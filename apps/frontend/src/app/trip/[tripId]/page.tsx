@@ -252,7 +252,7 @@ export default function PublicTripViewPage() {
       <TripHeader title={trip.title} canEdit={false} tripId={tripId} />
 
       {/* Map Section - 25% height */}
-      <div className="relative flex-shrink-0" style={{ height: '25vh' }}>
+      <div className="relative flex-shrink-0" style={{ height: '25vh', zIndex: 1, isolation: 'isolate' }}>
         <TripMapbox 
           places={places} 
           routes={routes}

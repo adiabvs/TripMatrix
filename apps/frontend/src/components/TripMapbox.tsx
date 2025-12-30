@@ -1453,6 +1453,19 @@ export default function TripMapbox({
         .maplibregl-canvas {
           z-index: 1 !important;
           position: relative !important;
+          isolation: isolate !important; /* Create stacking context */
+        }
+        /* Fix for iOS Safari - ensure map doesn't interfere with modals */
+        @supports (-webkit-touch-callout: none) {
+          .maplibregl-map,
+          .maplibregl-canvas-container,
+          .maplibregl-canvas {
+            z-index: 1 !important;
+            position: relative !important;
+            transform: translateZ(0) !important;
+            -webkit-transform: translateZ(0) !important;
+            isolation: isolate !important;
+          }
         }
       `}</style>
       <div
@@ -1463,6 +1476,7 @@ export default function TripMapbox({
           position: 'relative',
           background: '#000',
           zIndex: 1, // Lower z-index to ensure it stays below modals
+          isolation: 'isolate', // Create stacking context to contain z-index
         }}
       />
     </>

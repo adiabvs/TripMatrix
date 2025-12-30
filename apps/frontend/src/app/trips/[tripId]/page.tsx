@@ -501,7 +501,7 @@ export default function TripDetailPage() {
       <TripHeader title={trip.title} canEdit={canEdit} tripId={tripId} />
 
       {/* Map Section - 25% height */}
-      <div className="relative flex-shrink-0" style={{ height: '25vh', zIndex: 1 }}>
+      <div className="relative flex-shrink-0" style={{ height: '25vh', zIndex: 1, isolation: 'isolate' }}>
         <TripMapbox 
           places={places} 
           routes={routes}

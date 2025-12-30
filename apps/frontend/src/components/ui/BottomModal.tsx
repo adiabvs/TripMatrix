@@ -56,7 +56,8 @@ export default function BottomModal({
           bottom: 0,
           WebkitTransform: 'translateZ(0)',
           transform: 'translateZ(0)',
-          isolation: 'isolate' // Create new stacking context
+          isolation: 'isolate', // Create new stacking context
+          willChange: 'transform', // Optimize for iOS
         }}
       >
         <div
@@ -69,7 +70,10 @@ export default function BottomModal({
             zIndex: 100000,
             WebkitTransform: 'translateZ(0)',
             transform: 'translateZ(0)',
-            isolation: 'isolate' // Create new stacking context
+            isolation: 'isolate', // Create new stacking context
+            willChange: 'transform', // Optimize for iOS
+            WebkitBackfaceVisibility: 'hidden', // Fix iOS rendering issues
+            backfaceVisibility: 'hidden',
           }}
           onClick={(e) => e.stopPropagation()}
         >
