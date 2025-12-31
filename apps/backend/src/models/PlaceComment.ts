@@ -4,6 +4,8 @@ import type { PlaceComment } from '@tripmatrix/types';
 export interface PlaceCommentDocument extends Omit<PlaceComment, 'commentId'>, Document<string> {
   _id: string;
   commentId: string;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 const PlaceCommentSchema = new Schema<PlaceCommentDocument>(

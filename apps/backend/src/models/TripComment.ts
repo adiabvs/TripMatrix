@@ -4,6 +4,8 @@ import type { TripComment } from '@tripmatrix/types';
 export interface TripCommentDocument extends Omit<TripComment, 'commentId'>, Document<string> {
   _id: string;
   commentId: string;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 const TripCommentSchema = new Schema<TripCommentDocument>(
