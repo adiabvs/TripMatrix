@@ -68,20 +68,22 @@ export default function MentionAutocomplete({
             const spaceBelow = viewportHeight - inputRect.bottom;
             const spaceAbove = inputRect.top;
             
-            // Determine if we should show above or below
-            const showAbove = spaceBelow < dropdownHeight && spaceAbove > spaceBelow;
+            // Prefer positioning below the input (more natural)
+            // Only position above if there's less than 100px below AND significantly more space above
+            const minSpaceBelow = 100; // Minimum space needed below
+            const showAbove = spaceBelow < minSpaceBelow && spaceAbove > spaceBelow + 50;
             
             let top: number;
             if (showAbove) {
-              // Position above the input
-              top = inputRect.top - dropdownHeight - 5;
+              // Position above the input, but ensure it doesn't go too far up
+              top = Math.max(10, inputRect.top - dropdownHeight - 5);
             } else {
-              // Position below the input
+              // Position below the input (preferred)
               top = inputRect.bottom + 5;
             }
             
-            // Ensure dropdown doesn't go off-screen
-            top = Math.max(5, Math.min(top, viewportHeight - dropdownHeight - 5));
+            // Ensure dropdown doesn't go off-screen vertically
+            top = Math.max(10, Math.min(top, viewportHeight - Math.min(dropdownHeight, spaceBelow || 100) - 10));
             
             // Calculate left position, ensuring it doesn't go off-screen
             let left = inputRect.left;
@@ -233,20 +235,22 @@ export default function MentionAutocomplete({
       const spaceBelow = viewportHeight - inputRect.bottom;
       const spaceAbove = inputRect.top;
       
-      // Determine if we should show above or below
-      const showAbove = spaceBelow < dropdownHeight && spaceAbove > spaceBelow;
+      // Prefer positioning below the input (more natural)
+      // Only position above if there's less than 100px below AND significantly more space above
+      const minSpaceBelow = 100; // Minimum space needed below
+      const showAbove = spaceBelow < minSpaceBelow && spaceAbove > spaceBelow + 50;
       
       let top: number;
       if (showAbove) {
-        // Position above the input
-        top = inputRect.top - dropdownHeight - 5;
+        // Position above the input, but ensure it doesn't go too far up
+        top = Math.max(10, inputRect.top - dropdownHeight - 5);
       } else {
-        // Position below the input
+        // Position below the input (preferred)
         top = inputRect.bottom + 5;
       }
       
-      // Ensure dropdown doesn't go off-screen
-      top = Math.max(5, Math.min(top, viewportHeight - dropdownHeight - 5));
+      // Ensure dropdown doesn't go off-screen vertically
+      top = Math.max(10, Math.min(top, viewportHeight - Math.min(dropdownHeight, spaceBelow || 100) - 10));
       
       // Calculate left position, ensuring it doesn't go off-screen
       let left = inputRect.left;
@@ -324,20 +328,22 @@ export default function MentionAutocomplete({
     const spaceBelow = viewportHeight - inputRect.bottom;
     const spaceAbove = inputRect.top;
     
-    // Determine if we should show above or below
-    const showAbove = spaceBelow < dropdownHeight && spaceAbove > spaceBelow;
+    // Prefer positioning below the input (more natural)
+    // Only position above if there's less than 100px below AND significantly more space above
+    const minSpaceBelow = 100; // Minimum space needed below
+    const showAbove = spaceBelow < minSpaceBelow && spaceAbove > spaceBelow + 50;
     
     let top: number;
     if (showAbove) {
-      // Position above the input
-      top = inputRect.top - dropdownHeight - 5;
+      // Position above the input, but ensure it doesn't go too far up
+      top = Math.max(10, inputRect.top - dropdownHeight - 5);
     } else {
-      // Position below the input
+      // Position below the input (preferred)
       top = inputRect.bottom + 5;
     }
     
-    // Ensure dropdown doesn't go off-screen
-    top = Math.max(5, Math.min(top, viewportHeight - dropdownHeight - 5));
+    // Ensure dropdown doesn't go off-screen vertically
+    top = Math.max(10, Math.min(top, viewportHeight - Math.min(dropdownHeight, spaceBelow || 100) - 10));
     
     // Calculate left position, ensuring it doesn't go off-screen
     let left = inputRect.left;
