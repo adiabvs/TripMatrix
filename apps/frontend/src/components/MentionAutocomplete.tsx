@@ -263,26 +263,28 @@ export default function MentionAutocomplete({
       });
     };
 
-    const handleKeyDownEvent = (e: KeyboardEvent) => {
+    const handleKeyDownEvent = (e: Event) => {
       if (!showMentions) return;
       
-      if (e.key === 'ArrowDown') {
-        e.preventDefault();
+      const keyboardEvent = e as KeyboardEvent;
+      
+      if (keyboardEvent.key === 'ArrowDown') {
+        keyboardEvent.preventDefault();
         setMentionIndex(prev => {
           const currentUsers = mentionUsers;
           return prev < currentUsers.length - 1 ? prev + 1 : prev;
         });
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault();
+      } else if (keyboardEvent.key === 'ArrowUp') {
+        keyboardEvent.preventDefault();
         setMentionIndex(prev => prev > 0 ? prev - 1 : -1);
-      } else if (e.key === 'Enter') {
-        e.preventDefault();
+      } else if (keyboardEvent.key === 'Enter') {
+        keyboardEvent.preventDefault();
         const currentIndex = mentionIndex;
         const currentUsers = mentionUsers;
         if (currentIndex >= 0 && currentIndex < currentUsers.length) {
           insertMention(currentUsers[currentIndex]);
         }
-      } else if (e.key === 'Escape') {
+      } else if (keyboardEvent.key === 'Escape') {
         setShowMentions(false);
       }
     };

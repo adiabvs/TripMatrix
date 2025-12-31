@@ -54,6 +54,7 @@ export default function TripInfoCard({
   const [longPressPosition, setLongPressPosition] = useState<{ x: number; y: number } | null>(null);
   const shareMenuRef = useRef<HTMLDivElement>(null);
   const commentInputRef = useRef<HTMLInputElement>(null);
+  const highlightedCommentRef = useRef<HTMLDivElement>(null);
 
   // Close menu when clicking outside
   useEffect(() => {
