@@ -3,13 +3,14 @@ import { useState, useRef, useEffect } from 'react';
 import type { Trip, User, TripComment } from '@tripmatrix/types';
 import { format } from 'date-fns';
 import { toDate } from '@/lib/dateUtils';
-import { MdPerson, MdShare, MdContentCopy, MdCheck, MdChatBubbleOutline, MdSend } from 'react-icons/md';
+import { MdPerson, MdShare, MdContentCopy, MdCheck, MdChatBubbleOutline, MdSend, MdEdit, MdDelete, MdClose } from 'react-icons/md';
 import TripStatusBadge from './TripStatusBadge';
 import CountdownTimer from './CountdownTimer';
 import TripParticipants from './TripParticipants';
-import { getTripComments, addTripComment, getUser } from '@/lib/api';
+import { getTripComments, addTripComment, updateTripComment, deleteTripComment, getUser } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import BottomModal from '@/components/ui/BottomModal';
+import MentionAutocomplete from '@/components/MentionAutocomplete';
 
 interface TripInfoCardProps {
   trip: Trip;
@@ -21,6 +22,7 @@ interface TripInfoCardProps {
   className?: string;
   onCommentClick?: () => void; // Callback when comment icon is clicked
   commentCount?: number; // Number of comments to display
+  highlightCommentId?: string; // Comment ID to highlight and scroll to
 }
 
 export default function TripInfoCard({ 
@@ -32,7 +34,8 @@ export default function TripInfoCard({
   canShare = false,
   className = '',
   onCommentClick,
-  commentCount = 0
+  commentCount = 0,
+  highlightCommentId
 }: TripInfoCardProps) {
   const { user, getIdToken } = useAuth();
   const [showShareMenu, setShowShareMenu] = useState(false);
@@ -43,7 +46,14 @@ export default function TripInfoCard({
   const [addingComment, setAddingComment] = useState(false);
   const [loadingComments, setLoadingComments] = useState(false);
   const [commentUserNamesMap, setCommentUserNamesMap] = useState<Record<string, string>>({});
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editCommentText, setEditCommentText] = useState('');
+  const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null);
+  const [longPressCommentId, setLongPressCommentId] = useState<string | null>(null);
+  const [longPressTimer, setLongPressTimer] = useState<NodeJS.Timeout | null>(null);
+  const [longPressPosition, setLongPressPosition] = useState<{ x: number; y: number } | null>(null);
   const shareMenuRef = useRef<HTMLDivElement>(null);
+  const commentInputRef = useRef<HTMLInputElement>(null);
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -149,6 +159,31 @@ export default function TripInfoCard({
     }
   };
 
+  // Handle highlighting comment from URL
+  useEffect(() => {
+    if (highlightCommentId && !showComments) {
+      setShowComments(true);
+      loadComments();
+    }
+  }, [highlightCommentId]);
+
+  // Scroll to highlighted comment when comments are loaded
+  useEffect(() => {
+    if (highlightCommentId && showComments && comments.length > 0 && highlightedCommentRef.current) {
+      setTimeout(() => {
+        highlightedCommentRef.current?.scrollIntoView({ 
+          behavior: 'smooth', 
+          block: 'center' 
+        });
+        // Add highlight effect
+        highlightedCommentRef.current?.classList.add('ring-2', 'ring-blue-500', 'rounded-lg');
+        setTimeout(() => {
+          highlightedCommentRef.current?.classList.remove('ring-2', 'ring-blue-500');
+        }, 3000);
+      }, 300);
+    }
+  }, [highlightCommentId, showComments, comments]);
+
   const handleAddComment = async () => {
     if (!commentText.trim() || !user) return;
     
@@ -180,6 +215,85 @@ export default function TripInfoCard({
     } finally {
       setAddingComment(false);
     }
+  };
+
+  const handleStartEdit = (comment: TripComment) => {
+    setEditingCommentId(comment.commentId);
+    setEditCommentText(comment.text);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingCommentId(null);
+    setEditCommentText('');
+  };
+
+  const handleSaveEdit = async (commentId: string) => {
+    if (!editCommentText.trim() || !user) return;
+    
+    try {
+      const token = await getIdToken();
+      const updatedComment = await updateTripComment(trip.tripId, commentId, editCommentText.trim(), token);
+      setComments(comments.map(c => c.commentId === commentId ? updatedComment : c));
+      setEditingCommentId(null);
+      setEditCommentText('');
+    } catch (error: any) {
+      console.error('Failed to update comment:', error);
+      alert(`Failed to update comment: ${error.message || 'Unknown error'}`);
+    }
+  };
+
+  const handleDelete = async (commentId: string) => {
+    if (!user || !confirm('Are you sure you want to delete this comment?')) return;
+    
+    try {
+      setDeletingCommentId(commentId);
+      setLongPressCommentId(null);
+      const token = await getIdToken();
+      await deleteTripComment(trip.tripId, commentId, token);
+      setComments(comments.filter(c => c.commentId !== commentId));
+      
+      // Notify parent that a comment was deleted
+      if (onCommentClick) {
+        setTimeout(() => {
+          if (onCommentClick) onCommentClick();
+        }, 100);
+      }
+    } catch (error: any) {
+      console.error('Failed to delete comment:', error);
+      alert(`Failed to delete comment: ${error.message || 'Unknown error'}`);
+    } finally {
+      setDeletingCommentId(null);
+    }
+  };
+
+  const handleLongPressStart = (commentId: string, e: React.TouchEvent | React.MouseEvent) => {
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+    }
+    
+    const timer = setTimeout(() => {
+      const touch = 'touches' in e ? e.touches[0] : null;
+      const position = touch 
+        ? { x: touch.clientX, y: touch.clientY }
+        : { x: (e as React.MouseEvent).clientX, y: (e as React.MouseEvent).clientY };
+      
+      setLongPressCommentId(commentId);
+      setLongPressPosition(position);
+    }, 500); // 500ms for long press
+    
+    setLongPressTimer(timer);
+  };
+
+  const handleLongPressEnd = () => {
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+      setLongPressTimer(null);
+    }
+  };
+
+  const handleCloseLongPressMenu = () => {
+    setLongPressCommentId(null);
+    setLongPressPosition(null);
   };
 
   return (
@@ -300,39 +414,129 @@ export default function TripInfoCard({
             <p className="text-gray-400 text-sm text-center py-8">No comments yet</p>
           ) : (
             <div className="space-y-4 pb-4">
-              {comments.map((comment) => (
-                <div key={comment.commentId} className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-full bg-[#1976d2] flex items-center justify-center flex-shrink-0">
-                    <span className="text-sm text-white font-semibold">
-                      {commentUserNamesMap[comment.userId]?.charAt(0).toUpperCase() || 'U'}
-                    </span>
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-baseline gap-2 mb-1">
-                      <span className="text-sm font-semibold text-white">
-                        {commentUserNamesMap[comment.userId] || 'Loading...'}
+              {comments.map((comment) => {
+                const isOwner = user && comment.userId === user.uid;
+                const isEditing = editingCommentId === comment.commentId;
+                const isDeleting = deletingCommentId === comment.commentId;
+
+                const isHighlighted = highlightCommentId === comment.commentId;
+                return (
+                  <div 
+                    key={comment.commentId} 
+                    ref={isHighlighted ? highlightedCommentRef : null}
+                    className={`flex items-start gap-3 relative ${isHighlighted ? 'bg-blue-900/20' : ''}`}
+                    onTouchStart={(e) => isOwner && !isEditing && handleLongPressStart(comment.commentId, e)}
+                    onTouchEnd={handleLongPressEnd}
+                    onMouseDown={(e) => isOwner && !isEditing && handleLongPressStart(comment.commentId, e)}
+                    onMouseUp={handleLongPressEnd}
+                    onMouseLeave={handleLongPressEnd}
+                  >
+                    <div className="w-10 h-10 rounded-full bg-[#1976d2] flex items-center justify-center flex-shrink-0">
+                      <span className="text-sm text-white font-semibold">
+                        {commentUserNamesMap[comment.userId]?.charAt(0).toUpperCase() || 'U'}
                       </span>
-                      <span className="text-sm text-gray-200">{comment.text}</span>
                     </div>
-                    <p className="text-xs text-gray-400">
-                      {format(toDate(comment.createdAt), 'MMM dd, yyyy')}
-                    </p>
+                    <div className="flex-1">
+                      <div className="flex items-start justify-between gap-2 mb-1">
+                        <div className="flex-1">
+                          <div className="flex items-baseline gap-2 mb-1">
+                            <span className="text-sm font-semibold text-white">
+                              {commentUserNamesMap[comment.userId] || 'Loading...'}
+                            </span>
+                            {!isEditing && (
+                              <span 
+                                className="text-sm text-gray-200"
+                                dangerouslySetInnerHTML={{ 
+                                  __html: comment.text.replace(/@([a-zA-Z0-9._-]+)/g, '<span class="text-blue-400 font-semibold">@$1</span>')
+                                }}
+                              />
+                            )}
+                          </div>
+                          {isEditing ? (
+                            <div className="space-y-2">
+                              <textarea
+                                value={editCommentText}
+                                onChange={(e) => setEditCommentText(e.target.value)}
+                                className="w-full bg-gray-800 text-white rounded-lg p-2 text-sm resize-none border border-gray-700 focus:outline-none focus:border-[#1976d2]"
+                                rows={3}
+                              />
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => handleSaveEdit(comment.commentId)}
+                                  disabled={!editCommentText.trim()}
+                                  className="bg-[#1976d2] text-white px-3 py-1.5 rounded-lg text-sm font-medium disabled:opacity-50 hover:bg-[#1565c0] transition-colors flex items-center gap-1"
+                                >
+                                  <MdCheck className="w-4 h-4" />
+                                  Save
+                                </button>
+                                <button
+                                  onClick={handleCancelEdit}
+                                  className="bg-gray-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-gray-600 transition-colors flex items-center gap-1"
+                                >
+                                  <MdClose className="w-4 h-4" />
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
+                      <p className="text-xs text-gray-400">
+                        {format(toDate(comment.createdAt), 'MMM dd, yyyy')}
+                      </p>
+                    </div>
+                    
+                    {/* Long Press Menu */}
+                    {isOwner && !isEditing && longPressCommentId === comment.commentId && longPressPosition && (
+                      <div 
+                        className="absolute z-50 bg-gray-800 border border-gray-700 rounded-lg shadow-xl overflow-hidden"
+                        style={{
+                          top: `${longPressPosition.y + 10}px`,
+                          left: `${longPressPosition.x}px`,
+                          transform: 'translateX(-50%)',
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <button
+                          onClick={() => {
+                            handleStartEdit(comment);
+                            handleCloseLongPressMenu();
+                          }}
+                          className="w-full px-4 py-3 text-left text-white hover:bg-gray-700 flex items-center gap-2 transition-colors"
+                        >
+                          <MdEdit className="w-4 h-4" />
+                          <span>Edit</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            handleDelete(comment.commentId);
+                            handleCloseLongPressMenu();
+                          }}
+                          disabled={isDeleting}
+                          className="w-full px-4 py-3 text-left text-red-400 hover:bg-gray-700 flex items-center gap-2 transition-colors disabled:opacity-50 border-t border-gray-700"
+                        >
+                          <MdDelete className="w-4 h-4" />
+                          <span>Delete</span>
+                        </button>
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
 
         {/* Comment Input at Bottom (Instagram style) */}
         {user && (trip.isPublic || trip.creatorId === user.uid || trip.participants?.some(p => p.uid === user.uid)) && (
-          <div className="sticky bottom-0 px-4 py-3 border-t border-gray-800 bg-black flex items-center gap-2">
+          <div className="sticky bottom-0 px-4 py-3 border-t border-gray-800 bg-black flex items-center gap-2 relative">
             <div className="w-10 h-10 rounded-full bg-[#1976d2] flex items-center justify-center flex-shrink-0">
               <span className="text-sm text-white font-semibold">
                 {user.name?.charAt(0).toUpperCase() || 'U'}
               </span>
             </div>
             <input
+              ref={commentInputRef}
               type="text"
               value={commentText}
               onChange={(e) => setCommentText(e.target.value)}
@@ -342,9 +546,20 @@ export default function TripInfoCard({
                   handleAddComment();
                 }
               }}
-              placeholder="Add a comment..."
+              onKeyDown={(e) => {
+                // Let MentionAutocomplete handle arrow keys and enter
+                if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Escape') {
+                  return;
+                }
+              }}
+              placeholder="Add a comment... (use @ to mention)"
               className="flex-1 bg-gray-900 text-white text-sm placeholder-gray-500 focus:outline-none px-4 py-2 rounded-full border border-gray-700 focus:border-[#1976d2]"
               disabled={addingComment}
+            />
+            <MentionAutocomplete
+              text={commentText}
+              onTextChange={setCommentText}
+              inputRef={commentInputRef}
             />
             <button
               onClick={handleAddComment}

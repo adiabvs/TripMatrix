@@ -496,7 +496,9 @@ export async function rewriteText(
 
 // User APIs
 export async function searchUsers(query: string, token: string | null): Promise<User[]> {
-  const response = await fetchWithAuth(`/api/users/search?q=${encodeURIComponent(query)}`, {}, token);
+  // If query is empty, pass empty string to get all users
+  const queryParam = query.trim() === '' ? '' : encodeURIComponent(query);
+  const response = await fetchWithAuth(`/api/users/search?q=${queryParam}`, {}, token);
   const result: ApiResponse<User[]> = await response.json();
   if (!result.success || !result.data) {
     throw new Error(result.error || 'Failed to search users');
@@ -670,6 +672,37 @@ export async function getPlaceComments(placeId: string, token: string | null): P
   return result.data;
 }
 
+export async function updatePlaceComment(
+  placeId: string,
+  commentId: string,
+  text: string,
+  token: string | null
+): Promise<PlaceComment> {
+  const response = await fetchWithAuth(`/api/places/${placeId}/comments/${commentId}`, {
+    method: 'PUT',
+    body: JSON.stringify({ text }),
+  }, token);
+  const result: ApiResponse<PlaceComment> = await response.json();
+  if (!result.success || !result.data) {
+    throw new Error(result.error || 'Failed to update comment');
+  }
+  return result.data;
+}
+
+export async function deletePlaceComment(
+  placeId: string,
+  commentId: string,
+  token: string | null
+): Promise<void> {
+  const response = await fetchWithAuth(`/api/places/${placeId}/comments/${commentId}`, {
+    method: 'DELETE',
+  }, token);
+  const result: ApiResponse<void> = await response.json();
+  if (!result.success) {
+    throw new Error(result.error || 'Failed to delete comment');
+  }
+}
+
 // Trip Comment APIs
 export async function addTripComment(
   tripId: string,
@@ -694,6 +727,37 @@ export async function getTripComments(tripId: string, token: string | null): Pro
     throw new Error(result.error || 'Failed to get comments');
   }
   return result.data;
+}
+
+export async function updateTripComment(
+  tripId: string,
+  commentId: string,
+  text: string,
+  token: string | null
+): Promise<TripComment> {
+  const response = await fetchWithAuth(`/api/trips/${tripId}/comments/${commentId}`, {
+    method: 'PUT',
+    body: JSON.stringify({ text }),
+  }, token);
+  const result: ApiResponse<TripComment> = await response.json();
+  if (!result.success || !result.data) {
+    throw new Error(result.error || 'Failed to update comment');
+  }
+  return result.data;
+}
+
+export async function deleteTripComment(
+  tripId: string,
+  commentId: string,
+  token: string | null
+): Promise<void> {
+  const response = await fetchWithAuth(`/api/trips/${tripId}/comments/${commentId}`, {
+    method: 'DELETE',
+  }, token);
+  const result: ApiResponse<void> = await response.json();
+  if (!result.success) {
+    throw new Error(result.error || 'Failed to delete comment');
+  }
 }
 
 // Place Like APIs

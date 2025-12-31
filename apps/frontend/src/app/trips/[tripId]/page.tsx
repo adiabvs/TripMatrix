@@ -1,7 +1,7 @@
 'use client';
 
 import { useAuth } from '@/lib/auth';
-import { useRouter, useParams } from 'next/navigation';
+import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import dynamic from 'next/dynamic';
@@ -30,7 +30,10 @@ export default function TripDetailPage() {
   const { user, loading: authLoading, getIdToken } = useAuth();
   const router = useRouter();
   const params = useParams();
+  const searchParams = useSearchParams();
   const tripId = params.tripId as string;
+  const commentId = searchParams.get('commentId');
+  const placeId = searchParams.get('placeId');
 
   const {
     trip,
@@ -535,6 +538,7 @@ export default function TripDetailPage() {
             }
           }}
           commentCount={commentCount}
+          highlightCommentId={commentId && !placeId ? commentId : undefined}
         />
 
         <TripStepsList

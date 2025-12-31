@@ -2,9 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import type { TripParticipant, User } from '@tripmatrix/types';
-import { searchUsers } from '@/lib/api';
-import { db } from '@/lib/firebase';
-import { doc, getDoc } from 'firebase/firestore';
+import { searchUsers, getUser } from '@/lib/api';
 
 interface ParticipantSelectorProps {
   participants: TripParticipant[];
@@ -32,18 +30,16 @@ export default function ParticipantSelector({
         .filter(p => !p.isGuest && p.uid)
         .map(p => p.uid!);
       
-      if (userIds.length === 0) return;
+      if (userIds.length === 0 || !token) return;
 
       const userDataPromises = userIds.map(async (uid) => {
         try {
-          const userDoc = await getDoc(doc(db, 'users', uid));
-          if (userDoc.exists()) {
-            return { uid, user: userDoc.data() as User };
-          }
+          const user = await getUser(uid, token);
+          return { uid, user };
         } catch (error) {
           console.error(`Failed to fetch user ${uid}:`, error);
+          return null;
         }
-        return null;
       });
 
       const results = await Promise.all(userDataPromises);
@@ -57,7 +53,7 @@ export default function ParticipantSelector({
     };
 
     fetchUserData();
-  }, [participants]);
+  }, [participants, token]);
 
   useEffect(() => {
     const searchTimeout = setTimeout(() => {
@@ -261,9 +257,9 @@ export default function ParticipantSelector({
                     {participant.isGuest
                       ? participant.guestName
                       : (participant.uid && userMap[participant.uid]
-                          ? userMap[participant.uid].name
+                          ? userMap[participant.uid].name || 'User'
                           : participant.uid
-                            ? `User ${participant.uid.substring(0, 8)}...`
+                            ? 'Loading...'
                             : 'Unknown User')}
                   </p>
                   {!participant.isGuest && participant.uid && userMap[participant.uid] && (

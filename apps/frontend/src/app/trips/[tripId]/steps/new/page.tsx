@@ -5,10 +5,8 @@ import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useEffect, useState, useRef, useCallback } from 'react';
 import dynamic from 'next/dynamic';
-import { getTrip, addPlace, getTripPlaces, createExpense } from '@/lib/api';
+import { getTrip, addPlace, getTripPlaces, createExpense, getUser } from '@/lib/api';
 import type { Trip, TripPlace, TripExpense, ModeOfTravel, TripParticipant } from '@tripmatrix/types';
-import { db } from '@/lib/firebase';
-import { doc, getDoc } from 'firebase/firestore';
 import { toDate, formatDateTimeLocalForInput, parseDateTimeLocalToUTC } from '@/lib/dateUtils';
 import { format } from 'date-fns';
 import { getCurrencySymbol } from '@/lib/currencyUtils';
@@ -52,6 +50,7 @@ export default function NewStepPage() {
   const [showExpenseForm, setShowExpenseForm] = useState(false);
   const [placeCountry, setPlaceCountry] = useState<string | undefined>(undefined);
   const [pendingExpenses, setPendingExpenses] = useState<Array<Partial<TripExpense>>>([]);
+  const [userNamesMap, setUserNamesMap] = useState<Record<string, string>>({});
   
   // Map search state
   const [searchQuery, setSearchQuery] = useState('');
@@ -426,10 +425,30 @@ export default function NewStepPage() {
   };
 
 
-  const handleAddExpense = (expenseData: Partial<TripExpense>) => {
+  const handleAddExpense = async (expenseData: Partial<TripExpense>) => {
     // Add expense to pending expenses list (like adding a guest)
     setPendingExpenses([...pendingExpenses, expenseData]);
     setShowExpenseForm(false);
+    
+    // Fetch user name if paidBy is a user ID
+    if (expenseData.paidBy && !userNamesMap[expenseData.paidBy]) {
+      const paidByParticipant = trip?.participants?.find(
+        p => (p.uid || p.guestName) === expenseData.paidBy
+      );
+      
+      if (paidByParticipant?.isGuest && paidByParticipant.guestName) {
+        setUserNamesMap(prev => ({ ...prev, [expenseData.paidBy!]: paidByParticipant.guestName! }));
+      } else if (paidByParticipant?.uid) {
+        try {
+          const token = await getIdToken();
+          const user = await getUser(paidByParticipant.uid, token);
+          setUserNamesMap(prev => ({ ...prev, [expenseData.paidBy!]: user.name || 'User' }));
+        } catch (error) {
+          console.error('Failed to fetch user name:', error);
+          setUserNamesMap(prev => ({ ...prev, [expenseData.paidBy!]: 'User' }));
+        }
+      }
+    }
   };
 
   const removeExpense = (index: number) => {
@@ -825,8 +844,10 @@ export default function NewStepPage() {
                     if (paidByLabel?.isGuest && paidByLabel.guestName) {
                       paidByName = paidByLabel.guestName;
                     } else if (paidByLabel?.uid) {
-                      // For users, we'd need to fetch the name, but for pending expenses we'll show a placeholder
-                      paidByName = 'User';
+                      // Use cached name or show loading
+                      paidByName = userNamesMap[expense.paidBy!] || 'Loading...';
+                    } else if (expense.paidBy && userNamesMap[expense.paidBy]) {
+                      paidByName = userNamesMap[expense.paidBy];
                     } else {
                       paidByName = (expense.paidBy && expense.paidBy.length > 20) ? 'User' : (expense.paidBy || 'Unknown');
                     }

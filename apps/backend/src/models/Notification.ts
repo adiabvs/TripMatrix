@@ -15,7 +15,7 @@ const NotificationSchema = new Schema<NotificationDocument>(
     },
     type: {
       type: String,
-      enum: ['trip_invitation', 'trip_comment', 'trip_like', 'follow_request'],
+      enum: ['trip_invitation', 'trip_comment', 'trip_like', 'follow_request', 'comment_mention'],
       required: true,
     },
     title: {
@@ -27,6 +27,8 @@ const NotificationSchema = new Schema<NotificationDocument>(
       required: true,
     },
     tripId: String,
+    placeId: String, // For place-related notifications
+    commentId: String, // For comment-related notifications
     fromUserId: String,
     isRead: {
       type: Boolean,

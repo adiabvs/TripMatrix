@@ -169,7 +169,19 @@ export default function NotificationsPage() {
                           </button>
                         </div>
                       )}
-                      {notification.tripId && notification.type !== 'trip_invitation' && (
+                      {notification.type === 'comment_mention' && notification.commentId && (
+                        <Link
+                          href={notification.placeId 
+                            ? `/trips/${notification.tripId}?commentId=${notification.commentId}&placeId=${notification.placeId}`
+                            : `/trips/${notification.tripId}?commentId=${notification.commentId}`
+                          }
+                          onClick={() => handleMarkAsRead(notification.notificationId)}
+                          className="text-blue-500 text-xs hover:underline"
+                        >
+                          View Comment
+                        </Link>
+                      )}
+                      {notification.tripId && notification.type !== 'trip_invitation' && notification.type !== 'comment_mention' && (
                         <Link
                           href={`/trips/${notification.tripId}`}
                           className="text-blue-500 text-xs hover:underline"

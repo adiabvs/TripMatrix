@@ -6,6 +6,8 @@ import { TripModel } from '../models/Trip.js';
 import { TripPlaceModel } from '../models/TripPlace.js';
 import { PlaceCommentModel } from '../models/PlaceComment.js';
 import { PlaceLikeModel } from '../models/PlaceLike.js';
+import { UserModel } from '../models/User.js';
+import { NotificationModel } from '../models/Notification.js';
 
 const router = express.Router();
 
@@ -466,6 +468,61 @@ router.post('/:placeId/comments', authenticateToken, async (req: AuthenticatedRe
     const savedComment = await commentDoc.save();
     const comment = savedComment.toJSON() as PlaceComment;
 
+    // Find mentioned users and create notifications
+    const { findMentionedUsers } = await import('../utils/mentionUtils.js');
+    const mentionedUserIds = await findMentionedUsers(text.trim());
+    
+    // Filter out the comment author and create notifications for mentioned users
+    const mentionedUsersToNotify = mentionedUserIds.filter(userId => userId !== uid);
+    
+    if (mentionedUsersToNotify.length > 0) {
+      const commentAuthor = await UserModel.findOne({ uid });
+      const authorName = commentAuthor?.name || 'Someone';
+      const placeName = placeData.name || 'a place';
+      
+      const notificationPromises = mentionedUsersToNotify.map(async (mentionedUserId) => {
+        try {
+          if (!mentionedUserId || typeof mentionedUserId !== 'string') {
+            console.warn(`Invalid userId found in mentionedUsersToNotify: ${mentionedUserId}. Skipping notification.`);
+            return null;
+          }
+          
+          // Check if there's already an unread notification for this mention to avoid duplicates
+          const existingUnreadNotification = await NotificationModel.findOne({
+            userId: mentionedUserId.trim(),
+            tripId: placeData.tripId,
+            type: 'comment_mention',
+            fromUserId: uid,
+            isRead: false,
+          });
+
+          if (!existingUnreadNotification) {
+            const notification = new NotificationModel({
+              userId: mentionedUserId.trim(),
+              type: 'comment_mention',
+              title: 'You were mentioned in a comment',
+              message: `${authorName} mentioned you in a comment on "${placeName}"`,
+              tripId: placeData.tripId,
+              placeId: placeId,
+              commentId: comment.commentId,
+              fromUserId: uid,
+              isRead: false,
+            });
+            await notification.save();
+            console.log(`Notification created for mentioned user ${mentionedUserId.trim()} in place ${placeId} for comment ${comment.commentId}`);
+          } else {
+            console.log(`Skipping notification for user ${mentionedUserId.trim()} - unread mention notification already exists`);
+          }
+        } catch (error: any) {
+          console.error(`Error creating mention notification for user ${mentionedUserId} in place ${placeId}:`, error.message || error);
+        }
+        return null;
+      });
+      
+      await Promise.all(notificationPromises);
+      console.log(`Completed mention notification creation for place ${placeId}`);
+    }
+
     res.json({
       success: true,
       data: comment,
@@ -532,6 +589,110 @@ router.get('/:placeId/comments', async (req: OptionalAuthRequest, res) => {
     res.json({
       success: true,
       data: comments,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+// Update a comment on a place
+router.put('/:placeId/comments/:commentId', authenticateToken, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { placeId, commentId } = req.params;
+    const { text } = req.body;
+    const uid = req.uid!;
+
+    if (!text || !text.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: 'Comment text is required',
+      });
+    }
+
+    // Find the comment
+    const comment = await PlaceCommentModel.findById(commentId);
+    if (!comment) {
+      return res.status(404).json({
+        success: false,
+        error: 'Comment not found',
+      });
+    }
+
+    // Verify comment belongs to the place
+    if (comment.placeId !== placeId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Comment does not belong to this place',
+      });
+    }
+
+    // Only the comment owner can edit
+    if (comment.userId !== uid) {
+      return res.status(403).json({
+        success: false,
+        error: 'Not authorized to edit this comment',
+      });
+    }
+
+    // Update comment
+    comment.text = text.trim();
+    comment.updatedAt = new Date();
+    await comment.save();
+
+    const updatedComment = comment.toJSON() as PlaceComment;
+
+    res.json({
+      success: true,
+      data: updatedComment,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+// Delete a comment from a place
+router.delete('/:placeId/comments/:commentId', authenticateToken, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { placeId, commentId } = req.params;
+    const uid = req.uid!;
+
+    // Find the comment
+    const comment = await PlaceCommentModel.findById(commentId);
+    if (!comment) {
+      return res.status(404).json({
+        success: false,
+        error: 'Comment not found',
+      });
+    }
+
+    // Verify comment belongs to the place
+    if (comment.placeId !== placeId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Comment does not belong to this place',
+      });
+    }
+
+    // Only the comment owner can delete
+    if (comment.userId !== uid) {
+      return res.status(403).json({
+        success: false,
+        error: 'Not authorized to delete this comment',
+      });
+    }
+
+    // Delete comment
+    await PlaceCommentModel.findByIdAndDelete(commentId);
+
+    res.json({
+      success: true,
+      message: 'Comment deleted successfully',
     });
   } catch (error: any) {
     res.status(500).json({

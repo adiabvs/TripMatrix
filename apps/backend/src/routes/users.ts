@@ -18,11 +18,13 @@ router.get('/search', async (req: OptionalAuthRequest, res) => {
     
     const { q } = req.query;
     
-    if (!q || typeof q !== 'string') {
-      return res.status(400).json({
-        success: false,
-        error: 'Query parameter "q" is required',
-      });
+    // If no query, return recent users (for @mention autocomplete)
+    if (!q || typeof q !== 'string' || q.trim() === '') {
+      const usersDocs = await UserModel.find({})
+        .sort({ createdAt: -1 })
+        .limit(20);
+      const users = usersDocs.map(doc => doc.toJSON());
+      return res.json({ success: true, data: users });
     }
 
     // Search by email, name, or username (case-insensitive contains)
@@ -34,7 +36,7 @@ router.get('/search', async (req: OptionalAuthRequest, res) => {
         { name: { $regex: searchQuery, $options: 'i' } },
         { username: { $regex: searchQuery, $options: 'i' } }
       ]
-    }).limit(10);
+    }).limit(20);
 
     const users = usersDocs.map(doc => doc.toJSON());
 

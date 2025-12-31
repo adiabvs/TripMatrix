@@ -4,8 +4,7 @@ import { useState, useEffect } from 'react';
 import type { TripExpense, TripParticipant } from '@tripmatrix/types';
 import { getCurrencyFromCountry, commonCurrencies, formatCurrency } from '@/lib/currencyUtils';
 import { useAuth } from '@/lib/auth';
-import { db } from '@/lib/firebase';
-import { doc, getDoc } from 'firebase/firestore';
+import { getUser } from '@/lib/api';
 
 interface ExpenseFormProps {
   tripId: string;
@@ -76,6 +75,7 @@ export default function ExpenseForm({
     // 'people' mode: user manually selects (starts empty)
   }, [splitMode, participants]);
 
+  const { getIdToken } = useAuth();
   const [userMap, setUserMap] = useState<Record<string, { name: string; email: string }>>({});
 
   // Fetch user data for participants with UIDs
@@ -87,39 +87,41 @@ export default function ExpenseForm({
       
       if (userIds.length === 0) return;
 
-      const userDataPromises = userIds.map(async (uid) => {
-        try {
-          const userDoc = await getDoc(doc(db, 'users', uid));
-          if (userDoc.exists()) {
-            const userData = userDoc.data();
-            return { uid, name: userData.name || 'Unknown', email: userData.email || '' };
+      try {
+        const token = await getIdToken();
+        const userDataPromises = userIds.map(async (uid) => {
+          try {
+            const user = await getUser(uid, token);
+            return { uid, name: user.name || 'Unknown', email: user.email || '' };
+          } catch (error) {
+            console.error(`Failed to fetch user ${uid}:`, error);
+            return null;
           }
-        } catch (error) {
-          console.error(`Failed to fetch user ${uid}:`, error);
-        }
-        return null;
-      });
+        });
 
-      const results = await Promise.all(userDataPromises);
-      const newUserMap: Record<string, { name: string; email: string }> = {};
-      results.forEach(result => {
-        if (result) {
-          newUserMap[result.uid] = { name: result.name, email: result.email };
-        }
-      });
-      setUserMap(newUserMap);
+        const results = await Promise.all(userDataPromises);
+        const newUserMap: Record<string, { name: string; email: string }> = {};
+        results.forEach(result => {
+          if (result) {
+            newUserMap[result.uid] = { name: result.name, email: result.email };
+          }
+        });
+        setUserMap(newUserMap);
+      } catch (error) {
+        console.error('Failed to get auth token:', error);
+      }
     };
 
     fetchUserData();
-  }, [participants]);
+  }, [participants, getIdToken]);
 
   const participantOptions = participants.map((p) => ({
     id: p.uid || p.guestName || '',
     label: p.isGuest 
       ? (p.guestName || 'Guest')
       : (p.uid && userMap[p.uid]
-          ? userMap[p.uid].name
-          : (p.uid ? `User ${p.uid.substring(0, 8)}...` : 'Unknown')),
+          ? userMap[p.uid].name || 'User'
+          : (p.uid ? 'Loading...' : 'Unknown')),
     isGuest: p.isGuest,
   }));
 

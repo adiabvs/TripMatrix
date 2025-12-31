@@ -219,7 +219,7 @@ export interface DiaryPage {
 }
 
 // Notification Types
-export type NotificationType = 'trip_invitation' | 'trip_comment' | 'trip_like' | 'follow_request';
+export type NotificationType = 'trip_invitation' | 'trip_comment' | 'trip_like' | 'follow_request' | 'comment_mention';
 
 export interface Notification {
   notificationId: string;
@@ -228,6 +228,8 @@ export interface Notification {
   title: string;
   message: string;
   tripId?: string; // For trip-related notifications
+  placeId?: string; // For place-related notifications (place comments)
+  commentId?: string; // For comment-related notifications (mentions, replies)
   fromUserId?: string; // User who triggered the notification
   isRead: boolean;
   createdAt: Date | string;

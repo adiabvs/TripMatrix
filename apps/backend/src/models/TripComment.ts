@@ -26,6 +26,9 @@ const TripCommentSchema = new Schema<TripCommentDocument>(
       type: Date,
       default: Date.now,
     },
+    updatedAt: {
+      type: Date,
+    },
   },
   {
     timestamps: false,

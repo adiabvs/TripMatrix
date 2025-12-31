@@ -26,6 +26,9 @@ const PlaceCommentSchema = new Schema<PlaceCommentDocument>(
       type: Date,
       default: Date.now,
     },
+    updatedAt: {
+      type: Date,
+    },
   },
   {
     timestamps: false,
